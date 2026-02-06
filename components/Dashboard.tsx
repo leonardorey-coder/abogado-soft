@@ -88,6 +88,19 @@ const getFileIcon = (type: string) => {
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+  };
+
+  const handleUploadAndSave = () => {
+    if (!selectedFile) return;
+    onNavigate(ViewState.EDITOR);
+    setIsUploadModalOpen(false);
+  };
 
   const handleStatusChange = (e: React.MouseEvent, id: string, newStatus: DocumentStatus) => {
     e.stopPropagation();
@@ -178,7 +191,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => onNavigate(ViewState.EDITOR)}
+            onClick={() => setIsUploadModalOpen(true)}
             className="flex items-center gap-2 bg-background-light dark:bg-gray-800 px-3 py-2 rounded-lg text-[#111318] dark:text-white text-sm font-semibold border border-[#dbdfe6] dark:border-[#2d3748] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <span className="material-symbols-outlined text-base">upload_file</span>
@@ -409,25 +422,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Help Banner - Kept adapted */}
-        <div className="mt-8 bg-primary/5 dark:bg-primary/10 rounded-2xl p-6 border border-primary/20 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-md">
-              <span className="material-symbols-outlined text-2xl">support_agent</span>
-            </div>
-            <div>
-              <h4 className="text-lg font-bold text-primary">
-                ¿Necesita ayuda?
-              </h4>
-              <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">
-                Contacte a soporte técnico para asistencia inmediata.
-              </p>
-            </div>
-          </div>
-          <button className="bg-primary text-white px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm hover:opacity-90 transition-opacity">
-            Contactar Soporte
-          </button>
-        </div>
       </main>
 
       <footer className="mt-20 border-t border-[#dbdfe6] dark:border-[#2d3748] py-8 px-6 text-center text-[#616f89] dark:text-[#a0aec0]">
@@ -440,6 +434,72 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </p>
         </div>
       </footer>
+
+      {isUploadModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsUploadModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-[#1a212f] w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-8 pb-4 text-center">
+              <h2 className="text-3xl font-bold text-[#111318] dark:text-white">Agregar Nuevo Documento</h2>
+              <p className="text-[#616f89] dark:text-[#a0aec0] mt-2 text-lg">
+                Seleccione el archivo que desea guardar en el sistema legal.
+              </p>
+            </div>
+            <div className="px-8 py-6">
+              <label className="group relative border-4 border-dashed border-[#dbdfe6] dark:border-[#2d3748] rounded-2xl p-12 flex flex-col items-center justify-center bg-gray-50 dark:bg-[#101622] hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
+                <input
+                  accept=".doc,.docx,.pdf,.xls,.xlsx,image/*"
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  id="fileInput"
+                  type="file"
+                  onChange={handleFileChange}
+                />
+                <div className="bg-primary/10 text-primary p-6 rounded-full mb-6 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-6xl">cloud_upload</span>
+                </div>
+                <p className="text-xl font-semibold text-[#111318] dark:text-white text-center">
+                  Arrastre aquí su archivo o haga clic para buscar
+                </p>
+                <p className="text-[#616f89] dark:text-[#a0aec0] mt-4 text-sm font-medium">
+                  Formatos permitidos: Word, PDF, Excel e Imágenes
+                </p>
+              </label>
+              <div className="mt-6 flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-primary text-sm">
+                <span className="material-symbols-outlined">info</span>
+                <p>El documento se guardará de forma segura en el expediente correspondiente.</p>
+              </div>
+            </div>
+            <div className="px-8 py-8 flex flex-col sm:flex-row items-center justify-end gap-4 border-t border-[#dbdfe6] dark:border-[#2d3748]">
+              <button
+                type="button"
+                className="w-full sm:w-auto px-8 py-3.5 text-base font-bold text-[#616f89] dark:text-[#a0aec0] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
+                onClick={() => {
+                  setIsUploadModalOpen(false);
+                  setSelectedFile(null);
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={`w-full sm:w-auto px-10 py-3.5 bg-primary text-white text-base font-bold rounded-xl shadow-lg transition-opacity ${
+                  selectedFile ? "hover:opacity-90" : "opacity-50 cursor-not-allowed"
+                }`}
+                disabled={!selectedFile}
+                onClick={handleUploadAndSave}
+              >
+                Subir y Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
