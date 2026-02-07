@@ -1292,6 +1292,32 @@ export function HomePage() {
 }
 ```
 
+### 7.4 Modal de Compartir documento
+
+El modal **Compartir** se abre desde el botón "Compartir" de cada tarjeta de documento (Dashboard) y permite:
+
+- **Enlace del documento**: input de solo lectura con la URL del documento (`/doc/{id}`) y botón **Copiar** que escribe en el portapapeles (`navigator.clipboard.writeText`) y muestra feedback "Copiado".
+- **Compartir con el sistema**: botón **Abrir menú de compartir** que llama a `navigator.share()` cuando está disponible (título, url, text). En Electron se puede sustituir por la API nativa del SO para compartir.
+- **Asignar a usuario de la app**: `<select>` con lista de usuarios (mock o desde API) y botón **Asignar**; al confirmar se muestra "Asignado a [nombre]".
+
+Implementación: componente `ShareModal` (`components/ShareModal.tsx`), props `document: Document` y `onClose: () => void`. El Dashboard mantiene estado `shareDocument: Document | null` y renderiza `<ShareModal document={shareDocument} onClose={() => setShareDocument(null)} />` cuando no es null. Estilo alineado con el modal "Agregar Nuevo Documento" (overlay `fixed inset-0`, backdrop, tarjeta centrada, inputs y botones con `min-h-[48px]` y ancho consistente).
+
+### 7.5 Página Asignados
+
+Vista de **documentos asignados** al usuario actual (compartidos/asignados por otros). Acceso desde el header con la opción **Asignados**.
+
+- **ViewState**: en `types.ts` existe `ViewState.ASIGNED = 'ASIGNED'`. En `App.tsx`, `renderView()` incluye el caso `ViewState.ASIGNED` que renderiza `<AssignedList onNavigate={setCurrentView} />`.
+- **AppHeader**: en la barra de navegación, entre "Documentos" y "Convenios", el botón "Asignados" hace `onNavigate(ViewState.ASIGNED)`.
+
+**Componente `AssignedList`** (`components/AssignedList.tsx`):
+
+1. **Grid de estadísticas** (4 tarjetas, `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`): Pendientes (fileStatus PENDIENTE, subtítulo "Por revisar"), Revisados (collaborationStatus REVISADO o VISTO, "Visto o revisado"), Activos (fileStatus ACTIVO, "Estado de archivo"), Documentos asignados (total, "Total en lista").
+2. **Título de sección**: "Asignados recientes" con icono `history`, alineado con "Mis Documentos Recientes" del Dashboard.
+3. **Filtros (píldoras)**: Todos, Pendientes, Revisados, Activos; actualizan `filter` y la lista mostrada (`filteredDocuments`).
+4. **Listado**: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6` de tarjetas; cada una muestra icono por tipo (DOCX/PDF/XLSX), badge de estado (ACTIVO/PENDIENTE/INACTIVO), nombre con `<wbr>` en guiones bajos, última modificación, aviso de vencimiento si aplica, y botón **Ver** que navega a `ViewState.EDITOR` o `ViewState.EXCEL_EDITOR` según el tipo. Clic en la tarjeta también abre el documento.
+
+Datos: lista de documentos con `sharingStatus: 'ASIGNADO'` (y opcionalmente `collaborationStatus` para Revisados). En la implementación actual se usa un array mock `assignedDocuments`; en producción se reemplazará por una API que devuelva los documentos asignados al usuario logueado.
+
 ---
 
 ## 8. Comandos de Desarrollo

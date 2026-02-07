@@ -37,12 +37,13 @@ Desarrollar AbogadoSoft: una aplicación de escritorio (Electron + React) que pe
 - Plataforma: aplicación de escritorio con Electron 28+, frontend React 18 + TypeScript, SPA con React Router.
 - Usuarios objetivo: abogados senior, abogados junior y personal administrativo de la universidad.
 - Documentos: gestión de DOCX, PDF, XLSX, TXT/RTF con editor embebido, historial de versiones (últimas 10) y papelera con recuperación 30 días.
+- Compartir y asignados: modal de compartir documento (copiar enlace, compartir con el sistema operativo, asignar a usuario de la app) y página "Asignados" en el header con estadísticas (pendientes, revisados, activos, total), filtros y listado en tarjetas de los documentos asignados al usuario.
 - Convenios: registro de número, institución, fechas de vigencia, responsable, estado y documentos adjuntos; filtros por estado y año; reportes básicos.
 - Sincronización: almacenamiento local con SQLite, sincronización con Firebase/Supabase, edición offline con sincronización al reconectar.
 
 **Entregables finales**
 
-1. Aplicación AbogadoSoft instalable (Windows/macOS) con autenticación, CRUD de documentos, grupos, permisos y sincronización nube/local.
+1. Aplicación AbogadoSoft instalable (Windows/macOS) con autenticación, CRUD de documentos, grupos, permisos, sincronización nube/local, compartir documento (enlace, share del SO, asignación a usuario) y vista Asignados con estadísticas y filtros.
 2. Módulo de convenios con listado, filtros, importar/exportar Excel y alertas de vencimiento.
 3. Editor embebido para DOCX, PDF, XLSX y TXT con auto-guardado e historial de versiones.
 4. Documentación técnica y manual de usuario; instalador y mecanismo de actualizaciones automáticas.

@@ -55,6 +55,28 @@
 | **Eliminar** | Papelera con recuperación (30 días) |
 | **Compartir** | Asignar permisos a grupos/usuarios |
 
+#### Compartir documento (modal)
+Desde cada documento (tarjeta en Inicio o lista) el usuario puede abrir un modal **Compartir** con:
+- **Enlace del documento**: campo de solo lectura con URL del documento y botón **Copiar** para llevar el enlace al portapapeles.
+- **Compartir con el sistema**: botón **Abrir menú de compartir** que usa la API nativa del sistema operativo (p. ej. `navigator.share` en web; en Electron se puede conectar al share nativo del SO) para enviar el enlace por correo, mensajería, etc.
+- **Asignar a usuario de la app**: selector de usuario (lista de usuarios de la aplicación) y botón **Asignar** para asignar el documento a un usuario; tras asignar se muestra confirmación "Asignado a [nombre]".
+
+El modal mantiene el mismo estilo visual que el de "Agregar Nuevo Documento" (overlay, tarjeta centrada, botones con peso visual uniforme).
+
+#### Documentos asignados (página Asignados)
+Vista accesible desde el header con la opción **Asignados**, donde el usuario ve solo los documentos que le han sido asignados por otros (vía compartir/asignar).
+
+- **Estadísticas (grid de 4 tarjetas)**:
+  - **Pendientes**: cantidad de asignados con estado "por revisar" (fileStatus Pendiente).
+  - **Revisados**: cantidad con estado de colaboración Visto o Revisado.
+  - **Activos**: cantidad con estado de archivo Activo.
+  - **Documentos asignados**: total en lista.
+- **Título de sección**: "Asignados recientes" con icono de historial, alineado con "Mis Documentos Recientes" del Inicio.
+- **Filtros (píldoras)**: Todos, Pendientes, Revisados, Activos; filtran la lista sin cambiar de página.
+- **Listado**: grid de tarjetas (1/2/3 columnas según viewport), misma estructura que las tarjetas del Inicio: icono por tipo, estado, nombre, última modificación, aviso de vencimiento si aplica, botón **Ver** que abre el editor del documento.
+
+Flujo: Usuario A comparte un documento y lo asigna a Usuario B → Usuario B entra en **Asignados** y ve ese documento en la lista; puede filtrar por pendientes/revisados y abrirlo con Ver.
+
 #### Sistema de Grupos
 - Creación de grupos de trabajo
 - Permisos granulares: `Lectura`, `Escritura`, `Admin`
@@ -148,6 +170,8 @@ Módulo especializado para convenios Universidad-Abogados:
 ### 4.3 Componentes UI Clave
 
 #### Navegación Simplificada
+El header incluye: **Inicio**, **Documentos**, **Asignados** (documentos compartidos/asignados al usuario), **Convenios**, **Bitácora**, **Seguridad**, más búsqueda y botón Subir.
+
 ```
 ┌──────────────────────────────────────────────────┐
 │  🏛️ AbogadoSoft                    👤 Juan Pérez │
@@ -157,6 +181,7 @@ Módulo especializado para convenios Universidad-Abogados:
 │  │   🏠     │  │   📊     │  │   ⚙️     │       │
 │  │   Home   │  │Convenios │  │  Config  │       │
 │  └──────────┘  └──────────┘  └──────────┘       │
+│  (Inicio, Documentos, Asignados, Convenios…)     │
 │                                                  │
 └──────────────────────────────────────────────────┘
 ```

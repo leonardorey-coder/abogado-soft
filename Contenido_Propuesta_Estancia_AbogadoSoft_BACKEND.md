@@ -23,7 +23,7 @@ Diseñar e implementar la capa de backend de AbogadoSoft: proceso principal de E
 **Objetivos específicos**
 
 1. Implementar el modelo de datos local (Usuario, Documento, Grupo, GroupMember, Convenio, Permission) en SQLite dentro del main process de Electron, con migraciones y consultas optimizadas (índices, lazy loading).
-2. Definir e implementar los handlers IPC que expongan al renderer las operaciones de CRUD sobre documentos, grupos, permisos y convenios, con validación y auditoría básica.
+2. Definir e implementar los handlers IPC que expongan al renderer las operaciones de CRUD sobre documentos, grupos, permisos y convenios, más operaciones de compartir (generar enlace, asignar documento a usuario) y consulta de documentos asignados al usuario actual, con validación y auditoría básica.
 3. Integrar autenticación con Firebase/Supabase (login/logout, sesión, 2FA opcional) y reglas de seguridad (Firestore/Storage) según roles y permisos por grupo.
 4. Desarrollar el módulo de sincronización nube-local: detección de cambios, cola de operaciones pendientes en offline, resolución de conflictos (por ejemplo última escritura o versión) y notificación al frontend del estado de sincronización.
 5. Implementar Cloud Functions (o equivalente) para lógica serverless: validación de convenios, alertas de vencimiento, backups programados y logs de auditoría; y configurar almacenamiento seguro de archivos (Storage) con encriptación en reposo.
@@ -35,14 +35,14 @@ Diseñar e implementar la capa de backend de AbogadoSoft: proceso principal de E
 **Alcances (backend)**
 
 - **Proceso principal (Electron):** Node.js + Electron 28+; módulos `database/` (SQLite), `sync/`, `ipc/`; file watching (Chokidar) para detección de cambios locales; auto-updater.
-- **Base de datos local:** SQLite con esquema alineado al modelo del PRD (usuarios, documentos, grupos, miembros, convenios, permisos); soft delete y versionado; índices para búsqueda y filtros por estado/fecha.
+- **Base de datos local:** SQLite con esquema alineado al modelo del PRD (usuarios, documentos, grupos, miembros, convenios, permisos); soporte para compartir y asignación de documentos a usuarios (permisos por documento, estado asignado/revisado); soft delete y versionado; índices para búsqueda y filtros por estado/fecha.
 - **Nube:** Firebase o Supabase para Auth, Storage (archivos), Firestore o Realtime DB (metadatos y sincronización en tiempo real); Cloud Functions para validaciones, alertas y reportes.
 - **Sincronización:** flujo guardado local inmediato + envío asíncrono a nube; marcar pendientes cuando no hay conexión; sincronizar al reconectar; historial de versiones (últimas 10) y papelera (30 días) reflejados en backend.
 - **Seguridad:** encriptación de documentos en reposo; tokens y reglas de acceso; logs de auditoría; backup automático diario (configurable desde backend).
 
 **Entregables finales (backend)**
 
-1. Código del main process con módulos database (SQLite), sync e IPC; esquema y migraciones documentados.
+1. Código del main process con módulos database (SQLite), sync e IPC; esquema y migraciones documentados; soporte en modelo e IPC para compartir documento (enlace, asignación a usuario) y listado de documentos asignados.
 2. Integración completa con Firebase/Supabase: Auth, Storage, Firestore/Realtime DB y al menos dos Cloud Functions (ej. alerta vencimiento convenios, backup/auditoría).
 3. Módulo de sincronización operativo: cola offline, resolución de conflictos, notificación de estado al frontend.
 4. Documentación técnica de APIs IPC, modelo de datos, flujo de sincronización y despliegue de servicios en nube.
