@@ -167,27 +167,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
         </div>
 
-        {/* Section Header for Documents with Excel Actions */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between pt-4 gap-4">
+        <div className="pt-4">
           <h3 className="text-2xl font-bold flex items-center gap-2 dark:text-white">
-            <span className="material-symbols-outlined text-primary">
-              history
-            </span>
+            <span className="material-symbols-outlined text-primary">history</span>
             Mis Documentos Recientes
           </h3>
-          <div className="flex items-center gap-3">
-             <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1a212f] border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm">
-                <span className="material-symbols-outlined text-lg">upload_file</span>
-                Importar
-             </button>
-             <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700 transition-colors shadow-sm">
-                <span className="material-symbols-outlined text-lg">table_view</span>
-                Exportar Excel
-             </button>
-             <button className="text-primary font-bold hover:underline text-sm ml-2">
-                Ver todos
-             </button>
-          </div>
         </div>
         
         {/* Filter Pills */}
@@ -248,68 +232,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 onClick={() => handleDocumentClick(doc)}
                 className="bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`p-4 ${color} rounded-xl`}>
-                    <span className="material-symbols-outlined text-[32px] font-bold">
-                      {icon}
-                    </span>
+                <section className="flex items-start justify-between gap-3 mb-4" aria-label="Documento">
+                  <div className={`p-4 ${color} rounded-xl shrink-0`}>
+                    <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
                   </div>
-                  <div className="flex items-start gap-2">
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${getStatusColor(doc.status)}`}>
-                        {doc.status}
-                      </span>
-                  </div>
-                </div>
-                
-                <h4 className="text-xl font-extrabold mb-2 text-slate-900 dark:text-white line-clamp-2 leading-tight flex-grow">
+                  <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border shrink-0 ${getStatusColor(doc.status)}`}>
+                    {doc.status}
+                  </span>
+                </section>
+
+                <h4 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white line-clamp-2 leading-tight flex-grow">
                   {doc.name}
                 </h4>
-                
-                <div className="flex items-center justify-between mt-3 mb-4">
-                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm">
-                      <span className="material-symbols-outlined text-base">
-                        calendar_today
-                      </span>
-                      <span>{doc.lastModified}</span>
-                    </div>
-                </div>
+
+                <section className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3" aria-label="Fecha">
+                  <span className="material-symbols-outlined text-lg shrink-0">calendar_today</span>
+                  <span>{doc.lastModified}</span>
+                </section>
 
                 {isExpiring && (
-                     <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
-                        <span className="material-symbols-outlined text-lg">warning</span>
-                        <span className="text-xs font-bold">Vence el {doc.expirationDate}</span>
-                     </div>
+                  <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50">
+                    <span className="material-symbols-outlined text-lg shrink-0">warning</span>
+                    <span className="text-xs font-bold">Vence el {doc.expirationDate}</span>
+                  </div>
                 )}
 
-                <div 
-                    className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 cursor-default"
-                    onClick={(e) => e.stopPropagation()}
+                <div
+                  className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 cursor-default flex flex-col gap-4"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Cambiar estado</span>
+                  <section aria-label="Estado del documento">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2.5">Estado</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(['ACTIVO', 'PENDIENTE', 'VISTO', 'EDITADO', 'INACTIVO'] as DocumentStatus[]).map((status) => (
+                        <button
+                          key={status}
+                          onClick={(e) => handleStatusChange(e, doc.id, status)}
+                          title={`Marcar como ${status}`}
+                          className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.status === status)}`}
+                        >
+                          <span className="material-symbols-outlined text-lg">
+                            {status === 'ACTIVO' && 'check'}
+                            {status === 'PENDIENTE' && 'hourglass_empty'}
+                            {status === 'VISTO' && 'visibility'}
+                            {status === 'EDITADO' && 'edit'}
+                            {status === 'INACTIVO' && 'block'}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                    <div className="flex justify-between items-center gap-2 mb-4">
-                         {(['ACTIVO', 'PENDIENTE', 'VISTO', 'EDITADO', 'INACTIVO'] as DocumentStatus[]).map((status) => (
-                            <button
-                                key={status}
-                                onClick={(e) => handleStatusChange(e, doc.id, status)}
-                                title={`Marcar como ${status}`}
-                                className={`size-8 rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.status === status)}`}
-                            >
-                                <span className="material-symbols-outlined text-base">
-                                    {status === 'ACTIVO' && 'check'}
-                                    {status === 'PENDIENTE' && 'hourglass_empty'}
-                                    {status === 'VISTO' && 'visibility'}
-                                    {status === 'EDITADO' && 'edit'}
-                                    {status === 'INACTIVO' && 'block'}
-                                </span>
-                            </button>
-                         ))}
-                    </div>
-                    <button className="w-full py-2.5 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2">
-                        <span className="material-symbols-outlined text-lg">share</span>
-                        Compartir
-                    </button>
+                  </section>
+                  <button
+                    type="button"
+                    className="w-full min-h-[44px] py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-lg">share</span>
+                    Compartir
+                  </button>
                 </div>
               </div>
             );
