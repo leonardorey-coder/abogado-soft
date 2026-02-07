@@ -9,6 +9,10 @@ export enum ViewState {
 
 export type DocumentStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO' | 'VISTO' | 'EDITADO';
 
+export type FileStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO';
+export type CollaborationStatus = 'VISTO' | 'EDITADO' | 'COMENTADO' | 'REVISADO' | 'APROBADO' | 'PENDIENTE_REVISION' | 'RECHAZADO';
+export type SharingStatus = 'ENVIADO' | 'ASIGNADO';
+
 export interface Agreement {
   id: string;
   institution: string;
@@ -24,6 +28,9 @@ export interface Document {
   lastModified: string;
   timeAgo: string;
   status?: DocumentStatus;
+  fileStatus: FileStatus;
+  collaborationStatus?: CollaborationStatus;
+  sharingStatus?: SharingStatus;
   expirationDate?: string;
 }
 
