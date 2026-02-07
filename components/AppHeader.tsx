@@ -40,6 +40,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             Inicio
           </button>
           <button
+            onClick={() => onNavigate(ViewState.DOCUMENTS)}
+            className={navClass(ViewState.DOCUMENTS)}
+          >
+            Documentos
+          </button>
+          <button
             onClick={() => onNavigate(ViewState.AGREEMENTS)}
             className={navClass(ViewState.AGREEMENTS)}
           >
@@ -64,7 +70,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             search
           </span>
           <input
-            className="w-full pl-10 pr-4 py-2 bg-background-light dark:bg-[#101622] border-none rounded-lg focus:ring-2 focus:ring-primary text-sm placeholder:text-[#616f89]"
+            className="w-full h-9 pl-10 pr-4 bg-background-light dark:bg-[#101622] border-none rounded-lg focus:ring-2 focus:ring-primary text-sm placeholder:text-[#616f89]"
             placeholder="Buscar..."
             type="text"
           />
@@ -76,7 +82,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <>
             <button
               onClick={onUploadClick}
-              className="flex items-center gap-2 bg-background-light dark:bg-gray-800 px-3 py-2 rounded-lg text-[#111318] dark:text-white text-sm font-semibold border border-[#dbdfe6] dark:border-[#2d3748] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="flex items-center gap-2 h-9 px-3 bg-background-light dark:bg-gray-800 rounded-lg text-[#111318] dark:text-white text-sm font-semibold border border-[#dbdfe6] dark:border-[#2d3748] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <span className="material-symbols-outlined text-base">upload_file</span>
               <span className="hidden sm:inline">Subir</span>

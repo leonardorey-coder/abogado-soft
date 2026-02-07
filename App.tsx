@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { ViewState } from "./types";
 import { AppHeader } from "./components/AppHeader";
+import { AppFooter } from "./components/AppFooter";
 import { Dashboard } from "./components/Dashboard";
+import { DocumentsList } from "./components/DocumentsList";
 import { AgreementsList } from "./components/AgreementsList";
 import { DocumentEditor } from "./components/DocumentEditor";
 import { ExcelEditor } from "./components/ExcelEditor";
@@ -29,6 +31,8 @@ export default function App() {
     switch (currentView) {
       case ViewState.DASHBOARD:
         return <Dashboard onNavigate={setCurrentView} />;
+      case ViewState.DOCUMENTS:
+        return <DocumentsList onNavigate={setCurrentView} />;
       case ViewState.AGREEMENTS:
         return <AgreementsList onNavigate={setCurrentView} />;
       case ViewState.EDITOR:
@@ -52,6 +56,7 @@ export default function App() {
         onUploadClick={() => setIsUploadModalOpen(true)}
       />
       {renderView()}
+      <AppFooter />
 
       {isUploadModalOpen && (
         <div
