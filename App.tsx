@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ViewState, Document } from "./types";
 import { initialDocuments } from "./data/initialDocuments";
 import { AppHeader } from "./components/AppHeader";
@@ -12,6 +12,9 @@ import { ExcelEditor } from "./components/ExcelEditor";
 import { ActivityLog } from "./components/ActivityLog";
 import { SecurityPage } from "./components/SecurityPage";
 import { TrashPage } from "./components/TrashPage";
+import { TermsPage } from "./components/TermsPage";
+import { PrivacyPage } from "./components/PrivacyPage";
+import { SecurityInfoPage } from "./components/SecurityInfoPage";
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
@@ -21,6 +24,10 @@ export default function App() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentView]);
 
   const handleNavigate = (view: ViewState) => {
     setDocumentFromTrash(null);
@@ -93,6 +100,12 @@ export default function App() {
             onNavigate={setCurrentView}
           />
         );
+      case ViewState.TERMS:
+        return <TermsPage onNavigate={setCurrentView} />;
+      case ViewState.PRIVACY:
+        return <PrivacyPage onNavigate={setCurrentView} />;
+      case ViewState.SECURITY_INFO:
+        return <SecurityInfoPage onNavigate={setCurrentView} />;
       default:
         return (
           <Dashboard
@@ -118,7 +131,7 @@ export default function App() {
         onSearchChange={setSearchQuery}
       />
       {renderView()}
-      <AppFooter />
+      <AppFooter onNavigate={setCurrentView} />
 
       {isUploadModalOpen && (
         <div
