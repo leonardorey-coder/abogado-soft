@@ -39,19 +39,6 @@ export const AgreementsList: React.FC<AgreementsListProps> = ({ onNavigate }) =>
             </button>
           </div>
 
-          {/* Accessibility Warning */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-primary p-4 mb-8 rounded-r-lg">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary">
-                info
-              </span>
-              <p className="text-primary dark:text-blue-300 font-semibold text-lg">
-                Modo de Alta Legibilidad activado: Texto grande y alto
-                contraste.
-              </p>
-            </div>
-          </div>
-
           {/* Filters Section */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-8">
             <div className="flex flex-wrap items-center gap-6">
