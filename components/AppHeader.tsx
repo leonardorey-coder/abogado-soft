@@ -46,6 +46,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             Documentos
           </button>
           <button
+            onClick={() => onNavigate(ViewState.ASIGNED)}
+            className={navClass(ViewState.ASIGNED)}
+          >
+            Asignados
+          </button>
+          <button
             onClick={() => onNavigate(ViewState.AGREEMENTS)}
             className={navClass(ViewState.AGREEMENTS)}
           >
