@@ -92,6 +92,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
   const [showDiff, setShowDiff] = useState(false);
+  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+
+  const handleViewVersion = (versionId: string) => {
+    setViewingVersionId(versionId);
+  };
+
+  const handleCloseViewVersion = () => {
+    setViewingVersionId(null);
+  };
 
   const toggleVersionSelection = (id: string) => {
     if (selectedVersions.includes(id)) {
@@ -275,9 +284,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
 
   return (
     <div className="bg-background-light dark:bg-background-dark font-display flex-1 flex flex-col">
-      <div className="flex grow min-h-0 overflow-hidden">
-        {/* Left Side Bar Navigation */}
-        <aside className="w-64 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col p-4">
+      <div className="flex grow min-h-0 overflow-hidden relative">
+        <aside className="w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => onNavigate(ViewState.DASHBOARD)}
+            className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1"
+          >
+            <span className="material-symbols-outlined text-xl">arrow_back</span>
+            Atrás
+          </button>
           <div className="mb-8">
             <h1 className="text-lg font-bold text-[#0e0e1b] dark:text-white leading-tight">
               Contrato de Prestación de Servicios
@@ -324,11 +340,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden">
+        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden ml-64 min-w-0 ${activeTab === 'EDITOR' ? 'mr-80' : ''}`}>
           {activeTab === 'EDITOR' && (
              <>
-             {/* ToolBar (Only for Editor) */}
-                <div className="bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-6 py-4 flex items-center justify-between">
+             {/* ToolBar (Only for Editor) - fixed so it stays visible when document scrolls */}
+                <div className="fixed left-64 top-16 right-80 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-6 py-4">
                 <div className="flex items-center gap-3">
                     {showDiff ? (
                         <button 
@@ -380,9 +396,33 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
                 )}
                 </div>
 
-                {/* Editor Document Area */}
-                <div className="flex-1 overflow-y-auto p-12 flex justify-center">
-                    {showDiff ? (
+                {/* Editor Document Area - pt matches toolbar + extra; px/pb for content spacing */}
+                <div className="flex-1 overflow-y-auto pt-[7rem] px-12 pb-12 flex justify-center">
+                    {viewingVersionId ? (() => {
+                      const ver = versions.find((x) => x.id === viewingVersionId);
+                      if (!ver) return null;
+                      return (
+                        <div className="w-full max-w-[800px] flex flex-col gap-4">
+                          <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-[#0e0e1b] dark:text-white">
+                              {ver.label} · {ver.date} · {ver.time}
+                              {!ver.isCurrent && ver.note && ` · ${ver.note}`}
+                            </h2>
+                            <button
+                              type="button"
+                              onClick={handleCloseViewVersion}
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-white/10 border border-[#e7e7f3] dark:border-white/10 text-[#0e0e1b] dark:text-white font-bold text-sm hover:bg-gray-50 dark:hover:bg-white/20 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-lg">close</span>
+                              Volver al editor
+                            </button>
+                          </div>
+                          <div className="editor-paper w-full bg-white dark:bg-gray-100 p-10 rounded-xl shadow-md min-h-[400px] text-lg text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                            {ver.content}
+                          </div>
+                        </div>
+                      );
+                    })() : showDiff ? (
                         // Diff View UI
                         <div className="w-full max-w-[1200px] flex gap-4">
                             <div className="flex-1">
@@ -481,7 +521,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
 
         {/* Right Side Bar - Version History / Quick Actions (Only visible in Editor Mode) */}
         {activeTab === 'EDITOR' && (
-        <aside className="w-80 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col">
+        <aside className="w-80 shrink-0 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col fixed right-0 top-16 z-40 h-[calc(100vh-4rem)]">
           <div className="p-6 border-b border-[#e7e7f3] dark:border-white/10 flex flex-col gap-3">
             <h3 className="text-lg font-bold text-[#0e0e1b] dark:text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">
@@ -512,7 +552,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
             {versions.map((v) => (
                 <div 
                     key={v.id}
-                    onClick={() => isCompareMode && toggleVersionSelection(v.id)}
+                    onClick={() => {
+                      if (isCompareMode) toggleVersionSelection(v.id);
+                      else if (v.isCurrent) handleCloseViewVersion();
+                      else handleViewVersion(v.id);
+                    }}
                     className={`p-4 rounded-xl border transition-all cursor-pointer group relative
                         ${v.isCurrent ? 'border-2 border-primary bg-primary/5' : 'border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5'}
                         ${selectedVersions.includes(v.id) ? 'ring-2 ring-offset-2 ring-primary' : ''}
@@ -541,10 +585,18 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
 
                     {!isCompareMode && !v.isCurrent && (
                         <div className="mt-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button className="flex-1 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 transition-colors">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleViewVersion(v.id); }}
+                              className="flex-1 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 transition-colors"
+                            >
                                 Ver
                             </button>
-                            <button className="flex-1 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors"
+                            >
                                 Restaurar esta versión
                             </button>
                         </div>
