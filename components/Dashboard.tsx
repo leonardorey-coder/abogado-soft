@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
+import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
 
 interface DashboardProps {
   onNavigate: (view: ViewState) => void;
@@ -9,6 +10,8 @@ interface DashboardProps {
 }
 
 const permissionLabel: Record<DocumentPermissionLevel, string> = {
+  none: "Sin Acceso",
+  download: "Puede Descargar",
   read: "Lectura",
   write: "Escritura",
   admin: "Administrador",
@@ -158,6 +161,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
   const currentUserRole = useState<'admin' | 'asistente'>('asistente')[0];
   const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
   const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
+  const [menuOpenDocId, setMenuOpenDocId] = useState<string | null>(null);
+  const menuAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpenDocId) return;
+    const close = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (menuAnchorRef.current && !menuAnchorRef.current.contains(target)) {
+        setMenuOpenDocId(null);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [menuOpenDocId]);
 
   const showAccesoCompleto = currentUserRole === "asistente" && !adminUnlockedForSession;
 
@@ -176,6 +197,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
     setDocuments(docs => docs.map(doc =>
         doc.id === id ? { ...doc, fileStatus: newFileStatus } : doc
     ));
+  };
+
+  const handleArchive = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setMenuOpenDocId(null);
+    setDocuments(docs => docs.map(doc =>
+      doc.id === id ? { ...doc, fileStatus: "INACTIVO" as FileStatus } : doc
+    ));
+  };
+
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setMenuOpenDocId(null);
+    setDocuments(docs => docs.filter(doc => doc.id !== id));
+  };
+
+  const [permissionsDocument, setPermissionsDocument] = useState<Document | null>(null);
+
+  const handlePermissions = (e: React.MouseEvent, doc: Document) => {
+    e.stopPropagation();
+    setMenuOpenDocId(null);
+    setPermissionsDocument(doc);
   };
 
   const handleDocumentClick = (doc: Document) => {
@@ -326,7 +369,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                   <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden>
                     <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 justify-end shrink-0">
+                  <div className="flex flex-wrap gap-1.5 justify-end shrink-0 items-center">
                     <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getFileStatusColor(doc.fileStatus)}`}>
                       {doc.fileStatus}
                     </span>
@@ -335,6 +378,57 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                         {doc.collaborationStatus}
                       </span>
                     )}
+                    <div className="relative" ref={menuOpenDocId === doc.id ? menuAnchorRef : undefined}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(menuOpenDocId === doc.id ? null : doc.id); }}
+                        className="min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                        aria-label="Más opciones"
+                        aria-expanded={menuOpenDocId === doc.id}
+                        aria-haspopup="true"
+                      >
+                        <span className="flex flex-col items-center gap-0.5" aria-hidden>
+                          <span className="w-1 h-1 rounded-full bg-current" />
+                          <span className="w-1 h-1 rounded-full bg-current" />
+                          <span className="w-1 h-1 rounded-full bg-current" />
+                        </span>
+                      </button>
+                      {menuOpenDocId === doc.id && (
+                        <div
+                          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
+                          role="menu"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={(e) => handleArchive(e, doc.id)}
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg mx-1"
+                          >
+                            <span className="material-symbols-outlined text-lg">archive</span>
+                            Archivar
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={(e) => handlePermissions(e, doc)}
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg mx-1"
+                          >
+                            <span className="material-symbols-outlined text-lg">shield</span>
+                            Permisos
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={(e) => handleDelete(e, doc.id)}
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-lg mx-1"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                            Eliminar
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </header>
 
@@ -454,6 +548,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
           documentName={adminAccessDocument.name}
           onClose={() => setAdminAccessDocument(null)}
           onSuccess={handleAdminAccessSuccess}
+        />
+      )}
+      {permissionsDocument && (
+        <DocumentPermissionsModal
+          document={permissionsDocument}
+          onClose={() => setPermissionsDocument(null)}
+          onSave={(permissions) => {
+            if (!permissionsDocument) return;
+            setDocuments((docs) =>
+              docs.map((doc) =>
+                doc.id === permissionsDocument.id ? { ...doc, documentPermissions: permissions } : doc
+              )
+            );
+          }}
         />
       )}
     </>
