@@ -316,12 +316,12 @@ sequenceDiagram
 ### 6.1 Entidades Principales
 
 ```typescript
-// Usuario
+// Usuario: tipos abogado y auxiliar; permisos de usuario admin (abogado) y asistente (auxiliar)
 interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'abogado' | 'asistente';
+  role: 'admin' | 'asistente';   // admin = abogado, asistente = auxiliar
   avatarUrl?: string;
   createdAt: Date;
   lastLogin: Date;

@@ -8,7 +8,7 @@ Texto adaptado al **backend** del proyecto: proceso principal de Electron, base 
 
 ### Planteamiento del Problema
 
-La aplicación AbogadoSoft requiere una capa de backend que resuelva: (1) persistencia local confiable para documentos y metadatos (Usuario, Documento, Grupo, Convenio) con posibilidad de trabajo offline; (2) autenticación y autorización (roles admin/abogado/asistente, permisos por grupo); (3) sincronización bidireccional entre la base local (SQLite) y la nube (Firebase/Supabase) con resolución de conflictos y cola de operaciones en ausencia de red; y (4) exposición segura de operaciones al frontend vía IPC (Electron main process) y APIs de almacenamiento y tiempo real en la nube.
+La aplicación AbogadoSoft requiere una capa de backend que resuelva: (1) persistencia local confiable para documentos y metadatos (Usuario, Documento, Grupo, Convenio) con posibilidad de trabajo offline; (2) autenticación y autorización (usuarios abogado y auxiliar, con permisos de usuario admin para abogado y asistente para auxiliar; permisos por grupo); (3) sincronización bidireccional entre la base local (SQLite) y la nube (Firebase/Supabase) con resolución de conflictos y cola de operaciones en ausencia de red; y (4) exposición segura de operaciones al frontend vía IPC (Electron main process) y APIs de almacenamiento y tiempo real en la nube.
 
 Los aspectos del problema son la consistencia de datos entre cliente y servidor, la seguridad de documentos en reposo y en tránsito, el rendimiento de consultas e indexación local, y la lógica serverless (Cloud Functions) para validaciones, notificaciones y reportes. Las relaciones entre persistencia local, sincronización, autenticación y permisos exigen un diseño claro de modelo de datos, flujos de sincronización y manejo de errores y reintentos.
 
@@ -24,7 +24,7 @@ Diseñar e implementar la capa de backend de AbogadoSoft: proceso principal de E
 
 1. Implementar el modelo de datos local (Usuario, Documento, Grupo, GroupMember, Convenio, Permission) en SQLite dentro del main process de Electron, con migraciones y consultas optimizadas (índices, lazy loading).
 2. Definir e implementar los handlers IPC que expongan al renderer las operaciones de CRUD sobre documentos, grupos, permisos y convenios, más operaciones de compartir (generar enlace, asignar documento a usuario) y consulta de documentos asignados al usuario actual, con validación y auditoría básica.
-3. Integrar autenticación con Firebase/Supabase (login/logout, sesión, 2FA opcional) y reglas de seguridad (Firestore/Storage) según roles y permisos por grupo.
+3. Integrar autenticación con Firebase/Supabase (login/logout, sesión, 2FA opcional) y reglas de seguridad (Firestore/Storage) según permisos de usuario (admin/asistente) y permisos por grupo.
 4. Desarrollar el módulo de sincronización nube-local: detección de cambios, cola de operaciones pendientes en offline, resolución de conflictos (por ejemplo última escritura o versión) y notificación al frontend del estado de sincronización.
 5. Implementar Cloud Functions (o equivalente) para lógica serverless: validación de convenios, alertas de vencimiento, backups programados y logs de auditoría; y configurar almacenamiento seguro de archivos (Storage) con encriptación en reposo.
 

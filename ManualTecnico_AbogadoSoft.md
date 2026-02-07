@@ -283,7 +283,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255),
-    role VARCHAR(50) DEFAULT 'abogado' CHECK (role IN ('admin', 'abogado', 'asistente')),
+    role VARCHAR(50) DEFAULT 'asistente' CHECK (role IN ('admin', 'asistente')),  -- admin=abogado, asistente=auxiliar
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_login TIMESTAMPTZ,
