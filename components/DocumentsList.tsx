@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ViewState, Document, FileStatus } from "../types";
 
 interface DocumentsListProps {
@@ -76,6 +76,21 @@ const getFileStatusBadge = (status: FileStatus) => {
   }
 };
 
+const getFileStatusOptionClass = (status: FileStatus, isSelected: boolean) => {
+  const base = "w-full text-left px-4 py-2 text-sm font-bold flex items-center gap-2 transition-colors ";
+  const hover = "hover:opacity-90 ";
+  switch (status) {
+    case "ACTIVO":
+      return base + hover + (isSelected ? "text-green-800 dark:text-green-300 bg-green-50 dark:bg-green-900/20" : "text-green-700 dark:text-green-400");
+    case "PENDIENTE":
+      return base + hover + (isSelected ? "text-yellow-800 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20" : "text-yellow-700 dark:text-yellow-400");
+    case "INACTIVO":
+      return base + hover + (isSelected ? "text-red-800 dark:text-red-300 bg-red-50 dark:bg-red-900/20" : "text-red-700 dark:text-red-400");
+    default:
+      return base + hover + "text-[#111318] dark:text-white";
+  }
+};
+
 const getTypeIcon = (type: string) => {
   switch (type) {
     case "DOCX": return "description";
@@ -91,10 +106,20 @@ const matchesSearch = (d: Document, q: string) => {
   return d.name.toLowerCase().includes(term) || (d.type && d.type.toLowerCase().includes(term));
 };
 
+const FILE_STATUS_OPTIONS: { value: FileStatus; label: string }[] = [
+  { value: "ACTIVO", label: "Activo" },
+  { value: "PENDIENTE", label: "Pendiente" },
+  { value: "INACTIVO", label: "Inactivo" }
+];
+
 export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, searchQuery = "" }) => {
-  const [documents] = useState<Document[]>(initialDocuments);
+  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<"TODOS" | FileStatus>("TODOS");
   const [page, setPage] = useState(1);
+  const [statusDropdownDocId, setStatusDropdownDocId] = useState<string | null>(null);
+  const [lastClickedRowId, setLastClickedRowId] = useState<string | null>(null);
+  const [lastClickAt, setLastClickAt] = useState(0);
+  const ROW_DOUBLE_CLICK_MS = 1500;
   const perPage = 5;
   const bySearch = documents.filter((d) => matchesSearch(d, searchQuery));
   const totalPages = Math.ceil(bySearch.length / perPage) || 1;
@@ -121,6 +146,37 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
     if (doc.type === "XLSX") onNavigate(ViewState.EXCEL_EDITOR);
     else onNavigate(ViewState.EDITOR);
   };
+
+  const handleStatusChange = (docId: string, newStatus: FileStatus) => {
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === docId ? { ...d, fileStatus: newStatus } : d))
+    );
+    setStatusDropdownDocId(null);
+  };
+
+  const handleRowClick = (e: React.MouseEvent, doc: Document) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    const now = Date.now();
+    if (lastClickedRowId === doc.id && now - lastClickAt <= ROW_DOUBLE_CLICK_MS) {
+      handleVer(doc);
+      setLastClickedRowId(null);
+    } else {
+      setLastClickedRowId(doc.id);
+      setLastClickAt(now);
+    }
+  };
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!statusDropdownDocId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownDocId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [statusDropdownDocId]);
 
   return (
     <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
@@ -251,7 +307,12 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
             {paginated.map((doc) => (
               <tr
                 key={doc.id}
-                className="hover:bg-background-light dark:hover:bg-[#101622]/50 transition-colors"
+                onClick={(e) => handleRowClick(e, doc)}
+                className={`transition-colors cursor-pointer ${
+                  lastClickedRowId === doc.id
+                    ? "bg-[#e2e6eb] dark:bg-[#2d3748]"
+                    : "hover:bg-background-light dark:hover:bg-[#101622]/50"
+                }`}
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
@@ -270,12 +331,35 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
                   {doc.lastModified}
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}
+                  <div
+                    ref={statusDropdownDocId === doc.id ? dropdownRef : undefined}
+                    className="relative inline-block"
                   >
-                    <span className="size-2 rounded-full bg-current opacity-70" />
-                    {doc.fileStatus}
-                  </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStatusDropdownDocId((id) => (id === doc.id ? null : doc.id))
+                      }
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase cursor-pointer transition-opacity hover:opacity-90 ${getFileStatusBadge(doc.fileStatus)}`}
+                    >
+                      {doc.fileStatus}
+                      <span className="material-symbols-outlined text-sm">expand_more</span>
+                    </button>
+                    {statusDropdownDocId === doc.id && (
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 min-w-[140px] rounded-lg border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-lg overflow-hidden">
+                        {FILE_STATUS_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleStatusChange(doc.id, opt.value)}
+                            className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <button
