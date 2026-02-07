@@ -1,11 +1,18 @@
 import React, { useState } from "react";
-import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus } from "../types";
+import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
 import { ShareModal } from "./ShareModal";
+import { AdminAccessModal } from "./AdminAccessModal";
 
 interface DashboardProps {
   onNavigate: (view: ViewState) => void;
   onOpenUploadModal?: () => void;
 }
+
+const permissionLabel: Record<DocumentPermissionLevel, string> = {
+  read: "Lectura",
+  write: "Escritura",
+  admin: "Administrador",
+};
 
 const initialDocuments: Document[] = [
   {
@@ -15,7 +22,13 @@ const initialDocuments: Document[] = [
     lastModified: "Hace 2 horas",
     timeAgo: "2h",
     fileStatus: "ACTIVO",
-    expirationDate: "2024-12-31"
+    expirationDate: "2024-12-31",
+    currentUserPermission: "write",
+    documentPermissions: [
+      { userName: "Lic. García", level: "admin" },
+      { userName: "María López", level: "write" },
+      { userName: "Tú", level: "write" },
+    ],
   },
   {
     id: "2",
@@ -24,7 +37,12 @@ const initialDocuments: Document[] = [
     lastModified: "Ayer, 14:00",
     timeAgo: "1d",
     fileStatus: "ACTIVO",
-    collaborationStatus: "VISTO"
+    collaborationStatus: "VISTO",
+    currentUserPermission: "read",
+    documentPermissions: [
+      { userName: "Lic. García", level: "admin" },
+      { userName: "Tú", level: "read" },
+    ],
   },
   {
     id: "3",
@@ -33,7 +51,12 @@ const initialDocuments: Document[] = [
     lastModified: "15 Oct 2024",
     timeAgo: "1w",
     fileStatus: "ACTIVO",
-    collaborationStatus: "EDITADO"
+    collaborationStatus: "EDITADO",
+    currentUserPermission: "admin",
+    documentPermissions: [
+      { userName: "Tú", level: "admin" },
+      { userName: "Carlos Ruiz", level: "read" },
+    ],
   },
   {
     id: "4",
@@ -43,7 +66,12 @@ const initialDocuments: Document[] = [
     timeAgo: "2w",
     fileStatus: "PENDIENTE",
     sharingStatus: "ENVIADO",
-    expirationDate: "2024-10-30"
+    expirationDate: "2024-10-30",
+    currentUserPermission: "read",
+    documentPermissions: [
+      { userName: "Lic. García", level: "admin" },
+      { userName: "Tú", level: "read" },
+    ],
   },
   {
     id: "6",
@@ -52,7 +80,12 @@ const initialDocuments: Document[] = [
     lastModified: "Hace 1 hora",
     timeAgo: "1h",
     fileStatus: "ACTIVO",
-    sharingStatus: "ASIGNADO"
+    sharingStatus: "ASIGNADO",
+    currentUserPermission: "read",
+    documentPermissions: [
+      { userName: "Ana Martínez", level: "admin" },
+      { userName: "Tú", level: "read" },
+    ],
   },
   {
     id: "5",
@@ -60,8 +93,13 @@ const initialDocuments: Document[] = [
     type: "DOCX",
     lastModified: "20 Sep 2023",
     timeAgo: "1y",
-    fileStatus: "INACTIVO"
-  }
+    fileStatus: "INACTIVO",
+    currentUserPermission: "write",
+    documentPermissions: [
+      { userName: "Tú", level: "write" },
+      { userName: "Lic. García", level: "admin" },
+    ],
+  },
 ];
 
 const getFileStatusColor = (status: FileStatus) => {
@@ -117,6 +155,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
+  const currentUserRole = useState<'admin' | 'asistente'>('asistente')[0];
+  const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
+  const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
+
+  const showAccesoCompleto = currentUserRole === "asistente" && !adminUnlockedForSession;
+
+  const handleAccesoCompleto = (e: React.MouseEvent, doc: Document) => {
+    e.stopPropagation();
+    setAdminAccessDocument(doc);
+  };
+
+  const handleAdminAccessSuccess = () => {
+    setAdminUnlockedForSession(true);
+    setAdminAccessDocument(null);
+  };
 
   const handleStatusChange = (e: React.MouseEvent, id: string, newFileStatus: FileStatus) => {
     e.stopPropagation();
@@ -334,6 +387,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                       </span>
                     </div>
                   )}
+                  {(doc.currentUserPermission !== undefined || (doc.documentPermissions?.length ?? 0) > 0) && (
+                    <div className="flex items-center gap-2 flex-wrap" aria-label="Permisos">
+                      <span className="material-symbols-outlined text-lg text-slate-400" aria-hidden>shield</span>
+                      {doc.currentUserPermission !== undefined && (
+                        <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase border bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
+                          Tú: {permissionLabel[doc.currentUserPermission]}
+                        </span>
+                      )}
+                      {doc.documentPermissions && doc.documentPermissions.some((p) => p.level === "admin" && p.userName !== "Tú") && (
+                        <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase border bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {showAccesoCompleto && doc.currentUserPermission !== "admin" && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleAccesoCompleto(e, doc)}
+                      className="w-full min-h-[44px] py-3 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-lg" aria-hidden>lock_open</span>
+                      Acceso completo
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setShareDocument(doc); }}
@@ -370,6 +448,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
 
       {shareDocument && (
         <ShareModal document={shareDocument} onClose={() => setShareDocument(null)} />
+      )}
+      {adminAccessDocument && (
+        <AdminAccessModal
+          documentName={adminAccessDocument.name}
+          onClose={() => setAdminAccessDocument(null)}
+          onSuccess={handleAdminAccessSuccess}
+        />
       )}
     </>
   );

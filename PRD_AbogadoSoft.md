@@ -77,6 +77,21 @@ Vista accesible desde el header con la opción **Asignados**, donde el usuario v
 
 Flujo: Usuario A comparte un documento y lo asigna a Usuario B → Usuario B entra en **Asignados** y ve ese documento en la lista; puede filtrar por pendientes/revisados y abrirlo con Ver.
 
+#### Permisos sobre documentos (UI)
+En cada tarjeta de documento (Inicio / Dashboard) se muestra:
+- **Permisos**: sección con icono de escudo, badge "Tú: Lectura | Escritura | Administrador" según el permiso del usuario actual sobre ese documento, e indicador "Admin" si algún otro usuario tiene rol administrador sobre el documento.
+- Botón **Acceso completo** (solo para auxiliares): cuando el usuario tiene rol auxiliar y no tiene permiso de administrador sobre el documento, permite solicitar acceso completo mediante contraseña o PIN (véase siguiente apartado).
+- Botón **Compartir**: abre el modal de compartir (enlace, share del SO, asignar a usuario).
+
+Los niveles de permiso sobre documentos se mantienen: **Lectura**, **Escritura**, **Admin**.
+
+#### Acceso completo al documento con contraseña o PIN
+Un usuario con rol **auxiliar** (permiso de usuario "asistente") puede tener sobre un documento solo Lectura o Escritura. Para obtener **acceso completo** (permisos de administrador) sobre ese documento sin cambiar su rol en la aplicación, puede pulsar **Acceso completo** e introducir la contraseña o PIN de administrador en el modal que se muestra. Al verificar correctamente:
+- Se concede acceso temporal de tipo administrador **sobre el documento** (por sesión), es decir, el auxiliar pasa a tener permisos de administrador sobre ese documento para la sesión actual.
+- Se concede acceso completo sobre el documento (lectura, escritura, administración) por sesión.
+
+Objetivo: permitir que un auxiliar, en presencia del abogado o con conocimiento del PIN, obtenga temporalmente acceso completo al documento. La contraseña o PIN no sustituye el login; es una verificación adicional para elevar el permiso sobre el documento. En producción la verificación se hará contra el backend (hash del PIN/contraseña de admin asociado al documento o a la cuenta del abogado).
+
 #### Sistema de Grupos
 - Creación de grupos de trabajo
 - Permisos granulares: `Lectura`, `Escritura`, `Admin`

@@ -15,6 +15,13 @@ export type FileStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO';
 export type CollaborationStatus = 'VISTO' | 'EDITADO' | 'COMENTADO' | 'REVISADO' | 'APROBADO' | 'PENDIENTE_REVISION' | 'RECHAZADO';
 export type SharingStatus = 'ENVIADO' | 'ASIGNADO';
 
+export type DocumentPermissionLevel = 'read' | 'write' | 'admin';
+
+export interface DocumentPermissionEntry {
+  userName: string;
+  level: DocumentPermissionLevel;
+}
+
 export interface Agreement {
   id: string;
   institution: string;
@@ -34,6 +41,8 @@ export interface Document {
   collaborationStatus?: CollaborationStatus;
   sharingStatus?: SharingStatus;
   expirationDate?: string;
+  documentPermissions?: DocumentPermissionEntry[];
+  currentUserPermission?: DocumentPermissionLevel;
 }
 
 export interface DocumentVersion {

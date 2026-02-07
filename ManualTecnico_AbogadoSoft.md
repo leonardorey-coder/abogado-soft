@@ -1318,6 +1318,24 @@ Vista de **documentos asignados** al usuario actual (compartidos/asignados por o
 
 Datos: lista de documentos con `sharingStatus: 'ASIGNADO'` (y opcionalmente `collaborationStatus` para Revisados). En la implementación actual se usa un array mock `assignedDocuments`; en producción se reemplazará por una API que devuelva los documentos asignados al usuario logueado.
 
+### 7.6 Permisos sobre documentos (UI)
+
+En el Dashboard, cada tarjeta de documento puede incluir:
+- **Tipos**: `DocumentPermissionLevel = 'read' | 'write' | 'admin'` y `DocumentPermissionEntry { userName, level }` en `types.ts`. El tipo `Document` admite opcionales `documentPermissions?: DocumentPermissionEntry[]` y `currentUserPermission?: DocumentPermissionLevel`.
+- **En la tarjeta**: sección "Permisos" con icono `shield`, badge "Tú: Lectura | Escritura | Administrador" según `currentUserPermission`, e indicador "Admin" si existe otro usuario con nivel admin. Botón **Acceso completo** (visible solo para rol asistente y cuando el usuario no tiene ya permiso admin sobre el documento): abre el modal de acceso completo (contraseña/PIN). Botón **Compartir**: abre el modal de compartir documento (enlace, share del SO, asignar a usuario). No hay botón "Gestionar permisos" en la tarjeta.
+
+### 7.7 Acceso completo al documento con contraseña o PIN
+
+Cuando el usuario tiene rol **asistente** (auxiliar) y no tiene permiso de administrador sobre el documento, puede pulsar **Acceso completo** para obtener temporalmente acceso completo (permisos de administrador) sobre ese documento. Se muestra el **AdminAccessModal**.
+
+**Componente `AdminAccessModal`** (`components/AdminAccessModal.tsx`): props `documentName`, `onClose`, `onSuccess`. Contenido:
+- Título "Acceso completo al documento" e icono de candado.
+- Texto: para obtener acceso completo a este documento (permisos de administrador) debe ingresar la contraseña o PIN de administrador.
+- Campo de contraseña/PIN (input type password).
+- Botones Cancelar y Verificar. Al verificar correctamente se llama `onSuccess()` y se cierra el modal; el Dashboard marca `adminUnlockedForSession = true`. El objetivo es conceder acceso completo al documento por sesión.
+
+En la implementación actual el PIN de prueba es fijo (ej. `1234`) en el frontend; en producción la verificación debe hacerse en el backend. El desbloqueo es por sesión: una vez verificado, el auxiliar tiene acceso completo en esa sesión hasta recargar.
+
 ---
 
 ## 8. Comandos de Desarrollo
