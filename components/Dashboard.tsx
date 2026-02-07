@@ -346,7 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
 
           {/* Add New Card */}
           <div 
-             onClick={() => onOpenUploadModal?.() ?? onNavigate(ViewState.EDITOR)}
+             onClick={() => onOpenUploadModal?.()}
              className="bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer min-h-[300px]"
           >
             <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
@@ -357,7 +357,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                 Nuevo Documento
               </p>
               <p className="text-slate-500 dark:text-slate-500 text-sm mt-1">
-                Crear desde plantilla o subir archivo
+                Subir archivo
               </p>
             </div>
           </div>
