@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ViewState } from "../types";
-import { registerWithSupabase, type RegisterPayload } from "../lib/supabaseAuth";
+import { registerWithSupabase } from "../lib/supabaseAuth";
+import { AuthHeader } from "./AuthHeader";
 
 interface RegisterPageProps {
   onNavigate: (view: ViewState) => void;
@@ -52,30 +53,13 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark font-display">
-      <header className="w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="text-primary">
-              <span className="material-symbols-outlined text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                balance
-              </span>
-            </div>
-            <h2 className="text-gray-900 dark:text-white text-2xl font-bold tracking-tight">Abogadosoft</h2>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-600 dark:text-gray-400 hidden sm:block">¿Ya tiene una cuenta?</span>
-            <button
-              type="button"
-              className="flex items-center justify-center rounded-lg h-11 px-6 border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-bold text-sm"
-              onClick={() => onNavigate(ViewState.LOGIN)}
-            >
-              Iniciar sesión
-            </button>
-          </div>
-        </div>
-      </header>
+      <AuthHeader
+        message="¿Ya tiene una cuenta?"
+        buttonLabel="Iniciar sesión"
+        onButtonClick={() => onNavigate(ViewState.LOGIN)}
+      />
 
-      <main className="flex flex-col items-center justify-center py-12 px-4">
+      <main className="flex flex-col items-center justify-center pt-20 mt-8 py-12 px-4">
         <div className="w-full max-w-[640px]">
           <div className="text-center mb-10">
             <h1 className="text-gray-900 dark:text-white text-4xl sm:text-5xl font-extrabold leading-tight mb-4">
