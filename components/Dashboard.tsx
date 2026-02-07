@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus } from "../types";
+import { ShareModal } from "./ShareModal";
 
 interface DashboardProps {
   onNavigate: (view: ViewState) => void;
@@ -115,6 +116,7 @@ const getFileIcon = (type: string) => {
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadModal }) => {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
+  const [shareDocument, setShareDocument] = useState<Document | null>(null);
 
   const handleStatusChange = (e: React.MouseEvent, id: string, newFileStatus: FileStatus) => {
     e.stopPropagation();
@@ -334,6 +336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                   )}
                   <button
                     type="button"
+                    onClick={(e) => { e.stopPropagation(); setShareDocument(doc); }}
                     className="w-full min-h-[44px] py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
                   >
                     <span className="material-symbols-outlined text-lg" aria-hidden>share</span>
@@ -364,6 +367,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
         </div>
 
       </main>
+
+      {shareDocument && (
+        <ShareModal document={shareDocument} onClose={() => setShareDocument(null)} />
+      )}
     </>
   );
 };
