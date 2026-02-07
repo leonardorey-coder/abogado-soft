@@ -15,7 +15,7 @@ export type FileStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO';
 export type CollaborationStatus = 'VISTO' | 'EDITADO' | 'COMENTADO' | 'REVISADO' | 'APROBADO' | 'PENDIENTE_REVISION' | 'RECHAZADO';
 export type SharingStatus = 'ENVIADO' | 'ASIGNADO';
 
-export type DocumentPermissionLevel = 'read' | 'write' | 'admin';
+export type DocumentPermissionLevel = 'none' | 'download' | 'read' | 'write' | 'admin';
 
 export interface DocumentPermissionEntry {
   userName: string;
