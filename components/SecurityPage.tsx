@@ -197,23 +197,6 @@ export const SecurityPage: React.FC<SecurityPageProps> = ({ onNavigate }) => {
           </section>
         </main>
       </div>
-      {/* Footer Area */}
-      <footer className="border-t border-gray-200 dark:border-gray-800 mt-10 py-8 bg-white dark:bg-background-dark">
-        <div className="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2 text-[#616f89] text-sm">
-            <span className="material-symbols-outlined text-lg">copyright</span>
-            2023 Abogadosoft - Gestión Legal Segura
-          </div>
-          <div className="flex gap-6 text-sm text-[#616f89]">
-            <a className="hover:text-primary transition-colors" href="#">
-              Términos de Servicio
-            </a>
-            <a className="hover:text-primary transition-colors" href="#">
-              Política de Privacidad
-            </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };

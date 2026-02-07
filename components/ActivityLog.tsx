@@ -22,16 +22,8 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
               <span className="text-[#616f89] dark:text-gray-600 text-sm font-medium leading-normal">
                 /
               </span>
-              <a
-                className="text-[#616f89] dark:text-gray-400 text-sm font-medium leading-normal hover:text-primary cursor-pointer"
-              >
-                Expedientes
-              </a>
-              <span className="text-[#616f89] dark:text-gray-600 text-sm font-medium leading-normal">
-                /
-              </span>
               <span className="text-[#111318] dark:text-white text-sm font-medium leading-normal">
-                Expediente #2023-084
+                Bitácora
               </span>
             </div>
             {/* PageHeading Component */}
@@ -41,10 +33,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
                   Bitácora de Actividad
                 </h1>
                 <p className="text-[#616f89] dark:text-gray-400 text-base font-normal leading-normal">
-                  Historial completo de acciones para el expediente:{" "}
-                  <span className="font-semibold text-primary">
-                    Demanda Civil - Pérez vs. García
-                  </span>
+                  Historial de acciones en documentos y convenios del despacho.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -188,7 +177,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
                     <div className="flex justify-between items-start mb-1">
                       <p className="text-[#111318] dark:text-white font-medium">
                         <span className="font-bold">María Valdés</span> cambió
-                        el estado del expediente a{" "}
+                        el estado del documento a{" "}
                         <span className="px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-bold uppercase tracking-wider">
                           Revisado
                         </span>
@@ -288,37 +277,6 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
             </div>
           </div>
         </main>
-        {/* Footer for Desktop */}
-        <footer className="border-t border-[#dbdfe6] dark:border-gray-800 bg-white dark:bg-background-dark py-8 px-10">
-          <div className="max-w-[960px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <span className="material-symbols-outlined text-sm">
-                verified_user
-              </span>
-              <span className="text-xs">
-                Registro de auditoría inalterable conforme a normativa legal
-                v2.4
-              </span>
-            </div>
-            <div className="flex gap-6">
-              <a
-                className="text-xs text-gray-500 hover:text-primary cursor-pointer"
-              >
-                Términos de Servicio
-              </a>
-              <a
-                className="text-xs text-gray-500 hover:text-primary cursor-pointer"
-              >
-                Privacidad de Datos
-              </a>
-              <a
-                className="text-xs text-gray-500 hover:text-primary cursor-pointer"
-              >
-                Ayuda
-              </a>
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   );

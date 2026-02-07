@@ -354,17 +354,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
 
       </main>
-
-      <footer className="mt-20 border-t border-[#dbdfe6] dark:border-[#2d3748] py-8 px-6 text-center text-[#616f89] dark:text-[#a0aec0]">
-        <div className="max-w-[1200px] mx-auto">
-          <p className="text-sm font-bold mb-1">
-            AbogadoSoft v2.5
-          </p>
-          <p className="text-sm">
-            © 2024 Despacho Jurídico
-          </p>
-        </div>
-      </footer>
     </>
   );
 };
