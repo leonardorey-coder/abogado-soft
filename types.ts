@@ -6,7 +6,8 @@ export enum ViewState {
   EDITOR = 'EDITOR',
   EXCEL_EDITOR = 'EXCEL_EDITOR',
   ACTIVITY_LOG = 'ACTIVITY_LOG',
-  SECURITY = 'SECURITY'
+  SECURITY = 'SECURITY',
+  TRASH = 'TRASH'
 }
 
 export type DocumentStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO' | 'VISTO' | 'EDITADO';

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { ViewState } from "./types";
+import { ViewState, Document } from "./types";
+import { initialDocuments } from "./data/initialDocuments";
 import { AppHeader } from "./components/AppHeader";
 import { AppFooter } from "./components/AppFooter";
 import { Dashboard } from "./components/Dashboard";
@@ -10,11 +11,37 @@ import { DocumentEditor } from "./components/DocumentEditor";
 import { ExcelEditor } from "./components/ExcelEditor";
 import { ActivityLog } from "./components/ActivityLog";
 import { SecurityPage } from "./components/SecurityPage";
+import { TrashPage } from "./components/TrashPage";
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
+  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
+  const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
+  const [documentFromTrash, setDocumentFromTrash] = useState<Document | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleNavigate = (view: ViewState) => {
+    setDocumentFromTrash(null);
+    setCurrentView(view);
+  };
+
+  const handleOpenDocumentFromTrash = (doc: Document) => {
+    setDocumentFromTrash(doc);
+    setCurrentView(doc.type === "XLSX" ? ViewState.EXCEL_EDITOR : ViewState.EDITOR);
+  };
+
+  const handleDeleteDocument = (doc: Document) => {
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+    setDeletedDocuments((prev) => [...prev, doc]);
+  };
+
+  const handleRestoreDocument = (doc: Document) => {
+    setDeletedDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+    setDocuments((prev) => [...prev, doc]);
+  };
+
+  const handleEmptyTrash = () => setDeletedDocuments([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
@@ -31,7 +58,15 @@ export default function App() {
   const renderView = () => {
     switch (currentView) {
       case ViewState.DASHBOARD:
-        return <Dashboard onNavigate={setCurrentView} onOpenUploadModal={() => setIsUploadModalOpen(true)} />;
+        return (
+          <Dashboard
+            documents={documents}
+            setDocuments={setDocuments}
+            onDeleteDocument={handleDeleteDocument}
+            onNavigate={setCurrentView}
+            onOpenUploadModal={() => setIsUploadModalOpen(true)}
+          />
+        );
       case ViewState.DOCUMENTS:
         return <DocumentsList onNavigate={setCurrentView} />;
       case ViewState.ASIGNED:
@@ -39,15 +74,33 @@ export default function App() {
       case ViewState.AGREEMENTS:
         return <AgreementsList onNavigate={setCurrentView} />;
       case ViewState.EDITOR:
-        return <DocumentEditor onNavigate={setCurrentView} />;
+        return <DocumentEditor onNavigate={handleNavigate} documentFromTrash={documentFromTrash} />;
       case ViewState.EXCEL_EDITOR:
-        return <ExcelEditor onNavigate={setCurrentView} />;
+        return <ExcelEditor onNavigate={handleNavigate} documentFromTrash={documentFromTrash} />;
       case ViewState.ACTIVITY_LOG:
         return <ActivityLog onNavigate={setCurrentView} />;
       case ViewState.SECURITY:
         return <SecurityPage onNavigate={setCurrentView} />;
+      case ViewState.TRASH:
+        return (
+          <TrashPage
+            deletedDocuments={deletedDocuments}
+            onRestore={handleRestoreDocument}
+            onOpenDocument={handleOpenDocumentFromTrash}
+            onEmptyTrash={handleEmptyTrash}
+            onNavigate={setCurrentView}
+          />
+        );
       default:
-        return <Dashboard onNavigate={setCurrentView} onOpenUploadModal={() => setIsUploadModalOpen(true)} />;
+        return (
+          <Dashboard
+            documents={documents}
+            setDocuments={setDocuments}
+            onDeleteDocument={handleDeleteDocument}
+            onNavigate={setCurrentView}
+            onOpenUploadModal={() => setIsUploadModalOpen(true)}
+          />
+        );
     }
   };
 
@@ -57,6 +110,7 @@ export default function App() {
         onNavigate={setCurrentView}
         currentView={currentView}
         onUploadClick={() => setIsUploadModalOpen(true)}
+        deletedCount={deletedDocuments.length}
       />
       {renderView()}
       <AppFooter />

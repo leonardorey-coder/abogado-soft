@@ -1,14 +1,30 @@
 import React from "react";
-import { ViewState } from "../types";
+import { ViewState, Document } from "../types";
 
 interface ExcelEditorProps {
   onNavigate: (view: ViewState) => void;
+  documentFromTrash?: Document | null;
 }
 
-export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate }) => {
+export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate, documentFromTrash }) => {
   return (
-    <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white flex-1">
-      <main className="max-w-[1600px] mx-auto px-6 py-6 flex flex-col gap-6">
+    <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white flex-1 flex flex-col">
+      {documentFromTrash && (
+        <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+          <span className="material-symbols-outlined text-xl shrink-0">info</span>
+          <p className="text-sm font-medium flex-1">
+            Este documento está en la papelera. Puedes editarlo con normalidad. Para devolverlo a la lista principal, restáuralo desde la página Papelera.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate(ViewState.TRASH)}
+            className="shrink-0 px-4 py-2 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-sm font-bold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors"
+          >
+            Ir a Papelera
+          </button>
+        </div>
+      )}
+      <main className="max-w-[1600px] mx-auto px-6 py-6 flex flex-col gap-6 flex-1">
         {/* Breadcrumbs & Heading */}
         <div className="flex flex-col gap-2">
           <nav className="flex flex-wrap gap-2 items-center">

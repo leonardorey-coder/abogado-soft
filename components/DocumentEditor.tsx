@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { ViewState } from "../types";
+import { ViewState, Document } from "../types";
 
 interface DocumentEditorProps {
   onNavigate: (view: ViewState) => void;
+  documentFromTrash?: Document | null;
 }
 
 type EditorTab = 'EDITOR' | 'HISTORY' | 'COMMENTS' | 'DETAILS';
@@ -87,7 +88,7 @@ const caseDetails = {
     description: "Proceso ordinario por incumplimiento de contrato de arrendamiento comercial. Se busca la restitución del inmueble y el pago de cánones adeudados."
 };
 
-export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) => {
+export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, documentFromTrash }) => {
   const [activeTab, setActiveTab] = useState<EditorTab>('EDITOR');
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
@@ -284,6 +285,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate }) =>
 
   return (
     <div className="bg-background-light dark:bg-background-dark font-display flex-1 flex flex-col">
+      {documentFromTrash && (
+        <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+          <span className="material-symbols-outlined text-xl shrink-0">info</span>
+          <p className="text-sm font-medium flex-1">
+            Este documento está en la papelera. Puedes editarlo con normalidad. Para devolverlo a la lista principal, restáuralo desde la página Papelera.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate(ViewState.TRASH)}
+            className="shrink-0 px-4 py-2 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-sm font-bold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors"
+          >
+            Ir a Papelera
+          </button>
+        </div>
+      )}
       <div className="flex grow min-h-0 overflow-hidden relative">
         <aside className="w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
           <button

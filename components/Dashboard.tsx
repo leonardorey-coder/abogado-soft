@@ -5,6 +5,9 @@ import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
 
 interface DashboardProps {
+  documents: Document[];
+  setDocuments: React.Dispatch<React.SetStateAction<Document[]>>;
+  onDeleteDocument: (doc: Document) => void;
   onNavigate: (view: ViewState) => void;
   onOpenUploadModal?: () => void;
 }
@@ -16,94 +19,6 @@ const permissionLabel: Record<DocumentPermissionLevel, string> = {
   write: "Escritura",
   admin: "Administrador",
 };
-
-const initialDocuments: Document[] = [
-  {
-    id: "1",
-    name: "Contrato_Docente_Titular_2024.docx",
-    type: "DOCX",
-    lastModified: "Hace 2 horas",
-    timeAgo: "2h",
-    fileStatus: "ACTIVO",
-    expirationDate: "2024-12-31",
-    currentUserPermission: "write",
-    documentPermissions: [
-      { userName: "Lic. García", level: "admin" },
-      { userName: "María López", level: "write" },
-      { userName: "Tú", level: "write" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Resolucion_Rectoral_N045.pdf",
-    type: "PDF",
-    lastModified: "Ayer, 14:00",
-    timeAgo: "1d",
-    fileStatus: "ACTIVO",
-    collaborationStatus: "VISTO",
-    currentUserPermission: "read",
-    documentPermissions: [
-      { userName: "Lic. García", level: "admin" },
-      { userName: "Tú", level: "read" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Presupuesto_Facultad_Derecho.xlsx",
-    type: "XLSX",
-    lastModified: "15 Oct 2024",
-    timeAgo: "1w",
-    fileStatus: "ACTIVO",
-    collaborationStatus: "EDITADO",
-    currentUserPermission: "admin",
-    documentPermissions: [
-      { userName: "Tú", level: "admin" },
-      { userName: "Carlos Ruiz", level: "read" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Convenio_Marco_Interinstitucional.pdf",
-    type: "PDF",
-    lastModified: "10 Oct 2024",
-    timeAgo: "2w",
-    fileStatus: "PENDIENTE",
-    sharingStatus: "ENVIADO",
-    expirationDate: "2024-10-30",
-    currentUserPermission: "read",
-    documentPermissions: [
-      { userName: "Lic. García", level: "admin" },
-      { userName: "Tú", level: "read" },
-    ],
-  },
-  {
-    id: "6",
-    name: "Dictamen_Legal_Proyecto_A.pdf",
-    type: "PDF",
-    lastModified: "Hace 1 hora",
-    timeAgo: "1h",
-    fileStatus: "ACTIVO",
-    sharingStatus: "ASIGNADO",
-    currentUserPermission: "read",
-    documentPermissions: [
-      { userName: "Ana Martínez", level: "admin" },
-      { userName: "Tú", level: "read" },
-    ],
-  },
-  {
-    id: "5",
-    name: "Acta_Comite_Etica_Antigua.docx",
-    type: "DOCX",
-    lastModified: "20 Sep 2023",
-    timeAgo: "1y",
-    fileStatus: "INACTIVO",
-    currentUserPermission: "write",
-    documentPermissions: [
-      { userName: "Tú", level: "write" },
-      { userName: "Lic. García", level: "admin" },
-    ],
-  },
-];
 
 const getFileStatusColor = (status: FileStatus) => {
   switch (status) {
@@ -154,15 +69,25 @@ const getFileIcon = (type: string) => {
     }
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadModal }) => {
-  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
+export const Dashboard: React.FC<DashboardProps> = ({
+  documents,
+  setDocuments,
+  onDeleteDocument,
+  onNavigate,
+  onOpenUploadModal,
+}) => {
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
   const currentUserRole = useState<'admin' | 'asistente'>('asistente')[0];
   const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
   const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
   const [menuOpenDocId, setMenuOpenDocId] = useState<string | null>(null);
+  const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const menuAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setConfirmDeleteDocId(null);
+  }, [menuOpenDocId]);
 
   useEffect(() => {
     if (!menuOpenDocId) return;
@@ -199,18 +124,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
     ));
   };
 
-  const handleArchive = (e: React.MouseEvent, id: string) => {
+  const handleArchive = (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
     setMenuOpenDocId(null);
-    setDocuments(docs => docs.map(doc =>
-      doc.id === id ? { ...doc, fileStatus: "INACTIVO" as FileStatus } : doc
+    const nextStatus: FileStatus = doc.fileStatus === "INACTIVO" ? "ACTIVO" : "INACTIVO";
+    setDocuments(docs => docs.map(d =>
+      d.id === doc.id ? { ...d, fileStatus: nextStatus } : d
     ));
   };
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
-    setMenuOpenDocId(null);
-    setDocuments(docs => docs.filter(doc => doc.id !== id));
+    if (confirmDeleteDocId === doc.id) {
+      setMenuOpenDocId(null);
+      setConfirmDeleteDocId(null);
+      onDeleteDocument(doc);
+    } else {
+      setConfirmDeleteDocId(doc.id);
+    }
   };
 
   const [permissionsDocument, setPermissionsDocument] = useState<Document | null>(null);
@@ -395,24 +326,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                       </button>
                       {menuOpenDocId === doc.id && (
                         <div
-                          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
+                          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
                           role="menu"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
                             type="button"
                             role="menuitem"
-                            onClick={(e) => handleArchive(e, doc.id)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg mx-1"
+                            onClick={(e) => handleArchive(e, doc)}
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg"
                           >
-                            <span className="material-symbols-outlined text-lg">archive</span>
-                            Archivar
+                            <span className="material-symbols-outlined text-lg">
+                              {doc.fileStatus === "INACTIVO" ? "unarchive" : "archive"}
+                            </span>
+                            {doc.fileStatus === "INACTIVO" ? "Desarchivar" : "Archivar"}
                           </button>
                           <button
                             type="button"
                             role="menuitem"
                             onClick={(e) => handlePermissions(e, doc)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg mx-1"
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg"
                           >
                             <span className="material-symbols-outlined text-lg">shield</span>
                             Permisos
@@ -420,11 +353,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadMo
                           <button
                             type="button"
                             role="menuitem"
-                            onClick={(e) => handleDelete(e, doc.id)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-lg mx-1"
+                            onClick={(e) => handleDelete(e, doc)}
+                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-lg"
                           >
                             <span className="material-symbols-outlined text-lg">delete</span>
-                            Eliminar
+                            {confirmDeleteDocId === doc.id ? "Clic para confirmar" : "Eliminar"}
                           </button>
                         </div>
                       )}
