@@ -15,6 +15,8 @@ import { TrashPage } from "./components/TrashPage";
 import { TermsPage } from "./components/TermsPage";
 import { PrivacyPage } from "./components/PrivacyPage";
 import { SecurityInfoPage } from "./components/SecurityInfoPage";
+import { RegisterPage } from "./components/RegisterPage";
+import { LoginPage } from "./components/LoginPage";
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
@@ -106,6 +108,10 @@ export default function App() {
         return <PrivacyPage onNavigate={setCurrentView} />;
       case ViewState.SECURITY_INFO:
         return <SecurityInfoPage onNavigate={setCurrentView} />;
+      case ViewState.REGISTER:
+        return <RegisterPage onNavigate={setCurrentView} />;
+      case ViewState.LOGIN:
+        return <LoginPage onNavigate={setCurrentView} />;
       default:
         return (
           <Dashboard
@@ -120,18 +126,22 @@ export default function App() {
     }
   };
 
+  const isAuthView = currentView === ViewState.REGISTER || currentView === ViewState.LOGIN;
+
   return (
     <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark text-[#111318] dark:text-white">
-      <AppHeader
-        onNavigate={setCurrentView}
-        currentView={currentView}
-        onUploadClick={() => setIsUploadModalOpen(true)}
-        deletedCount={deletedDocuments.length}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
+      {!isAuthView && (
+        <AppHeader
+          onNavigate={setCurrentView}
+          currentView={currentView}
+          onUploadClick={() => setIsUploadModalOpen(true)}
+          deletedCount={deletedDocuments.length}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+      )}
       {renderView()}
-      <AppFooter onNavigate={setCurrentView} />
+      {!isAuthView && <AppFooter onNavigate={setCurrentView} />}
 
       {isUploadModalOpen && (
         <div

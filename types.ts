@@ -10,7 +10,9 @@ export enum ViewState {
   TRASH = 'TRASH',
   TERMS = 'TERMS',
   PRIVACY = 'PRIVACY',
-  SECURITY_INFO = 'SECURITY_INFO'
+  SECURITY_INFO = 'SECURITY_INFO',
+  REGISTER = 'REGISTER',
+  LOGIN = 'LOGIN',
 }
 
 export type DocumentStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO' | 'VISTO' | 'EDITADO';

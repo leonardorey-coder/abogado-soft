@@ -15,6 +15,11 @@ export const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
         </div>
         <div className="flex gap-6 text-sm text-[#616f89] dark:text-[#a0aec0]">
           {onNavigate ? (
+            <button type="button" className="hover:text-primary transition-colors" onClick={() => onNavigate(ViewState.REGISTER)}>
+              Registro
+            </button>
+          ) : null}
+          {onNavigate ? (
             <button type="button" className="hover:text-primary transition-colors" onClick={() => onNavigate(ViewState.TERMS)}>
               Términos de Servicio
             </button>
