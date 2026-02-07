@@ -30,7 +30,7 @@ export default function App() {
   const renderView = () => {
     switch (currentView) {
       case ViewState.DASHBOARD:
-        return <Dashboard onNavigate={setCurrentView} />;
+        return <Dashboard onNavigate={setCurrentView} onOpenUploadModal={() => setIsUploadModalOpen(true)} />;
       case ViewState.DOCUMENTS:
         return <DocumentsList onNavigate={setCurrentView} />;
       case ViewState.AGREEMENTS:
@@ -44,7 +44,7 @@ export default function App() {
       case ViewState.SECURITY:
         return <SecurityPage onNavigate={setCurrentView} />;
       default:
-        return <Dashboard onNavigate={setCurrentView} />;
+        return <Dashboard onNavigate={setCurrentView} onOpenUploadModal={() => setIsUploadModalOpen(true)} />;
     }
   };
 

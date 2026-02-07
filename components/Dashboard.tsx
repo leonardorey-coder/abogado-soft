@@ -3,6 +3,7 @@ import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus } f
 
 interface DashboardProps {
   onNavigate: (view: ViewState) => void;
+  onOpenUploadModal?: () => void;
 }
 
 const initialDocuments: Document[] = [
@@ -111,7 +112,7 @@ const getFileIcon = (type: string) => {
     }
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onOpenUploadModal }) => {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
 
@@ -345,7 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
           {/* Add New Card */}
           <div 
-             onClick={() => onNavigate(ViewState.EDITOR)}
+             onClick={() => onOpenUploadModal?.() ?? onNavigate(ViewState.EDITOR)}
              className="bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer min-h-[300px]"
           >
             <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
