@@ -7,71 +7,7 @@ interface SecurityPageProps {
 
 export const SecurityPage: React.FC<SecurityPageProps> = ({ onNavigate }) => {
   return (
-    <div className="bg-background-light dark:bg-background-dark text-[#111318] dark:text-white min-h-screen font-display">
-      {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f2f4] dark:border-gray-800 bg-white dark:bg-background-dark px-10 py-3 sticky top-0 z-50">
-        <div className="flex items-center gap-8">
-          <div 
-            className="flex items-center gap-4 text-[#111318] dark:text-white cursor-pointer"
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-          >
-            <div className="size-6 text-primary">
-              <span className="material-symbols-outlined text-3xl">gavel</span>
-            </div>
-            <h2 className="text-lg font-bold leading-tight tracking-[-0.015em]">
-              Abogadosoft
-            </h2>
-          </div>
-          <nav className="hidden md:flex items-center gap-9">
-            <a
-              className="text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.DASHBOARD)}
-            >
-              Inicio
-            </a>
-            <a
-              className="text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.AGREEMENTS)}
-            >
-              Convenios
-            </a>
-            <a
-              className="text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.ACTIVITY_LOG)}
-            >
-              Bitácora
-            </a>
-            <a
-              className="text-sm font-semibold leading-normal text-primary border-b-2 border-primary cursor-pointer"
-            >
-              Seguridad
-            </a>
-          </nav>
-        </div>
-        <div className="flex flex-1 justify-end gap-6 items-center">
-          <label className="hidden lg:flex flex-col min-w-40 !h-10 max-w-64">
-            <div className="flex w-full flex-1 items-stretch rounded-xl h-full">
-              <div className="text-[#616f89] flex border-none bg-[#f0f2f4] dark:bg-gray-800 items-center justify-center pl-4 rounded-l-xl">
-                <span className="material-symbols-outlined text-[20px]">
-                  search
-                </span>
-              </div>
-              <input
-                className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-[#111318] dark:text-white focus:outline-0 focus:ring-0 border-none bg-[#f0f2f4] dark:bg-gray-800 focus:border-none h-full placeholder:text-[#616f89] px-4 rounded-l-none pl-2 text-base font-normal"
-                placeholder="Buscar expediente..."
-              />
-            </div>
-          </label>
-          <div
-            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border-2 border-primary/20"
-            data-alt="User profile avatar placeholder"
-            style={{
-              backgroundImage:
-                'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCfQ3DIH8Mo48jLWJDKBWVQTTFEk6yF_wke6M0JeljbBbeixoMjNjvNWKpeAddjwZYua4wAXh7s5WxY9qdoWtiZrKrBHRMk0MuCLTtWprh8QwY_IGC-lulHDUfYxN0bmnTKGPQPaM5ArBAUPgiiFpJygvBNGFwmGLmHvJ5VOzfA8eoOWcsuVxUFzB-aZn04Hv-DcDEBeREeTtwMMOCznQQLna52mIQ_Ku5UZwX_JC1yBVcFtcHTWLqJA5ggAk_ZNOaiEpmTo0PXbN0")',
-            }}
-          ></div>
-        </div>
-      </header>
+    <div className="bg-background-light dark:bg-background-dark text-[#111318] dark:text-white flex-1 font-display">
       <div className="max-w-[1200px] mx-auto flex flex-col gap-8 px-6 py-10">
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col gap-8">

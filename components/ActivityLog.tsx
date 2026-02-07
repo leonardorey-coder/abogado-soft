@@ -7,87 +7,8 @@ interface ActivityLogProps {
 
 export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
   return (
-    <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden bg-background-light dark:bg-background-dark">
+    <div className="relative flex flex-1 w-full flex-col group/design-root overflow-x-hidden bg-background-light dark:bg-background-dark">
       <div className="layout-container flex h-full grow flex-col">
-        {/* TopNavBar Component */}
-        <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#dbdfe6] dark:border-b-gray-800 bg-white dark:bg-background-dark px-10 py-3 sticky top-0 z-50">
-          <div className="flex items-center gap-8">
-            <div 
-                className="flex items-center gap-4 text-[#111318] dark:text-white cursor-pointer"
-                onClick={() => onNavigate(ViewState.DASHBOARD)}
-            >
-              <div className="size-6 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-3xl">gavel</span>
-              </div>
-              <h2 className="text-[#111318] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">
-                Abogadosoft
-              </h2>
-            </div>
-            <div className="hidden md:flex items-center gap-9">
-              <a
-                className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-                onClick={() => onNavigate(ViewState.DASHBOARD)}
-              >
-                Inicio
-              </a>
-              <a
-                className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-                onClick={() => onNavigate(ViewState.AGREEMENTS)}
-              >
-                Convenios
-              </a>
-              <a
-                className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              >
-                Expedientes
-              </a>
-              <a
-                className="text-primary text-sm font-bold leading-normal border-b-2 border-primary pb-0.5 cursor-pointer"
-              >
-                Bitácora
-              </a>
-              <a
-                className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-                onClick={() => onNavigate(ViewState.SECURITY)}
-              >
-                Seguridad
-              </a>
-            </div>
-          </div>
-          <div className="flex flex-1 justify-end gap-4 md:gap-8">
-            <label className="hidden sm:flex flex-col min-w-40 !h-10 max-w-64">
-              <div className="flex w-full flex-1 items-stretch rounded-lg h-full">
-                <div
-                  className="text-[#616f89] flex border-none bg-gray-100 dark:bg-gray-800 items-center justify-center pl-4 rounded-l-lg"
-                  data-icon="MagnifyingGlass"
-                >
-                  <span className="material-symbols-outlined text-xl">
-                    search
-                  </span>
-                </div>
-                <input
-                  className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#111318] dark:text-white focus:outline-0 focus:ring-0 border-none bg-gray-100 dark:bg-gray-800 focus:border-none h-full placeholder:text-[#616f89] px-4 rounded-l-none pl-2 text-base font-normal"
-                  placeholder="Buscar actividad..."
-                />
-              </div>
-            </label>
-            <div className="flex gap-2">
-              <button className="flex items-center justify-center rounded-lg h-10 w-10 bg-gray-100 dark:bg-gray-800 text-[#111318] dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                <span className="material-symbols-outlined">notifications</span>
-              </button>
-              <button className="flex items-center justify-center rounded-lg h-10 w-10 bg-gray-100 dark:bg-gray-800 text-[#111318] dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                <span className="material-symbols-outlined">settings</span>
-              </button>
-            </div>
-            <div
-              className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-gray-200"
-              style={{
-                backgroundImage:
-                  'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBlSVR-XdKf6lw3CceM1nKdS5_wRCTlUJZVCDZ8WJrsRWv3hv3E7Yh3BXn-p6--GHqzotpCLhVBa-E0YZS0DT6lcDuIplO3DNLMBREOXXRid8gc1kkYmdkMVG8dTXpKIbEdfs9Jo8-END4_bElRYIILaP3lQOvKqgJdeXzgduoJv_HlSz0XGnJcE4gd8KGGs0FQCqUuatrp4rhn1_ePtORNI5YYNAm8XRcXhstKtPzMvPaLJ62NMr0kTnHnTQQmbdmRCXtFWrgc41k")',
-              }}
-            ></div>
-          </div>
-        </header>
         <main className="flex flex-1 justify-center py-6 px-4 md:px-10 lg:px-40">
           <div className="layout-content-container flex flex-col max-w-[960px] flex-1">
             {/* Breadcrumbs Component */}

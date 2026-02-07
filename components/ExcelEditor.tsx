@@ -7,56 +7,7 @@ interface ExcelEditorProps {
 
 export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate }) => {
   return (
-    <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white min-h-screen">
-      {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f2f4] dark:border-gray-800 bg-white dark:bg-background-dark px-10 py-3 sticky top-0 z-50">
-        <div 
-            className="flex items-center gap-4 cursor-pointer"
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-        >
-          <div className="text-primary">
-            <span className="material-symbols-outlined text-3xl">balance</span>
-          </div>
-          <h2 className="text-[#111318] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">
-            Abogadosoft
-          </h2>
-        </div>
-        <div className="flex flex-1 justify-end gap-6 items-center">
-          <nav className="flex items-center gap-8">
-            <a
-              className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.DASHBOARD)}
-            >
-              Expedientes
-            </a>
-            <a
-              className="text-primary text-sm font-semibold leading-normal cursor-pointer"
-            >
-              Archivos
-            </a>
-            <a
-              className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-            >
-              Calendario
-            </a>
-            <a
-              className="text-[#111318] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.SECURITY)}
-            >
-              Seguridad
-            </a>
-          </nav>
-          <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
-          <div
-            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-gray-200"
-            data-alt="User profile picture avatar"
-            style={{
-              backgroundImage:
-                'url("https://lh3.googleusercontent.com/aida-public/AB6AXuB0cLJfpoOjTIIi0o-_Neb-y67tp2ILNOxMsKyW29Vy2x3tyyp4lgVJhHc9nHdqFjFXRIrbpSB0vBDPC8WNN1mU6rw-574inJiiXXgJJEaJnp9dPURFZ0ku3SAvKgaZC7en_10lwHy_fjWzFYIoCzzj_5unAzKbdGxQ0HLbD0k1sHnqcQOQG_Y0ovqo6ZLG1Fu5fVE9ohIwy8r1uvPWb7VoOasbeFrWfXEfLOr24lrRRyLidrRvkaDISgb_dk2Fgj1y9ViPljFikWY")',
-            }}
-          ></div>
-        </div>
-      </header>
+    <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white flex-1">
       <main className="max-w-[1600px] mx-auto px-6 py-6 flex flex-col gap-6">
         {/* Breadcrumbs & Heading */}
         <div className="flex flex-col gap-2">

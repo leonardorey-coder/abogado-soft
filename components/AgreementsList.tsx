@@ -7,69 +7,7 @@ interface AgreementsListProps {
 
 export const AgreementsList: React.FC<AgreementsListProps> = ({ onNavigate }) => {
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100">
-      {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-10 py-4 sticky top-0 z-50">
-        <div className="flex items-center gap-8">
-          <div 
-            className="flex items-center gap-3 text-primary cursor-pointer"
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-          >
-            <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
-              <span className="material-symbols-outlined text-2xl">gavel</span>
-            </div>
-            <h2 className="text-slate-900 dark:text-white text-2xl font-black leading-tight tracking-tight">
-              AbogadoSoft
-            </h2>
-          </div>
-          <div className="hidden md:flex items-center gap-6 ml-4">
-            <a
-              className="text-slate-600 dark:text-slate-300 text-base font-semibold hover:text-primary transition-colors cursor-pointer"
-            >
-              Documentos
-            </a>
-            <a
-              className="text-primary text-base font-bold border-b-2 border-primary pb-1 cursor-pointer"
-              onClick={() => onNavigate(ViewState.AGREEMENTS)}
-            >
-              Convenios
-            </a>
-            <a
-              className="text-slate-600 dark:text-slate-300 text-base font-semibold hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.ACTIVITY_LOG)}
-            >
-              Bitácora
-            </a>
-            <a
-              className="text-slate-600 dark:text-slate-300 text-base font-semibold hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.SECURITY)}
-            >
-              Seguridad
-            </a>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <label className="flex flex-col min-w-64 h-12">
-            <div className="flex w-full flex-1 items-stretch rounded-xl h-full shadow-sm">
-              <div className="text-slate-500 flex border-none bg-slate-100 dark:bg-slate-800 items-center justify-center pl-4 rounded-l-xl">
-                <span className="material-symbols-outlined">search</span>
-              </div>
-              <input
-                className="flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-none bg-slate-100 dark:bg-slate-800 h-full placeholder:text-slate-500 pl-2 text-lg font-medium"
-                placeholder="Buscar convenios..."
-              />
-            </div>
-          </label>
-          <div
-            className="bg-slate-200 dark:bg-slate-700 bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 border-2 border-white dark:border-slate-800 shadow-sm ml-4"
-            style={{
-              backgroundImage:
-                'url("https://picsum.photos/100/100")',
-            }}
-          ></div>
-        </div>
-      </header>
-
+    <div className="flex flex-col flex-1 bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100">
       <main className="flex-1 flex justify-center py-8">
         <div className="layout-content-container flex flex-col max-w-[1200px] w-full px-6 md:px-10">
           {/* Page Heading */}
