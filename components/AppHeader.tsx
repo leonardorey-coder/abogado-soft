@@ -5,12 +5,14 @@ interface AppHeaderProps {
   onNavigate: (view: ViewState) => void;
   currentView: ViewState;
   onUploadClick?: () => void;
+  deletedCount?: number;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   onNavigate,
   currentView,
   onUploadClick,
+  deletedCount = 0,
 }) => {
   const navClass = (view: ViewState) =>
     view === currentView
@@ -18,10 +20,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       : "px-3 py-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors";
 
   return (
-    <header className="h-16 flex items-center justify-between px-4 md:px-8 bg-white dark:bg-[#1a212f] border-b border-[#dbdfe6] dark:border-[#2d3748] sticky top-0 z-50">
-      <div className="flex items-center gap-4 flex-1 max-w-4xl">
+    <header className="h-16 flex items-center px-4 md:px-8 bg-white dark:bg-[#1a212f] border-b border-[#dbdfe6] dark:border-[#2d3748] sticky top-0 z-50">
+      <div className="flex items-center gap-4 flex-1 min-w-0">
         <div
-          className="flex items-center gap-2 mr-6 cursor-pointer"
+          className="flex items-center gap-2 mr-6 cursor-pointer shrink-0"
           onClick={() => onNavigate(ViewState.DASHBOARD)}
         >
           <div className="bg-primary size-8 rounded-lg flex items-center justify-center text-white">
@@ -32,7 +34,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </h1>
         </div>
 
-        <nav className="hidden md:flex items-center gap-1">
+        <div className="hidden md:block flex-1 min-w-0 overflow-hidden">
+          <nav className="flex items-center gap-1 overflow-x-auto overflow-y-hidden h-9 -mx-1 px-1 [scrollbar-gutter:stable]">
+            <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
           <button
             onClick={() => onNavigate(ViewState.DASHBOARD)}
             className={navClass(ViewState.DASHBOARD)}
@@ -69,9 +73,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           >
             Seguridad
           </button>
-        </nav>
+          <button
+            onClick={() => onNavigate(ViewState.TRASH)}
+            className={`${navClass(ViewState.TRASH)} relative flex items-center gap-1.5`}
+            aria-label={deletedCount > 0 ? `Papelera (${deletedCount} documento${deletedCount !== 1 ? "s" : ""})` : "Papelera"}
+          >
+            <span className="material-symbols-outlined text-lg">delete</span>
+            Papelera
+            {deletedCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-black">
+                {deletedCount > 99 ? "99+" : deletedCount}
+              </span>
+            )}
+          </button>
+            </div>
+          </nav>
+        </div>
 
-        <div className="relative w-full max-w-xs lg:max-w-md hidden sm:block ml-4">
+        <div className="relative w-full min-w-[10rem] max-w-[12rem] hidden sm:block shrink-0">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89]">
             search
           </span>
@@ -83,7 +102,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="w-2 shrink-0" aria-hidden />
+
+      <div className="flex items-center gap-4 shrink-0">
         {onUploadClick && (
           <>
             <button
