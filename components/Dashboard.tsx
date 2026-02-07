@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { ViewState, Document, DocumentStatus } from "../types";
+import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus } from "../types";
 
 interface DashboardProps {
   onNavigate: (view: ViewState) => void;
 }
 
-// Mock data for the dashboard with statuses
 const initialDocuments: Document[] = [
   {
     id: "1",
@@ -13,7 +12,7 @@ const initialDocuments: Document[] = [
     type: "DOCX",
     lastModified: "Hace 2 horas",
     timeAgo: "2h",
-    status: "ACTIVO",
+    fileStatus: "ACTIVO",
     expirationDate: "2024-12-31"
   },
   {
@@ -22,7 +21,8 @@ const initialDocuments: Document[] = [
     type: "PDF",
     lastModified: "Ayer, 14:00",
     timeAgo: "1d",
-    status: "VISTO"
+    fileStatus: "ACTIVO",
+    collaborationStatus: "VISTO"
   },
   {
     id: "3",
@@ -30,7 +30,8 @@ const initialDocuments: Document[] = [
     type: "XLSX",
     lastModified: "15 Oct 2024",
     timeAgo: "1w",
-    status: "EDITADO"
+    fileStatus: "ACTIVO",
+    collaborationStatus: "EDITADO"
   },
   {
     id: "4",
@@ -38,8 +39,18 @@ const initialDocuments: Document[] = [
     type: "PDF",
     lastModified: "10 Oct 2024",
     timeAgo: "2w",
-    status: "PENDIENTE",
-    expirationDate: "2024-10-30" // Near expiration
+    fileStatus: "PENDIENTE",
+    sharingStatus: "ENVIADO",
+    expirationDate: "2024-10-30"
+  },
+  {
+    id: "6",
+    name: "Dictamen_Legal_Proyecto_A.pdf",
+    type: "PDF",
+    lastModified: "Hace 1 hora",
+    timeAgo: "1h",
+    fileStatus: "ACTIVO",
+    sharingStatus: "ASIGNADO"
   },
   {
     id: "5",
@@ -47,31 +58,46 @@ const initialDocuments: Document[] = [
     type: "DOCX",
     lastModified: "20 Sep 2023",
     timeAgo: "1y",
-    status: "INACTIVO"
+    fileStatus: "INACTIVO"
   }
 ];
 
-const getStatusColor = (status?: DocumentStatus) => {
+const getFileStatusColor = (status: FileStatus) => {
   switch (status) {
     case 'ACTIVO': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
     case 'PENDIENTE': return 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800';
     case 'INACTIVO': return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/50 dark:text-slate-400 dark:border-slate-600';
-    case 'VISTO': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
-    case 'EDITADO': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800';
     default: return 'bg-gray-100 text-gray-600';
   }
 };
 
-// Colors for the selection buttons
-const getStatusButtonColor = (status: DocumentStatus, isSelected: boolean) => {
+const getCollaborationStatusColor = (status: CollaborationStatus) => {
+  switch (status) {
+    case 'VISTO': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
+    case 'EDITADO': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800';
+    case 'COMENTADO': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
+    case 'REVISADO': return 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-800';
+    case 'APROBADO': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
+    case 'PENDIENTE_REVISION': return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800';
+    case 'RECHAZADO': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
+    default: return 'bg-gray-100 text-gray-600';
+  }
+};
+
+const getSharingStatusColor = (status: SharingStatus) => {
+  switch (status) {
+    case 'ENVIADO': return 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800';
+    case 'ASIGNADO': return 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800';
+    default: return 'bg-gray-100 text-gray-600';
+  }
+};
+
+const getStatusButtonColor = (status: FileStatus, isSelected: boolean) => {
     if (!isSelected) return 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600';
-    
     switch (status) {
       case 'ACTIVO': return 'bg-green-500 text-white ring-2 ring-green-200 dark:ring-green-900';
       case 'PENDIENTE': return 'bg-yellow-500 text-white ring-2 ring-yellow-200 dark:ring-yellow-900';
       case 'INACTIVO': return 'bg-slate-500 text-white ring-2 ring-slate-200 dark:ring-slate-600';
-      case 'VISTO': return 'bg-blue-500 text-white ring-2 ring-blue-200 dark:ring-blue-900';
-      case 'EDITADO': return 'bg-purple-500 text-white ring-2 ring-purple-200 dark:ring-purple-900';
       default: return 'bg-gray-500 text-white';
     }
 };
@@ -89,10 +115,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
 
-  const handleStatusChange = (e: React.MouseEvent, id: string, newStatus: DocumentStatus) => {
+  const handleStatusChange = (e: React.MouseEvent, id: string, newFileStatus: FileStatus) => {
     e.stopPropagation();
-    setDocuments(docs => docs.map(doc => 
-        doc.id === id ? { ...doc, status: newStatus } : doc
+    setDocuments(docs => docs.map(doc =>
+        doc.id === id ? { ...doc, fileStatus: newFileStatus } : doc
     ));
   };
 
@@ -106,22 +132,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   const filteredDocuments = documents.filter(doc => {
     if (filter === 'TODOS') return true;
-    if (filter === 'ACTIVOS') return doc.status === 'ACTIVO';
-    if (filter === 'PENDIENTES') return doc.status === 'PENDIENTE';
-    if (filter === 'VISTO') return doc.status === 'VISTO';
-    if (filter === 'EDITADO') return doc.status === 'EDITADO';
-    if (filter === 'EXPIRADOS') return doc.status === 'INACTIVO'; 
+    if (filter === 'ACTIVOS') return doc.fileStatus === 'ACTIVO';
+    if (filter === 'PENDIENTES') return doc.fileStatus === 'PENDIENTE';
+    if (filter === 'VISTO') return doc.collaborationStatus === 'VISTO';
+    if (filter === 'EDITADO') return doc.collaborationStatus === 'EDITADO';
+    if (filter === 'EXPIRADOS') return doc.fileStatus === 'INACTIVO';
     return true;
   });
 
-  // Calculate counts for pills
   const counts = {
     todos: documents.length,
-    activos: documents.filter(d => d.status === 'ACTIVO').length,
-    pendientes: documents.filter(d => d.status === 'PENDIENTE').length,
-    visto: documents.filter(d => d.status === 'VISTO').length,
-    editado: documents.filter(d => d.status === 'EDITADO').length,
-    expirados: documents.filter(d => d.status === 'INACTIVO').length
+    activos: documents.filter(d => d.fileStatus === 'ACTIVO').length,
+    pendientes: documents.filter(d => d.fileStatus === 'PENDIENTE').length,
+    visto: documents.filter(d => d.collaborationStatus === 'VISTO').length,
+    editado: documents.filter(d => d.collaborationStatus === 'EDITADO').length,
+    expirados: documents.filter(d => d.fileStatus === 'INACTIVO').length
   };
 
   return (
@@ -220,77 +245,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </button>
         </div>
 
-        {/* Reverted Document Grid Style with New Features */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos recientes">
           {filteredDocuments.map((doc) => {
             const { icon, color } = getFileIcon(doc.type);
-            const isExpiring = doc.status === 'PENDIENTE' && doc.expirationDate;
-            
+            const isExpiring = doc.fileStatus === 'PENDIENTE' && doc.expirationDate;
+
             return (
-              <div 
-                key={doc.id} 
+              <article
+                key={doc.id}
+                role="listitem"
                 onClick={() => handleDocumentClick(doc)}
-                className="bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full"
+                className="min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full"
               >
-                <section className="flex items-start justify-between gap-3 mb-4" aria-label="Documento">
-                  <div className={`p-4 ${color} rounded-xl shrink-0`}>
+                <header className="flex items-start justify-between gap-3 mb-4">
+                  <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden>
                     <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
                   </div>
-                  <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border shrink-0 ${getStatusColor(doc.status)}`}>
-                    {doc.status}
-                  </span>
-                </section>
+                  <div className="flex flex-wrap gap-1.5 justify-end shrink-0">
+                    <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getFileStatusColor(doc.fileStatus)}`}>
+                      {doc.fileStatus}
+                    </span>
+                    {doc.collaborationStatus && (
+                      <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getCollaborationStatusColor(doc.collaborationStatus)}`}>
+                        {doc.collaborationStatus}
+                      </span>
+                    )}
+                  </div>
+                </header>
 
-                <h4 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white line-clamp-2 leading-tight flex-grow">
-                  {doc.name}
-                </h4>
+                <h3 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
+                  {doc.name.split('_').map((part, i) =>
+                    i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>
+                  )}
+                </h3>
 
-                <section className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3" aria-label="Fecha">
-                  <span className="material-symbols-outlined text-lg shrink-0">calendar_today</span>
+                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
+                  <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>calendar_today</span>
                   <span>{doc.lastModified}</span>
-                </section>
+                </p>
 
                 {isExpiring && (
-                  <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50">
-                    <span className="material-symbols-outlined text-lg shrink-0">warning</span>
+                  <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50" role="alert">
+                    <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>warning</span>
                     <span className="text-xs font-bold">Vence el {doc.expirationDate}</span>
                   </div>
                 )}
 
-                <div
+                <footer
                   className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 cursor-default flex flex-col gap-4"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <section aria-label="Estado del documento">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2.5">Estado</p>
                     <div className="flex flex-wrap gap-2">
-                      {(['ACTIVO', 'PENDIENTE', 'VISTO', 'EDITADO', 'INACTIVO'] as DocumentStatus[]).map((status) => (
+                      {(['ACTIVO', 'PENDIENTE', 'INACTIVO'] as FileStatus[]).map((status) => (
                         <button
                           key={status}
                           onClick={(e) => handleStatusChange(e, doc.id, status)}
                           title={`Marcar como ${status}`}
-                          className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.status === status)}`}
+                          className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.fileStatus === status)}`}
                         >
-                          <span className="material-symbols-outlined text-lg">
+                          <span className="material-symbols-outlined text-lg" aria-hidden>
                             {status === 'ACTIVO' && 'check'}
                             {status === 'PENDIENTE' && 'hourglass_empty'}
-                            {status === 'VISTO' && 'visibility'}
-                            {status === 'EDITADO' && 'edit'}
                             {status === 'INACTIVO' && 'block'}
                           </span>
                         </button>
                       ))}
                     </div>
                   </section>
+                  {doc.sharingStatus && (
+                    <div className="flex items-center gap-2" aria-label="Compartido">
+                      <span className="material-symbols-outlined text-lg text-slate-400" aria-hidden>share</span>
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${getSharingStatusColor(doc.sharingStatus)}`}>
+                        {doc.sharingStatus}
+                      </span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="w-full min-h-[44px] py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
                   >
-                    <span className="material-symbols-outlined text-lg">share</span>
+                    <span className="material-symbols-outlined text-lg" aria-hidden>share</span>
                     Compartir
                   </button>
-                </div>
-              </div>
+                </footer>
+              </article>
             );
           })}
 
