@@ -10,6 +10,7 @@ interface DashboardProps {
   onDeleteDocument: (doc: Document) => void;
   onNavigate: (view: ViewState) => void;
   onOpenUploadModal?: () => void;
+  searchQuery?: string;
 }
 
 const permissionLabel: Record<DocumentPermissionLevel, string> = {
@@ -69,12 +70,19 @@ const getFileIcon = (type: string) => {
     }
 }
 
+const matchesSearch = (doc: Document, q: string) => {
+  if (!q.trim()) return true;
+  const term = q.trim().toLowerCase();
+  return doc.name.toLowerCase().includes(term) || (doc.type && doc.type.toLowerCase().includes(term));
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({
   documents,
   setDocuments,
   onDeleteDocument,
   onNavigate,
   onOpenUploadModal,
+  searchQuery = "",
 }) => {
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
@@ -161,6 +169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const filteredDocuments = documents.filter(doc => {
+    if (!matchesSearch(doc, searchQuery)) return false;
     if (filter === 'TODOS') return true;
     if (filter === 'ACTIVOS') return doc.fileStatus === 'ACTIVO';
     if (filter === 'PENDIENTES') return doc.fileStatus === 'PENDIENTE';
@@ -283,6 +292,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Expirados ({counts.expirados})
             </button>
         </div>
+
+        {searchQuery.trim() && filteredDocuments.length === 0 && (
+          <p className="text-[#616f89] dark:text-[#a0aec0] text-center py-8 text-lg font-medium">
+            Sin resultados de búsqueda
+          </p>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos recientes">
           {filteredDocuments.map((doc) => {

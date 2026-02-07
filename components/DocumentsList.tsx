@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ViewState, Document, FileStatus } from "../types";
 
 interface DocumentsListProps {
   onNavigate: (view: ViewState) => void;
+  searchQuery?: string;
 }
 
 const initialDocuments: Document[] = [
@@ -84,19 +85,30 @@ const getTypeIcon = (type: string) => {
   }
 };
 
-export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate }) => {
+const matchesSearch = (d: Document, q: string) => {
+  if (!q.trim()) return true;
+  const term = q.trim().toLowerCase();
+  return d.name.toLowerCase().includes(term) || (d.type && d.type.toLowerCase().includes(term));
+};
+
+export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, searchQuery = "" }) => {
   const [documents] = useState<Document[]>(initialDocuments);
   const [filter, setFilter] = useState<"TODOS" | FileStatus>("TODOS");
   const [page, setPage] = useState(1);
   const perPage = 5;
-  const totalPages = Math.ceil(documents.length / perPage) || 1;
+  const bySearch = documents.filter((d) => matchesSearch(d, searchQuery));
+  const totalPages = Math.ceil(bySearch.length / perPage) || 1;
 
   const filtered =
     filter === "TODOS"
-      ? documents
-      : documents.filter((d) => d.fileStatus === filter);
+      ? bySearch
+      : bySearch.filter((d) => d.fileStatus === filter);
 
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
 
   const counts = {
     todos: documents.length,

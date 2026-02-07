@@ -6,6 +6,8 @@ interface AppHeaderProps {
   currentView: ViewState;
   onUploadClick?: () => void;
   deletedCount?: number;
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -13,6 +15,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   currentView,
   onUploadClick,
   deletedCount = 0,
+  searchQuery = "",
+  onSearchChange,
 }) => {
   const navClass = (view: ViewState) =>
     view === currentView
@@ -98,6 +102,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             className="w-full h-9 pl-10 pr-4 bg-background-light dark:bg-[#101622] border-none rounded-lg focus:ring-2 focus:ring-primary text-sm placeholder:text-[#616f89]"
             placeholder="Buscar..."
             type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            aria-label="Buscar documentos"
           />
         </div>
       </div>

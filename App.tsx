@@ -20,6 +20,7 @@ export default function App() {
   const [documentFromTrash, setDocumentFromTrash] = useState<Document | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleNavigate = (view: ViewState) => {
     setDocumentFromTrash(null);
@@ -65,10 +66,11 @@ export default function App() {
             onDeleteDocument={handleDeleteDocument}
             onNavigate={setCurrentView}
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
+            searchQuery={searchQuery}
           />
         );
       case ViewState.DOCUMENTS:
-        return <DocumentsList onNavigate={setCurrentView} />;
+        return <DocumentsList onNavigate={setCurrentView} searchQuery={searchQuery} />;
       case ViewState.ASIGNED:
         return <AssignedList onNavigate={setCurrentView} />;
       case ViewState.AGREEMENTS:
@@ -99,6 +101,7 @@ export default function App() {
             onDeleteDocument={handleDeleteDocument}
             onNavigate={setCurrentView}
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
+            searchQuery={searchQuery}
           />
         );
     }
@@ -111,6 +114,8 @@ export default function App() {
         currentView={currentView}
         onUploadClick={() => setIsUploadModalOpen(true)}
         deletedCount={deletedDocuments.length}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
       {renderView()}
       <AppFooter />
