@@ -158,26 +158,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Resumen general de su despacho legal al día de hoy.</p>
         </div>
 
-        {/* Stats Grid - Kept from new design */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
                 <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Clientes Activos</p>
-                    <span className="material-symbols-outlined text-primary">groups</span>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos Activos</p>
+                    <span className="material-symbols-outlined text-primary">verified</span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">124</p>
-                    <p className="text-[#07883b] text-sm font-bold">+5% este mes</p>
+                    <p className="text-3xl font-bold dark:text-white">{counts.activos}</p>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
                 </div>
             </div>
             <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
                 <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Expedientes en Curso</p>
-                    <span className="material-symbols-outlined text-primary">work</span>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Pendientes</p>
+                    <span className="material-symbols-outlined text-primary">pending</span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">45</p>
-                    <p className="text-[#07883b] text-sm font-bold">+2% este mes</p>
+                    <p className="text-3xl font-bold dark:text-white">{counts.pendientes}</p>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Por revisar</p>
+                </div>
+            </div>
+            <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Expirados</p>
+                    <span className="material-symbols-outlined text-primary">error</span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                    <p className="text-3xl font-bold dark:text-white">{counts.expirados}</p>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
                 </div>
             </div>
             <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
@@ -186,8 +195,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <span className="material-symbols-outlined text-primary">description</span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">1,082</p>
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total histórico</p>
+                    <p className="text-3xl font-bold dark:text-white">{counts.todos}</p>
+                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total en lista</p>
                 </div>
             </div>
         </div>
