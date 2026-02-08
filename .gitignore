@@ -20,6 +20,9 @@ bun-debug.log*
 .env.*
 !.env.example
 
+# Supabase CLI cache/state
+supabase/.temp/
+
 # TypeScript build info
 *.tsbuildinfo
 
