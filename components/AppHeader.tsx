@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { ViewState } from "../types";
+import { useAuth } from "../contexts/AuthContext";
+import { getRoleLabel } from "../lib/constants";
 
 interface AppHeaderProps {
   onNavigate: (view: ViewState) => void;
@@ -18,6 +20,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   searchQuery = "",
   onSearchChange,
 }) => {
+  const { user, logout } = useAuth();
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const navClass = (view: ViewState) =>
     view === currentView
       ? "px-3 py-2 text-sm font-bold text-primary bg-primary/10 rounded-lg"
@@ -124,18 +128,46 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <div className="h-8 w-[1px] bg-[#dbdfe6] dark:bg-[#2d3748] mx-2 hidden sm:block"></div>
           </>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 relative">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold leading-none">Lic. García</p>
-            <p className="text-xs text-[#616f89] dark:text-[#a0aec0]">Socio Principal</p>
+            <p className="text-sm font-bold leading-none">{user?.name ?? 'Usuario'}</p>
+            <p className="text-xs text-[#616f89] dark:text-[#a0aec0]">{getRoleLabel(user?.role)}</p>
           </div>
-          <div
-            className="size-10 rounded-full bg-cover bg-center border-2 border-white dark:border-[#2d3748] shadow-sm"
-            style={{
-              backgroundImage:
-                'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBSEfFZcc_w3SK5PnsmL4V30yNO8DpfFSCE3e9TlZGhdLVKq2pXoIg2G4L9Aw8pWUrPdcc3my5bSeGAVfXn9hdQYTdo1yEOR8kk302aNv10W1OyNWq8gtNrsiJYB09GxaAjG349kRgcX6XBV3UukeJ8d5-0-fgRjPQyXWnLxDNjQm18FMJrBQIFxEeoB5kgucZrfcstA9N5utnSBvsvdxS2k8vQMqxYR1dMxbCznoBfWTs0Ip__onKXnjGz7lPaqY5OjalPIrHhQhM")',
-            }}
-          />
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="size-10 rounded-full bg-cover bg-center border-2 border-white dark:border-[#2d3748] shadow-sm overflow-hidden focus:ring-2 focus:ring-primary"
+            aria-label="Menú de usuario"
+          >
+            {user?.avatarUrl ? (
+              <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-primary flex items-center justify-center text-white font-bold text-lg">
+                {(user?.name ?? 'U').charAt(0).toUpperCase()}
+              </div>
+            )}
+          </button>
+          {showUserMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+              <div className="absolute right-0 top-12 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl py-2 min-w-[180px]">
+                <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    setShowUserMenu(false);
+                    await logout();
+                    onNavigate(ViewState.LOGIN);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-lg">logout</span>
+                  Cerrar sesión
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>

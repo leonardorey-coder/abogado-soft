@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ViewState } from "../types";
-import { registerWithSupabase } from "../lib/supabaseAuth";
+import { registerWithSupabase, signInWithGoogle } from "../lib/supabaseAuth";
+import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
 
 interface RegisterPageProps {
@@ -11,20 +12,21 @@ const inputClass =
   "flex w-full rounded-lg text-gray-900 dark:text-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 h-16 pl-12 pr-4 text-xl placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all";
 
 export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
+  const { setAuth } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [officeName, setOfficeName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!fullName.trim() || !email.trim() || !officeName.trim() || !password.trim() || !confirmPassword.trim()) {
+    if (!fullName.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
       setError("Complete todos los campos.");
       return;
     }
@@ -40,7 +42,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
     const result = await registerWithSupabase({
       fullName: fullName.trim(),
       email: email.trim(),
-      officeName: officeName.trim(),
       password,
     });
     setLoading(false);
@@ -48,6 +49,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
       setError(result.error);
       return;
     }
+    setAuth(result.user, result.session);
     onNavigate(ViewState.DASHBOARD);
   };
 
@@ -75,7 +77,15 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
               <div className="mb-10">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center gap-4 rounded-lg h-16 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 text-xl font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all active:scale-[0.98]"
+                  onClick={async () => {
+                    setError(null);
+                    setGoogleLoading(true);
+                    const result = await signInWithGoogle();
+                    setGoogleLoading(false);
+                    if (result.error) setError(result.error);
+                  }}
+                  disabled={googleLoading || loading}
+                  className="flex w-full items-center justify-center gap-4 rounded-lg h-16 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 text-xl font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <svg className="w-7 h-7" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -130,21 +140,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-gray-900 dark:text-white text-lg font-bold leading-normal">Nombre de su Despacho</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">business_center</span>
-                    <input
-                      className={inputClass}
-                      placeholder="Ej. Despacho Jurídico Asociados"
-                      type="text"
-                      value={officeName}
-                      onChange={(e) => setOfficeName(e.target.value)}
                       disabled={loading}
                     />
                   </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ViewState, Document } from "./types";
 import { initialDocuments } from "./data/initialDocuments";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppHeader } from "./components/AppHeader";
 import { AppFooter } from "./components/AppFooter";
 import { Dashboard } from "./components/Dashboard";
@@ -17,9 +18,19 @@ import { PrivacyPage } from "./components/PrivacyPage";
 import { SecurityInfoPage } from "./components/SecurityInfoPage";
 import { RegisterPage } from "./components/RegisterPage";
 import { LoginPage } from "./components/LoginPage";
+import { CompleteProfilePage } from "./components/CompleteProfilePage";
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const { user, loading, logout } = useAuth();
+  const [currentView, setCurrentView] = useState<ViewState>(ViewState.LOGIN);
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
   const [documentFromTrash, setDocumentFromTrash] = useState<Document | null>(null);
@@ -27,9 +38,37 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Redirigir a login si no hay sesión, o a dashboard si ya hay
+  useEffect(() => {
+    const isAuthView = currentView === ViewState.LOGIN || currentView === ViewState.REGISTER || currentView === ViewState.COMPLETE_PROFILE;
+    if (!loading && !user && !isAuthView) {
+      setCurrentView(ViewState.LOGIN);
+    }
+    if (!loading && user && user.needsProfileSetup && currentView !== ViewState.COMPLETE_PROFILE) {
+      setCurrentView(ViewState.COMPLETE_PROFILE);
+    }
+    if (!loading && user && !user.needsProfileSetup && isAuthView) {
+      setCurrentView(ViewState.DASHBOARD);
+    }
+  }, [loading, user, currentView]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentView]);
+
+  // Pantalla de carga mientras verifica sesión
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark">
+        <div className="flex flex-col items-center gap-4">
+          <div className="bg-primary text-white p-4 rounded-xl shadow-lg shadow-primary/20 animate-pulse">
+            <span className="material-symbols-outlined text-[48px] block">balance</span>
+          </div>
+          <p className="text-slate-500 dark:text-slate-400 text-lg">Cargando Abogadosoft…</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleNavigate = (view: ViewState) => {
     setDocumentFromTrash(null);
@@ -110,6 +149,8 @@ export default function App() {
         return <SecurityInfoPage onNavigate={setCurrentView} />;
       case ViewState.REGISTER:
         return <RegisterPage onNavigate={setCurrentView} />;
+      case ViewState.COMPLETE_PROFILE:
+        return <CompleteProfilePage onNavigate={setCurrentView} />;
       case ViewState.LOGIN:
         return <LoginPage onNavigate={setCurrentView} />;
       default:
@@ -126,7 +167,7 @@ export default function App() {
     }
   };
 
-  const isAuthView = currentView === ViewState.REGISTER || currentView === ViewState.LOGIN;
+  const isAuthView = currentView === ViewState.REGISTER || currentView === ViewState.LOGIN || currentView === ViewState.COMPLETE_PROFILE;
 
   return (
     <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark text-[#111318] dark:text-white">
