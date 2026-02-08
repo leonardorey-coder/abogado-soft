@@ -264,48 +264,39 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
   return (
     <div className="relative flex flex-1 w-full flex-col group/design-root overflow-x-hidden bg-background-light dark:bg-background-dark">
       <div className="layout-container flex h-full grow flex-col">
-        <main className="flex flex-1 justify-center py-6 px-4 md:px-10 lg:px-40">
-          <div className="layout-content-container flex flex-col max-w-[960px] flex-1">
-            {/* Breadcrumbs Component */}
-            <div className="flex flex-wrap gap-2 py-2">
-              <a
-                className="text-[#616f89] dark:text-gray-400 text-sm font-medium leading-normal hover:text-primary cursor-pointer"
-                onClick={() => onNavigate(ViewState.DASHBOARD)}
-              >
-                Inicio
-              </a>
-              <span className="text-[#616f89] dark:text-gray-600 text-sm font-medium leading-normal">
-                /
-              </span>
-              <span className="text-[#111318] dark:text-white text-sm font-medium leading-normal">
-                Bitácora
-              </span>
-            </div>
-            {/* PageHeading Component */}
-            <div className="flex flex-wrap justify-between items-end gap-3 py-6">
-              <div className="flex min-w-72 flex-col gap-2">
-                <h1 className="text-[#111318] dark:text-white text-3xl font-black leading-tight tracking-[-0.033em]">
-                  Bitácora de Actividad
-                </h1>
-                <p className="text-[#616f89] dark:text-gray-400 text-base font-normal leading-normal">
-                  Historial de acciones en documentos y convenios del despacho.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-gray-800 text-[#111318] dark:text-white text-sm font-bold border border-[#dbdfe6] dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  <span className="material-symbols-outlined text-lg">
-                    share
-                  </span>
-                  <span className="truncate">Compartir</span>
+        <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 flex flex-col space-y-8">
+          <div className="flex flex-wrap justify-between items-end gap-4">
+            <div className="flex flex-col gap-2">
+              <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
+                <button
+                  type="button"
+                  className="hover:text-primary cursor-pointer"
+                  onClick={() => onNavigate(ViewState.DASHBOARD)}
+                >
+                  Inicio
                 </button>
-                <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors">
-                  <span className="material-symbols-outlined text-lg">
-                    download
-                  </span>
-                  <span className="truncate">Exportar Reporte</span>
-                </button>
-              </div>
+                <span>/</span>
+                <span className="text-[#111318] dark:text-white">Bitácora</span>
+              </nav>
+              <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">
+                Bitácora de Actividad
+              </h1>
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">
+                Historial de acciones en documentos y convenios del despacho.
+              </p>
             </div>
+            <div className="flex gap-3">
+              <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-gray-800 text-[#111318] dark:text-white text-sm font-bold border border-[#dbdfe6] dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <span className="material-symbols-outlined text-lg">share</span>
+                <span className="truncate">Compartir</span>
+              </button>
+              <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors">
+                <span className="material-symbols-outlined text-lg">download</span>
+                <span className="truncate">Exportar Reporte</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col flex-1 w-full">
             {/* Filter Section (TextGrid + Chips) */}
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-[#dbdfe6] dark:border-gray-800 mb-8 p-4 shadow-sm">
               <div className="flex flex-col gap-4">
