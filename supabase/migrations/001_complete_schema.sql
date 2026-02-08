@@ -20,6 +20,7 @@
 -- ─────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";   -- gen_random_uuid() ya existe en PG 13+, pero por si acaso
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";    -- para gen_random_uuid() y crypt/hasheo
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";     -- para índices trigram (búsqueda fuzzy)
 
 -- ─────────────────────────────────────────────
 -- 2. TIPOS ENUM

@@ -3,8 +3,7 @@
 # Referencia: https://supabase.com/docs/guides/cli/config
 # ==============================================================================
 
-[project]
-id = "abogadosoft"
+project_id = "wtduflglaygwfhttbbyk"
 
 [api]
 enabled = true
