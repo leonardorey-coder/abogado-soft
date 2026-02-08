@@ -7,10 +7,10 @@ export const usersRouter = Router();
 usersRouter.use(authenticate);
 
 // ─── GET /api/users ──────────────────────────────────────────────────────────
-// Lista usuarios (solo admin).
+// Lista usuarios (admin y asistente pueden ver el equipo).
 usersRouter.get(
   '/',
-  authorize('admin'),
+  authorize('admin', 'asistente'),
   validateQuery(paginationQuery),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

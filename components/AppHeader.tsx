@@ -70,6 +70,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             Convenios
           </button>
           <button
+            onClick={() => onNavigate(ViewState.TEAM)}
+            className={navClass(ViewState.TEAM)}
+          >
+            Mi Equipo
+          </button>
+          <button
             onClick={() => onNavigate(ViewState.ACTIVITY_LOG)}
             className={navClass(ViewState.ACTIVITY_LOG)}
           >

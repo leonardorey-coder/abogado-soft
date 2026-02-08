@@ -19,6 +19,7 @@ import { SecurityInfoPage } from "./components/SecurityInfoPage";
 import { RegisterPage } from "./components/RegisterPage";
 import { LoginPage } from "./components/LoginPage";
 import { CompleteProfilePage } from "./components/CompleteProfilePage";
+import { TeamPage } from "./components/TeamPage";
 
 export default function App() {
   return (
@@ -123,6 +124,8 @@ function AppContent() {
         return <AssignedList onNavigate={setCurrentView} />;
       case ViewState.AGREEMENTS:
         return <AgreementsList onNavigate={setCurrentView} />;
+      case ViewState.TEAM:
+        return <TeamPage onNavigate={setCurrentView} />;
       case ViewState.EDITOR:
         return <DocumentEditor onNavigate={handleNavigate} documentFromTrash={documentFromTrash} />;
       case ViewState.EXCEL_EDITOR:

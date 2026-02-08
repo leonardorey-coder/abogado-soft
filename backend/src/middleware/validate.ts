@@ -14,20 +14,32 @@ export function validate<T extends z.ZodTypeAny>(schema: T) {
 
 /**
  * Middleware factory que valida req.query contra un schema Zod.
+ * Express 5 hace req.query readonly, así que usamos Object.defineProperty.
  */
 export function validateQuery<T extends z.ZodTypeAny>(schema: T) {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    req.query = schema.parse(req.query) as typeof req.query;
+    const parsed = schema.parse(req.query);
+    Object.defineProperty(req, 'query', {
+      value: parsed,
+      writable: true,
+      configurable: true,
+    });
     next();
   };
 }
 
 /**
  * Middleware factory que valida req.params contra un schema Zod.
+ * Express 5 hace req.params readonly, así que usamos Object.defineProperty.
  */
 export function validateParams<T extends z.ZodTypeAny>(schema: T) {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    req.params = schema.parse(req.params) as typeof req.params;
+    const parsed = schema.parse(req.params);
+    Object.defineProperty(req, 'params', {
+      value: parsed,
+      writable: true,
+      configurable: true,
+    });
     next();
   };
 }

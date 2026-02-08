@@ -148,7 +148,7 @@ authRouter.get(
         include: {
           settings: true,
           groupMemberships: {
-            include: { group: { select: { id: true, name: true } } },
+            include: { group: { select: { id: true, name: true, description: true } } },
           },
           _count: { select: { groupMemberships: true } },
         },

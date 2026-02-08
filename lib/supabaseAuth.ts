@@ -27,6 +27,11 @@ export interface AppUser {
   officeName?: string | null;
   isActive: boolean;
   needsProfileSetup?: boolean;
+  groupMemberships?: Array<{
+    id: string;
+    role: string;
+    group: { id: string; name: string; description?: string | null };
+  }>;
 }
 
 export interface AuthResult {
