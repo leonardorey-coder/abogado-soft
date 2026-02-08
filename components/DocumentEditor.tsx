@@ -346,13 +346,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
               <span>Detalles del Caso</span>
             </button>
           </nav>
-          <button 
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-            className="mt-auto w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary/5 transition-colors"
-           >
-            <span className="material-symbols-outlined">logout</span>
-            Cerrar Editor
-          </button>
         </aside>
 
         {/* Main Content Area */}
