@@ -6,10 +6,17 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:api": "cd backend && bun run dev",
+    "dev:full": "concurrently \"vite\" \"cd backend && bun run dev\"",
+    "dev:electron": "concurrently \"vite\" \"cd backend && bun run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "vite build",
+    "build:api": "cd backend && bun run build",
     "preview": "vite preview",
     "electron": "electron .",
-    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron .\""
+    "setup": "npm install && cd backend && bun install && bunx prisma generate",
+    "db:push": "cd backend && bunx prisma db push",
+    "db:seed": "cd backend && bun run prisma:seed",
+    "db:studio": "cd backend && bunx prisma studio"
   },
   "dependencies": {
     "react-dom": "^19.2.4",

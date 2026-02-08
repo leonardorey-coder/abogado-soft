@@ -1,0 +1,785 @@
+// ============================================================================
+// AbogadoSoft — Prisma Schema
+// Mapea 1:1 con supabase/migrations/001_complete_schema.sql
+// PostgreSQL 16 + Supabase (Auth only, data via Prisma)
+// ============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [uuid_ossp(map: "uuid-ossp"), pgcrypto]
+}
+
+// ─────────────────────────────────────────────
+// ENUMS (deben coincidir con los ENUMs del SQL)
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  asistente
+
+  @@map("user_role")
+}
+
+enum GroupRole {
+  admin
+  editor
+  viewer
+
+  @@map("group_role")
+}
+
+enum DocumentType {
+  docx
+  doc
+  pdf
+  xlsx
+  xls
+  txt
+  rtf
+
+  @@map("document_type")
+}
+
+enum FileStatus {
+  ACTIVO
+  PENDIENTE
+  INACTIVO
+
+  @@map("file_status")
+}
+
+enum CollaborationStatus {
+  VISTO
+  EDITADO
+  COMENTADO
+  REVISADO
+  APROBADO
+  PENDIENTE_REVISION
+  RECHAZADO
+
+  @@map("collaboration_status")
+}
+
+enum SharingStatus {
+  ENVIADO
+  ASIGNADO
+
+  @@map("sharing_status")
+}
+
+enum PermissionLevel {
+  none
+  download
+  read
+  write
+  admin
+
+  @@map("permission_level")
+}
+
+enum ConvenioStatus {
+  activo
+  pendiente
+  vencido
+  expirado
+  cancelado
+
+  @@map("convenio_status")
+}
+
+enum SyncOperation {
+  create
+  update
+  delete
+
+  @@map("sync_operation")
+}
+
+enum SyncStatus {
+  pending
+  syncing
+  completed
+  failed
+
+  @@map("sync_status")
+}
+
+enum SyncEntityType {
+  document
+  convenio
+  group
+  user
+  comment
+
+  @@map("sync_entity_type")
+}
+
+enum BackupStatus {
+  pending
+  in_progress
+  completed
+  failed
+
+  @@map("backup_status")
+}
+
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  DOCUMENT_CREATED
+  DOCUMENT_UPDATED
+  DOCUMENT_DELETED
+  DOCUMENT_RESTORED
+  DOCUMENT_SHARED
+  DOCUMENT_ASSIGNED
+  DOCUMENT_DOWNLOADED
+  DOCUMENT_EXTRACTED
+  DOCUMENT_PERMISSION_CHANGED
+  DOCUMENT_VERSION_CREATED
+  DOCUMENT_COMMENT_ADDED
+  DOCUMENT_COMMENT_DELETED
+  CONVENIO_CREATED
+  CONVENIO_UPDATED
+  CONVENIO_DELETED
+  GROUP_CREATED
+  GROUP_UPDATED
+  GROUP_DELETED
+  GROUP_MEMBER_ADDED
+  GROUP_MEMBER_REMOVED
+  ADMIN_ACCESS_GRANTED
+  ADMIN_ACCESS_DENIED
+  BACKUP_CREATED
+  BACKUP_RESTORED
+  USER_REGISTERED
+  USER_UPDATED
+  PASSWORD_CHANGED
+  SETTINGS_CHANGED
+  COLLABORATION_STARTED
+  COLLABORATION_ENDED
+  DOCUMENT_LOCKED
+  DOCUMENT_UNLOCKED
+  CASE_CREATED
+  CASE_UPDATED
+  CASE_DOCUMENT_LINKED
+  CASE_DOCUMENT_UNLINKED
+
+  @@map("activity_type")
+}
+
+// ─────────────────────────────────────────────
+// 3. USUARIOS
+// ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  name          String    @db.VarChar(255)
+  passwordHash  String?   @map("password_hash") @db.VarChar(255)
+  role          UserRole  @default(asistente)
+  avatarUrl     String?   @map("avatar_url")
+  phone         String?   @db.VarChar(50)
+  officeName    String?   @map("office_name") @db.VarChar(255)
+  department    String?   @db.VarChar(255)
+  position      String?   @db.VarChar(255)
+  adminPinHash  String?   @map("admin_pin_hash") @db.VarChar(255)
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLogin     DateTime? @map("last_login") @db.Timestamptz()
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relaciones
+  ownedGroups           Group[]                  @relation("GroupOwner")
+  groupMemberships      GroupMember[]
+  ownedDocuments        Document[]               @relation("DocOwner")
+  deletedDocuments      Document[]               @relation("DocDeleter")
+  permissionsGranted    DocumentPermission[]     @relation("PermGranter")
+  permissionsReceived   DocumentPermission[]     @relation("PermUser")
+  assignmentsReceived   DocumentAssignment[]     @relation("AssignedTo")
+  assignmentsSent       DocumentAssignment[]     @relation("AssignedBy")
+  documentVersions      DocumentVersion[]
+  documentComments      DocumentComment[]
+  activityLogs          ActivityLog[]
+  conveniosResponsable  Convenio[]
+  convenioDocumentsAdded ConvenioDocument[]
+  backups               Backup[]
+  adminAccessLogs       AdminAccessLog[]
+  caseDocumentsAdded    CaseDocument[]
+  casesResponsible      Case[]
+  collaborationPresence CollaborationPresence[]
+  collaborationOps      CollaborationOperation[]
+  documentLocks         DocumentLock[]
+  settings              UserSettings?
+  sessions              UserSession[]
+  notifications         Notification[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// 4. GRUPOS DE TRABAJO
+// ─────────────────────────────────────────────
+
+model Group {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(255)
+  description String?
+  inviteCode  String?  @unique @map("invite_code") @db.VarChar(64)
+  ownerId     String   @map("owner_id") @db.Uuid
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  owner       User          @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  documents   Document[]
+  permissions DocumentPermission[]
+
+  @@index([ownerId])
+  @@map("groups")
+}
+
+// ─────────────────────────────────────────────
+// 5. MIEMBROS DE GRUPO
+// ─────────────────────────────────────────────
+
+model GroupMember {
+  id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId  String    @map("group_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  role     GroupRole @default(viewer)
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+// ─────────────────────────────────────────────
+// 6. DOCUMENTOS
+// ─────────────────────────────────────────────
+
+model Document {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String               @db.VarChar(500)
+  type                DocumentType
+  size                BigInt               @default(0)
+  localPath           String?              @map("local_path")
+  cloudUrl            String?              @map("cloud_url")
+  ownerId             String?              @map("owner_id") @db.Uuid
+  groupId             String?              @map("group_id") @db.Uuid
+  caseId              String?              @map("case_id") @db.Uuid
+
+  fileStatus          FileStatus           @default(ACTIVO) @map("file_status")
+  collaborationStatus CollaborationStatus? @map("collaboration_status")
+  sharingStatus       SharingStatus?       @map("sharing_status")
+
+  version             Int                  @default(1)
+  checksum            String?              @db.VarChar(128)
+
+  expirationDate      DateTime?            @map("expiration_date") @db.Date
+
+  isDeleted           Boolean              @default(false) @map("is_deleted")
+  deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz()
+  deletedBy           String?              @map("deleted_by") @db.Uuid
+
+  description         String?
+  tags                String[]
+  mimeType            String?              @map("mime_type") @db.VarChar(255)
+
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  owner               User?                @relation("DocOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deleter             User?                @relation("DocDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
+  group               Group?               @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  case_               Case?                @relation("DocCase", fields: [caseId], references: [id], onDelete: SetNull)
+
+  permissions          DocumentPermission[]
+  assignments          DocumentAssignment[]
+  versions             DocumentVersion[]
+  comments             DocumentComment[]
+  adminAccessLogs      AdminAccessLog[]
+  convenioDocuments    ConvenioDocument[]
+  caseDocuments        CaseDocument[]
+  collaborationSession CollaborationSession?
+  documentLocks        DocumentLock[]
+
+  @@index([ownerId])
+  @@index([groupId])
+  @@index([isDeleted])
+  @@index([fileStatus])
+  @@index([collaborationStatus])
+  @@index([sharingStatus])
+  @@index([type])
+  @@index([updatedAt(sort: Desc)])
+  @@index([caseId])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────
+// 7. PERMISOS SOBRE DOCUMENTOS
+// ─────────────────────────────────────────────
+
+model DocumentPermission {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId      String          @map("document_id") @db.Uuid
+  userId          String?         @map("user_id") @db.Uuid
+  groupId         String?         @map("group_id") @db.Uuid
+  permissionLevel PermissionLevel @default(read) @map("permission_level")
+  grantedBy       String?         @map("granted_by") @db.Uuid
+  expiresAt       DateTime?       @map("expires_at") @db.Timestamptz()
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User?    @relation("PermUser", fields: [userId], references: [id], onDelete: Cascade)
+  group    Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  granter  User?    @relation("PermGranter", fields: [grantedBy], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, userId], map: "uq_doc_user_perm")
+  @@unique([documentId, groupId], map: "uq_doc_group_perm")
+  @@index([documentId])
+  @@index([userId])
+  @@index([groupId])
+  @@index([permissionLevel])
+  @@map("document_permissions")
+}
+
+// ─────────────────────────────────────────────
+// 8. DOCUMENTOS ASIGNADOS
+// ─────────────────────────────────────────────
+
+model DocumentAssignment {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId  String    @map("document_id") @db.Uuid
+  assignedTo  String    @map("assigned_to") @db.Uuid
+  assignedBy  String    @map("assigned_by") @db.Uuid
+  status      String    @default("pendiente") @db.VarChar(50)
+  notes       String?
+  dueDate     DateTime? @map("due_date") @db.Date
+  completedAt DateTime? @map("completed_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  assignee   User     @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: Cascade)
+  assigner   User     @relation("AssignedBy", fields: [assignedBy], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, assignedTo], map: "uq_doc_assignment")
+  @@index([assignedTo])
+  @@index([assignedBy])
+  @@index([status])
+  @@index([documentId])
+  @@map("document_assignments")
+}
+
+// ─────────────────────────────────────────────
+// 9. HISTORIAL DE VERSIONES
+// ─────────────────────────────────────────────
+
+model DocumentVersion {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  version    Int
+  localPath  String?  @map("local_path")
+  cloudUrl   String?  @map("cloud_url")
+  size       BigInt   @default(0)
+  checksum   String?  @db.VarChar(128)
+  changeNote String?  @map("change_note")
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, version], map: "uq_doc_version")
+  @@index([documentId])
+  @@index([createdBy])
+  @@map("document_versions")
+}
+
+// ─────────────────────────────────────────────
+// 10. COMENTARIOS EN DOCUMENTOS
+// ─────────────────────────────────────────────
+
+model DocumentComment {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String  @map("document_id") @db.Uuid
+  userId     String  @map("user_id") @db.Uuid
+  parentId   String? @map("parent_id") @db.Uuid
+  content    String
+  pageNumber Int?    @map("page_number")
+  positionX  Float?  @map("position_x") @db.Real
+  positionY  Float?  @map("position_y") @db.Real
+  isResolved Boolean @default(false) @map("is_resolved")
+  isDeleted  Boolean @default(false) @map("is_deleted")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  document Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   DocumentComment? @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  DocumentComment[] @relation("CommentThread")
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("document_comments")
+}
+
+// ─────────────────────────────────────────────
+// 11. BITÁCORA / LOG DE ACTIVIDAD
+// ─────────────────────────────────────────────
+
+model ActivityLog {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?      @map("user_id") @db.Uuid
+  activity   ActivityType
+  entityType String?      @map("entity_type") @db.VarChar(50)
+  entityId   String?      @map("entity_id") @db.Uuid
+  entityName String?      @map("entity_name") @db.VarChar(500)
+  description String?
+  metadata   Json?        @db.JsonB
+  ipAddress  String?      @map("ip_address") @db.Inet
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([activity])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("activity_log")
+}
+
+// ─────────────────────────────────────────────
+// 12. CONVENIOS
+// ─────────────────────────────────────────────
+
+model Convenio {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero        String         @unique @db.VarChar(100)
+  institucion   String         @db.VarChar(255)
+  departamento  String?        @db.VarChar(255)
+  descripcion   String?
+  fechaInicio   DateTime       @map("fecha_inicio") @db.Date
+  fechaFin      DateTime       @map("fecha_fin") @db.Date
+  responsableId String?        @map("responsable_id") @db.Uuid
+  estado        ConvenioStatus @default(pendiente)
+  notas         String?
+  monto         Decimal?       @db.Decimal(14, 2)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  responsable User?              @relation(fields: [responsableId], references: [id], onDelete: SetNull)
+  documents   ConvenioDocument[]
+
+  @@index([estado])
+  @@index([fechaFin])
+  @@index([responsableId])
+  @@index([institucion])
+  @@map("convenios")
+}
+
+// ─────────────────────────────────────────────
+// 13. DOCUMENTOS DE CONVENIOS (N:M)
+// ─────────────────────────────────────────────
+
+model ConvenioDocument {
+  convenioId String   @map("convenio_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz()
+  addedBy    String?  @map("added_by") @db.Uuid
+
+  convenio Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  addedByUser User?  @relation(fields: [addedBy], references: [id], onDelete: SetNull)
+
+  @@id([convenioId, documentId])
+  @@map("convenio_documents")
+}
+
+// ─────────────────────────────────────────────
+// 14. RESPALDOS / BACKUPS
+// ─────────────────────────────────────────────
+
+model Backup {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String       @db.VarChar(500)
+  type           String       @default("full") @db.VarChar(50)
+  status         BackupStatus @default(pending)
+  filePath       String?      @map("file_path")
+  cloudUrl       String?      @map("cloud_url")
+  size           BigInt?
+  checksum       String?      @db.VarChar(128)
+  documentsCount Int?         @default(0) @map("documents_count")
+  createdBy      String?      @map("created_by") @db.Uuid
+  startedAt      DateTime?    @map("started_at") @db.Timestamptz()
+  completedAt    DateTime?    @map("completed_at") @db.Timestamptz()
+  errorMessage   String?      @map("error_message")
+  metadata       Json?        @db.JsonB
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+
+  creator User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("backups")
+}
+
+// ─────────────────────────────────────────────
+// 15. LOG DE ACCESO COMPLETO (ADMIN TEMPORAL)
+// ─────────────────────────────────────────────
+
+model AdminAccessLog {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId   String    @map("document_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  granted      Boolean   @default(false)
+  sessionToken String?   @map("session_token") @db.VarChar(255)
+  ipAddress    String?   @map("ip_address") @db.Inet
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("admin_access_log")
+}
+
+// ─────────────────────────────────────────────
+// 16. EXPEDIENTES / CASOS LEGALES
+// ─────────────────────────────────────────────
+
+model Case {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseNumber    String    @unique @map("case_number") @db.VarChar(100)
+  title         String    @db.VarChar(500)
+  client        String?   @db.VarChar(255)
+  court         String?   @db.VarChar(255)
+  caseType      String?   @map("case_type") @db.VarChar(100)
+  status        String    @default("en_proceso") @db.VarChar(50)
+  description   String?
+  startDate     DateTime? @map("start_date") @db.Date
+  endDate       DateTime? @map("end_date") @db.Date
+  responsibleId String?   @map("responsible_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  responsible   User?          @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  documents     Document[]     @relation("DocCase")
+  caseDocuments CaseDocument[]
+
+  @@index([caseNumber])
+  @@index([status])
+  @@index([responsibleId])
+  @@index([caseType])
+  @@map("cases")
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTOS ↔ EXPEDIENTES (N:M)
+// ─────────────────────────────────────────────
+
+model CaseDocument {
+  caseId     String   @map("case_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz()
+  addedBy    String?  @map("added_by") @db.Uuid
+
+  case_    Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  addedByUser User? @relation(fields: [addedBy], references: [id], onDelete: SetNull)
+
+  @@id([caseId, documentId])
+  @@index([caseId])
+  @@index([documentId])
+  @@map("case_documents")
+}
+
+// ─────────────────────────────────────────────
+// 17. COLABORACIÓN EN TIEMPO REAL
+// ─────────────────────────────────────────────
+
+model CollaborationSession {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String    @unique @map("document_id") @db.Uuid
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  endedAt    DateTime? @map("ended_at") @db.Timestamptz()
+
+  document   Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  presence   CollaborationPresence[]
+  operations CollaborationOperation[]
+
+  @@index([documentId])
+  @@map("collaboration_sessions")
+}
+
+model CollaborationPresence {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId      String    @map("session_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  cursorPosition Json?     @map("cursor_position") @db.JsonB
+  lastSeen       DateTime  @default(now()) @map("last_seen") @db.Timestamptz()
+  isActive       Boolean   @default(true) @map("is_active")
+  joinedAt       DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
+  leftAt         DateTime? @map("left_at") @db.Timestamptz()
+
+  session CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId], map: "uq_session_user")
+  @@index([sessionId])
+  @@index([userId])
+  @@map("collaboration_presence")
+}
+
+model CollaborationOperation {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  operationType String   @map("operation_type") @db.VarChar(50)
+  position      Int?
+  length        Int?
+  content       String?
+  metadata      Json?    @db.JsonB
+  revision      BigInt
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  session CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([sessionId, revision])
+  @@index([createdAt])
+  @@map("collaboration_operations")
+}
+
+model DocumentLock {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String    @map("document_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  sectionId  String?   @map("section_id") @db.VarChar(255)
+  lockType   String    @default("section") @map("lock_type") @db.VarChar(20)
+  lockedAt   DateTime  @default(now()) @map("locked_at") @db.Timestamptz()
+  expiresAt  DateTime  @default(dbgenerated("(NOW() + '00:05:00'::interval)")) @map("expires_at") @db.Timestamptz()
+  releasedAt DateTime? @map("released_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sectionId], map: "uq_doc_section_lock")
+  @@index([documentId])
+  @@map("document_locks")
+}
+
+// ─────────────────────────────────────────────
+// 18. COLA DE SINCRONIZACIÓN
+// ─────────────────────────────────────────────
+
+model SyncQueue {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType  SyncEntityType @map("entity_type")
+  entityId    String         @map("entity_id") @db.Uuid
+  operation   SyncOperation
+  payload     Json?          @db.JsonB
+  status      SyncStatus     @default(pending)
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(5) @map("max_attempts")
+  lastError   String?        @map("last_error")
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  syncedAt    DateTime?      @map("synced_at") @db.Timestamptz()
+
+  @@index([status])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("sync_queue")
+}
+
+// ─────────────────────────────────────────────
+// 19. CONFIGURACIÓN DE USUARIO
+// ─────────────────────────────────────────────
+
+model UserSettings {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  theme            String   @default("light") @db.VarChar(20)
+  fontSize         Int      @default(16) @map("font_size")
+  notifications    Boolean  @default(true)
+  autoSave         Boolean  @default(true) @map("auto_save")
+  autoSaveInterval Int      @default(30) @map("auto_save_interval")
+  language         String   @default("es") @db.VarChar(10)
+  storagePath      String?  @map("storage_path")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ─────────────────────────────────────────────
+// 20. SESIONES ACTIVAS
+// ─────────────────────────────────────────────
+
+model UserSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  sessionToken String   @unique @map("session_token") @db.VarChar(512)
+  deviceInfo   Json?    @map("device_info") @db.JsonB
+  ipAddress    String?  @map("ip_address") @db.Inet
+  isActive     Boolean  @default(true) @map("is_active")
+  lastActivity DateTime @default(now()) @map("last_activity") @db.Timestamptz()
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive, expiresAt])
+  @@index([sessionToken])
+  @@map("user_sessions")
+}
+
+// ─────────────────────────────────────────────
+// 21. NOTIFICACIONES
+// ─────────────────────────────────────────────
+
+model Notification {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  title      String    @db.VarChar(500)
+  message    String
+  type       String    @default("info") @db.VarChar(50)
+  entityType String?   @map("entity_type") @db.VarChar(50)
+  entityId   String?   @map("entity_id") @db.Uuid
+  isRead     Boolean   @default(false) @map("is_read")
+  readAt     DateTime? @map("read_at") @db.Timestamptz()
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([type])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}

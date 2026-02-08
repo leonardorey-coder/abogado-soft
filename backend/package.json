@@ -1,0 +1,39 @@
+{
+  "name": "abogado-soft-backend",
+  "version": "0.1.0",
+  "description": "API REST para AbogadoSoft — Bun + Express + Prisma + Supabase (Auth + Realtime)",
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "build": "bun build src/server.ts --outdir dist --target bun",
+    "start": "bun dist/server.js",
+    "prisma:generate": "bunx prisma generate",
+    "prisma:push": "bunx prisma db push",
+    "prisma:pull": "bunx prisma db pull",
+    "prisma:migrate": "bunx prisma migrate dev",
+    "prisma:studio": "bunx prisma studio",
+    "prisma:seed": "bun prisma/seed.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "zod": "^3.25.17"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.10",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/morgan": "^1.9.9",
+    "prisma": "^6.9.0",
+    "typescript": "^5.8.2"
+  }
+}
