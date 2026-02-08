@@ -1,24 +1,14 @@
 // ============================================================================
 // Auth Middleware — Verifica JWT emitido por Supabase Auth
-// NO usa supabase-client. Decodifica el token con jsonwebtoken.
+// Usa la API de Supabase Auth (getUser) para verificar el token de forma
+// segura sin depender del JWT secret local.
 // ============================================================================
 
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import prisma from '../lib/prisma.js';
+import prisma from '../lib/prisma';
 
-// Payload del JWT de Supabase
-interface SupabaseJwtPayload {
-  sub: string;         // user id (UUID)
-  email: string;
-  role: string;        // 'authenticated'
-  aud: string;         // 'authenticated'
-  iss: string;         // supabase URL
-  iat: number;
-  exp: number;
-  app_metadata?: Record<string, unknown>;
-  user_metadata?: Record<string, unknown>;
-}
+const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? '';
 
 // Se adjunta al Request después de autenticar
 export interface AuthUser {
@@ -38,11 +28,33 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
+/**
+ * Verifica un access_token contra la API de Supabase Auth.
+ * Devuelve el user id (sub) si es válido, o null si no lo es.
+ */
+async function verifySupabaseToken(accessToken: string): Promise<{ id: string; email: string } | null> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!data?.id) return null;
+
+    return { id: data.id, email: data.email };
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Middleware principal: extrae y valida el JWT de Supabase del header Authorization.
- * Busca al usuario en la BD vía Prisma y lo adjunta a req.user.
+ * Middleware principal: extrae el JWT del header Authorization,
+ * lo verifica con Supabase Auth, y busca al usuario en la BD vía Prisma.
  */
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -54,20 +66,16 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
     const token = authHeader.slice(7);
 
-    if (!JWT_SECRET) {
-      console.error('SUPABASE_JWT_SECRET no configurado');
-      res.status(500).json({ error: 'Error de configuración del servidor' });
+    // Verificar token contra Supabase Auth API
+    const supabaseUser = await verifySupabaseToken(token);
+    if (!supabaseUser) {
+      res.status(401).json({ error: 'Token inválido o expirado' });
       return;
     }
 
-    // Verificar y decodificar el JWT
-    const decoded = jwt.verify(token, JWT_SECRET, {
-      algorithms: ['HS256'],
-    }) as SupabaseJwtPayload;
-
     // Buscar usuario en nuestra BD
     const user = await prisma.user.findUnique({
-      where: { id: decoded.sub },
+      where: { id: supabaseUser.id },
       select: { id: true, email: true, name: true, role: true, isActive: true },
     });
 
@@ -84,14 +92,6 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     req.user = user;
     next();
   } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      res.status(401).json({ error: 'Token expirado' });
-      return;
-    }
-    if (error instanceof jwt.JsonWebTokenError) {
-      res.status(401).json({ error: 'Token inválido' });
-      return;
-    }
     next(error);
   }
 }
@@ -120,21 +120,23 @@ export function authorize(...roles: Array<'admin' | 'asistente'>) {
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ') || !JWT_SECRET) {
+    if (!authHeader?.startsWith('Bearer ')) {
       next();
       return;
     }
 
     const token = authHeader.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as SupabaseJwtPayload;
+    const supabaseUser = await verifySupabaseToken(token);
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.sub },
-      select: { id: true, email: true, name: true, role: true, isActive: true },
-    });
+    if (supabaseUser) {
+      const user = await prisma.user.findUnique({
+        where: { id: supabaseUser.id },
+        select: { id: true, email: true, name: true, role: true, isActive: true },
+      });
 
-    if (user?.isActive) {
-      req.user = user;
+      if (user?.isActive) {
+        req.user = user;
+      }
     }
   } catch {
     // Token inválido — continuar sin usuario

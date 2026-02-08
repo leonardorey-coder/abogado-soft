@@ -114,10 +114,22 @@ authRouter.post(
           avatarUrl: true,
           officeName: true,
           isActive: true,
+          _count: { select: { groupMemberships: true } },
         },
       });
 
-      res.json(user);
+      // Crear settings por defecto si es usuario nuevo
+      await prisma.userSettings.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id },
+      });
+
+      res.json({
+        ...user,
+        needsProfileSetup: user._count.groupMemberships === 0,
+        _count: undefined,
+      });
     } catch (error) {
       next(error);
     }
@@ -138,10 +150,14 @@ authRouter.get(
           groupMemberships: {
             include: { group: { select: { id: true, name: true } } },
           },
+          _count: { select: { groupMemberships: true } },
         },
       });
 
-      res.json(user);
+      res.json({
+        ...user,
+        needsProfileSetup: user._count.groupMemberships === 0,
+      });
     } catch (error) {
       next(error);
     }
@@ -157,6 +173,7 @@ const updateProfileSchema = z.object({
   department: z.string().max(255).optional().nullable(),
   position: z.string().max(255).optional().nullable(),
   avatarUrl: z.string().url().optional().nullable(),
+  role: z.enum(['admin', 'asistente']).optional(),
 });
 
 authRouter.patch(
