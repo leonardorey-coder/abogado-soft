@@ -8,11 +8,13 @@ import { getRoleLabel } from "../lib/constants";
 
 interface DashboardProps {
   documents: Document[];
-  setDocuments: React.Dispatch<React.SetStateAction<Document[]>>;
   onDeleteDocument: (doc: Document) => void;
+  onStatusChange: (id: string, status: FileStatus) => Promise<void>;
   onNavigate: (view: ViewState) => void;
   onOpenUploadModal?: () => void;
   searchQuery?: string;
+  loading?: boolean;
+  onRefresh?: () => Promise<void>;
 }
 
 const permissionLabel: Record<DocumentPermissionLevel, string> = {
@@ -80,11 +82,13 @@ const matchesSearch = (doc: Document, q: string) => {
 
 export const Dashboard: React.FC<DashboardProps> = ({
   documents,
-  setDocuments,
   onDeleteDocument,
+  onStatusChange,
   onNavigate,
   onOpenUploadModal,
   searchQuery = "",
+  loading = false,
+  onRefresh,
 }) => {
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
@@ -128,20 +132,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setAdminAccessDocument(null);
   };
 
-  const handleStatusChange = (e: React.MouseEvent, id: string, newFileStatus: FileStatus) => {
+  const handleStatusChange = async (e: React.MouseEvent, id: string, newFileStatus: FileStatus) => {
     e.stopPropagation();
-    setDocuments(docs => docs.map(doc =>
-        doc.id === id ? { ...doc, fileStatus: newFileStatus } : doc
-    ));
+    try {
+      await onStatusChange(id, newFileStatus);
+    } catch (err) {
+      console.error('Error cambiando estado:', err);
+    }
   };
 
-  const handleArchive = (e: React.MouseEvent, doc: Document) => {
+  const handleArchive = async (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
     setMenuOpenDocId(null);
     const nextStatus: FileStatus = doc.fileStatus === "INACTIVO" ? "ACTIVO" : "INACTIVO";
-    setDocuments(docs => docs.map(d =>
-      d.id === doc.id ? { ...d, fileStatus: nextStatus } : d
-    ));
+    try {
+      await onStatusChange(doc.id, nextStatus);
+    } catch (err) {
+      console.error('Error archivando:', err);
+    }
   };
 
   const handleDelete = (e: React.MouseEvent, doc: Document) => {
@@ -333,6 +341,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         )}
 
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 animate-pulse min-h-[300px]">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-16 h-16 bg-slate-200 dark:bg-slate-700 rounded-xl" />
+                  <div className="w-16 h-6 bg-slate-200 dark:bg-slate-700 rounded-md" />
+                </div>
+                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4" />
+                <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-xl mt-auto" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos recientes">
           {filteredDocuments.map((doc) => {
             const { icon, color } = getFileIcon(doc.type);
@@ -519,6 +542,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         </div>
+        )}
 
       </main>
 
@@ -536,13 +560,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <DocumentPermissionsModal
           document={permissionsDocument}
           onClose={() => setPermissionsDocument(null)}
-          onSave={(permissions) => {
-            if (!permissionsDocument) return;
-            setDocuments((docs) =>
-              docs.map((doc) =>
-                doc.id === permissionsDocument.id ? { ...doc, documentPermissions: permissions } : doc
-              )
-            );
+          onSave={(_permissions) => {
+            // TODO: Llamar API de permisos cuando se implemente
+            setPermissionsDocument(null);
           }}
         />
       )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ViewState, Document } from "./types";
-import { initialDocuments } from "./data/initialDocuments";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { useDocuments } from "./lib/useDocuments";
 import { AppHeader } from "./components/AppHeader";
 import { AppFooter } from "./components/AppFooter";
 import { Dashboard } from "./components/Dashboard";
@@ -32,12 +32,22 @@ export default function App() {
 function AppContent() {
   const { user, loading, logout } = useAuth();
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.LOGIN);
-  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
-  const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Hook que conecta con la API real de documentos
+  const {
+    documents,
+    loading: docsLoading,
+    refresh: refreshDocuments,
+    deleteDocument,
+    updateStatus,
+    createDocument,
+    total: docsTotal,
+  } = useDocuments({ search: searchQuery, autoFetch: !!user });
+
   const [documentFromTrash, setDocumentFromTrash] = useState<Document | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Redirigir a login si no hay sesión, o a dashboard si ya hay
   useEffect(() => {
@@ -81,17 +91,27 @@ function AppContent() {
     setCurrentView(doc.type === "XLSX" ? ViewState.EXCEL_EDITOR : ViewState.EDITOR);
   };
 
-  const handleDeleteDocument = (doc: Document) => {
-    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
-    setDeletedDocuments((prev) => [...prev, doc]);
+  const handleDeleteDocument = async (doc: Document) => {
+    try {
+      await deleteDocument(doc.id);
+    } catch (err) {
+      console.error('Error eliminando documento:', err);
+    }
   };
 
-  const handleRestoreDocument = (doc: Document) => {
-    setDeletedDocuments((prev) => prev.filter((d) => d.id !== doc.id));
-    setDocuments((prev) => [...prev, doc]);
+  const handleRestoreDocument = async (doc: Document) => {
+    try {
+      const { documentsApi } = await import('./lib/api');
+      await documentsApi.restore(doc.id);
+      await refreshDocuments();
+    } catch (err) {
+      console.error('Error restaurando documento:', err);
+    }
   };
 
-  const handleEmptyTrash = () => setDeletedDocuments([]);
+  const handleEmptyTrash = () => {
+    // Se maneja desde TrashPage directamente con la API
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
@@ -111,11 +131,13 @@ function AppContent() {
         return (
           <Dashboard
             documents={documents}
-            setDocuments={setDocuments}
             onDeleteDocument={handleDeleteDocument}
+            onStatusChange={updateStatus}
             onNavigate={setCurrentView}
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
             searchQuery={searchQuery}
+            loading={docsLoading}
+            onRefresh={refreshDocuments}
           />
         );
       case ViewState.DOCUMENTS:
@@ -137,11 +159,8 @@ function AppContent() {
       case ViewState.TRASH:
         return (
           <TrashPage
-            deletedDocuments={deletedDocuments}
-            onRestore={handleRestoreDocument}
-            onOpenDocument={handleOpenDocumentFromTrash}
-            onEmptyTrash={handleEmptyTrash}
             onNavigate={setCurrentView}
+            onRefreshDocuments={refreshDocuments}
           />
         );
       case ViewState.TERMS:
@@ -160,11 +179,13 @@ function AppContent() {
         return (
           <Dashboard
             documents={documents}
-            setDocuments={setDocuments}
             onDeleteDocument={handleDeleteDocument}
+            onStatusChange={updateStatus}
             onNavigate={setCurrentView}
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
             searchQuery={searchQuery}
+            loading={docsLoading}
+            onRefresh={refreshDocuments}
           />
         );
     }
@@ -179,7 +200,7 @@ function AppContent() {
           onNavigate={setCurrentView}
           currentView={currentView}
           onUploadClick={() => setIsUploadModalOpen(true)}
-          deletedCount={deletedDocuments.length}
+          deletedCount={0}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
