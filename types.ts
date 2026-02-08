@@ -13,6 +13,7 @@ export enum ViewState {
   SECURITY_INFO = 'SECURITY_INFO',
   REGISTER = 'REGISTER',
   LOGIN = 'LOGIN',
+  COMPLETE_PROFILE = 'COMPLETE_PROFILE',
 }
 
 export type DocumentStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO' | 'VISTO' | 'EDITADO';
