@@ -19,14 +19,15 @@
     "db:studio": "cd backend && bunx prisma studio"
   },
   "dependencies": {
-    "react-dom": "^19.2.4",
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.1.0",
     "electron": "^40.2.1",
+    "supabase": "^2.76.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "wait-on": "^8.0.0"
