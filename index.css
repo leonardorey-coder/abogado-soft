@@ -1,0 +1,53 @@
+/* ─── docx-preview styles ─── */
+.docx-preview-host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #e5e7eb;
+  min-height: 600px;
+}
+
+.docx-preview-host .docx-wrapper {
+  background: #e5e7eb !important;
+  padding: 20px 0 !important;
+}
+
+.docx-preview-host .docx-wrapper > section.docx {
+  background: white !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15) !important;
+  margin: 10px auto !important;
+  padding: 40px !important;
+  max-width: 100% !important;
+}
+
+/* Ensure images are visible */
+.docx-preview-host img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tables */
+.docx-preview-host table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.docx-preview-host td,
+.docx-preview-host th {
+  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+}
+
+/* Dark mode adjustments */
+.dark .docx-preview-host {
+  background: #1e293b;
+}
+
+.dark .docx-preview-host .docx-wrapper {
+  background: #1e293b !important;
+}
+
+.dark .docx-preview-host .docx-wrapper > section.docx {
+  background: #1e1e2e !important;
+  color: #e2e8f0 !important;
+}
