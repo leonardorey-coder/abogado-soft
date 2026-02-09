@@ -6,6 +6,7 @@ import { apiDocToFrontend } from "../lib/useDocuments";
 interface DocumentsListProps {
   onNavigate: (view: ViewState) => void;
   searchQuery?: string;
+  onOpenDocument?: (docId: string, docType?: string) => void;
 }
 
 const getFileStatusBadge = (status: FileStatus) => {
@@ -36,7 +37,7 @@ const FILE_STATUS_OPTIONS: { value: FileStatus; label: string }[] = [
   { value: "ACTIVO", label: "Activo" }, { value: "PENDIENTE", label: "Pendiente" }, { value: "INACTIVO", label: "Inactivo" }
 ];
 
-export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, searchQuery = "" }) => {
+export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, searchQuery = "", onOpenDocument }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"TODOS" | FileStatus>("TODOS");
@@ -73,7 +74,20 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
   useEffect(() => { setPage(1); }, [searchQuery, filter]);
 
-  const handleVer = (doc: Document) => { doc.type === "XLSX" ? onNavigate(ViewState.EXCEL_EDITOR) : onNavigate(ViewState.EDITOR); };
+  const handleVer = (doc: Document) => {
+    if (onOpenDocument) { onOpenDocument(doc.id, doc.type); }
+    else { doc.type === "XLSX" ? onNavigate(ViewState.EXCEL_EDITOR) : onNavigate(ViewState.EDITOR); }
+  };
+
+  const handleEliminar = async (doc: Document) => {
+    if (!confirm(`¿Enviar "${doc.name}" a la papelera?`)) return;
+    try {
+      await documentsApi.delete(doc.id);
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+      setTotal(prev => prev - 1);
+      fetchCounts();
+    } catch (err) { console.error('Error eliminando documento:', err); }
+  };
 
   const handleStatusChange = async (docId: string, newStatus: FileStatus) => {
     try { await documentsApi.update(docId, { fileStatus: newStatus }); setDocuments(prev => prev.map(d => d.id === docId ? { ...d, fileStatus: newStatus } : d)); setStatusDropdownDocId(null); fetchCounts(); }
@@ -183,9 +197,14 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button type="button" onClick={() => handleVer(doc)} className="bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 ml-auto">
-                    <span className="material-symbols-outlined text-lg">visibility</span>Ver
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" onClick={() => handleVer(doc)} className="bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                      <span className="material-symbols-outlined text-lg">visibility</span>Ver
+                    </button>
+                    <button type="button" onClick={() => handleEliminar(doc)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center" title="Enviar a papelera">
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -27,6 +27,14 @@ interface TrashPageProps {
 export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocuments }) => {
   const [deletedDocuments, setDeletedDocuments] = useState<ApiDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+    setTimeout(() => setToast(prev => prev ? { ...prev, visible: false } : null), 2500);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const fetchTrash = useCallback(async () => {
     try {
@@ -40,10 +48,26 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
 
   const handleRestore = async (doc: ApiDocument) => {
     try {
+      setRestoringId(doc.id);
       await documentsApi.restore(doc.id);
+      // Esperar animación antes de quitar la card
+      await new Promise(r => setTimeout(r, 600));
       setDeletedDocuments(prev => prev.filter(d => d.id !== doc.id));
+      setRestoringId(null);
+      showToast(`"${doc.name}" restaurado correctamente`);
       onRefreshDocuments?.();
-    } catch (err) { console.error("Error restaurando documento:", err); }
+    } catch (err) {
+      setRestoringId(null);
+      console.error("Error restaurando documento:", err);
+    }
+  };
+
+  const handlePermanentDelete = async (doc: ApiDocument) => {
+    if (!confirm(`¿Eliminar permanentemente "${doc.name}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await documentsApi.permanentDelete(doc.id);
+      setDeletedDocuments(prev => prev.filter(d => d.id !== doc.id));
+    } catch (err) { console.error("Error eliminando documento:", err); }
   };
 
   const handleOpenDocument = (doc: ApiDocument) => {
@@ -103,7 +127,12 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
                 tabIndex={0}
                 onClick={() => handleOpenDocument(doc)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenDocument(doc); } }}
-                className="min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer flex flex-col"
+                className={`min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 transition-all cursor-pointer flex flex-col ${
+                  restoringId === doc.id
+                    ? "border-green-400 dark:border-green-500 bg-green-50 dark:bg-green-900/20 scale-95 opacity-0"
+                    : "border-slate-100 dark:border-slate-700 hover:border-primary"
+                }`}
+                style={{ transition: 'all 0.5s ease-in-out' }}
               >
                 <header className="flex items-start justify-between gap-3 mb-4">
                   <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden>
@@ -127,16 +156,45 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
                 <div className="flex gap-2 mt-auto" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
+                    disabled={restoringId === doc.id}
                     onClick={(e) => { e.stopPropagation(); handleRestore(doc); }}
-                    className="flex-1 min-h-[44px] py-3 bg-primary text-white hover:bg-primary/90 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                    className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
+                      restoringId === doc.id
+                        ? "bg-green-500 text-white cursor-wait"
+                        : "bg-primary text-white hover:bg-primary/90"
+                    }`}
                   >
-                    <span className="material-symbols-outlined text-lg">restore</span>
-                    Restaurar
+                    <span className={`material-symbols-outlined text-lg ${restoringId === doc.id ? "animate-spin" : ""}`}>
+                      {restoringId === doc.id ? "sync" : "restore"}
+                    </span>
+                    {restoringId === doc.id ? "Restaurando..." : "Restaurar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handlePermanentDelete(doc); }}
+                    className="min-h-[44px] py-3 px-4 bg-red-500 text-white hover:bg-red-600 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                    title="Eliminar permanentemente"
+                  >
+                    <span className="material-symbols-outlined text-lg">delete_forever</span>
                   </button>
                 </div>
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Toast de restauración */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border transition-all duration-500 ${
+            toast.visible
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-4"
+          } bg-green-50 dark:bg-green-900/80 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200`}
+        >
+          <span className="material-symbols-outlined text-2xl text-green-600 dark:text-green-400">check_circle</span>
+          <span className="font-bold text-sm">{toast.message}</span>
         </div>
       )}
     </main>

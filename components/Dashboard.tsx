@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
@@ -11,10 +11,12 @@ interface DashboardProps {
   onDeleteDocument: (doc: Document) => void;
   onStatusChange: (id: string, status: FileStatus) => Promise<void>;
   onNavigate: (view: ViewState) => void;
-  onOpenUploadModal?: () => void;
+  onOpenUploadModal?: (files?: File[]) => void;
+  isUploadModalOpen?: boolean;
   searchQuery?: string;
   loading?: boolean;
   onRefresh?: () => Promise<void>;
+  onOpenDocument?: (docId: string, docType?: string) => void;
 }
 
 const permissionLabel: Record<DocumentPermissionLevel, string> = {
@@ -86,9 +88,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onStatusChange,
   onNavigate,
   onOpenUploadModal,
+  isUploadModalOpen = false,
   searchQuery = "",
   loading = false,
   onRefresh,
+  onOpenDocument,
 }) => {
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
@@ -99,10 +103,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [menuOpenDocId, setMenuOpenDocId] = useState<string | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const menuAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   useEffect(() => {
     setConfirmDeleteDocId(null);
   }, [menuOpenDocId]);
+
+  // ─── Full-window drag & drop ────────────────────────────────────────────
+  const handleWindowDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    if (e.dataTransfer?.types.includes('Files') && !isUploadModalOpen) {
+      setIsDraggingOver(true);
+    }
+  }, [isUploadModalOpen]);
+
+  const handleWindowDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDraggingOver(false);
+    }
+  }, []);
+
+  const handleWindowDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleWindowDrop = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+    if (e.dataTransfer?.files.length) {
+      const files = Array.from(e.dataTransfer.files);
+      onOpenUploadModal?.(files);
+    }
+  }, [onOpenUploadModal]);
+
+  useEffect(() => {
+    window.addEventListener('dragenter', handleWindowDragEnter);
+    window.addEventListener('dragleave', handleWindowDragLeave);
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+    return () => {
+      window.removeEventListener('dragenter', handleWindowDragEnter);
+      window.removeEventListener('dragleave', handleWindowDragLeave);
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
+    };
+  }, [handleWindowDragEnter, handleWindowDragLeave, handleWindowDragOver, handleWindowDrop]);
 
   useEffect(() => {
     if (!menuOpenDocId) return;
@@ -172,7 +223,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleDocumentClick = (doc: Document) => {
-    if (doc.type === 'XLSX') {
+    if (onOpenDocument) {
+      onOpenDocument(doc.id, doc.type);
+    } else if (doc.type === 'XLSX') {
         onNavigate(ViewState.EXCEL_EDITOR);
     } else {
         onNavigate(ViewState.EDITOR);
@@ -201,6 +254,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <>
+      {/* Full-window drag overlay */}
+      {isDraggingOver && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary pointer-events-none animate-in fade-in duration-200">
+          <div className="flex flex-col items-center gap-4 p-10 rounded-3xl bg-white/90 dark:bg-slate-900/90 shadow-2xl border-2 border-primary">
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
+              <span className="material-symbols-outlined text-5xl text-primary animate-bounce">cloud_upload</span>
+            </div>
+            <p className="text-2xl font-black text-slate-900 dark:text-white">Suelta el archivo aquí</p>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Se abrirá el modal de subida para adjuntar tu documento</p>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
         {/* Welcome Heading */}
         <div className="flex flex-col gap-1">
