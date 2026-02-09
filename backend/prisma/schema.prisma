@@ -299,6 +299,7 @@ model Document {
   description         String?
   tags                String[]
   mimeType            String?              @map("mime_type") @db.VarChar(255)
+  ydocState           Bytes?               @map("ydoc_state")
 
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
