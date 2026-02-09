@@ -31,3 +31,6 @@ supabase/.temp/
 .vscode/
 *.swp
 
+
+# Uploaded files
+backend/uploads/
