@@ -44,6 +44,80 @@ async function apiFetch<T = unknown>(
   return res.json();
 }
 
+/**
+ * Fetch para subir archivos con FormData (sin Content-Type manual,
+ * el navegador lo pone automáticamente con boundary).
+ */
+async function apiFetchUpload<T = unknown>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const token = await getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Error de servidor' }));
+    throw new ApiError(res.status, body.error ?? body.message ?? 'Error desconocido');
+  }
+
+  return res.json();
+}
+
+/** Construye la URL para servir/previsualizar el archivo de un documento */
+export function getDocumentFileUrl(documentId: string): string {
+  return `${API_URL}/documents/${documentId}/file`;
+}
+
+/** Construye la URL para descargar el archivo de un documento */
+export function getDocumentDownloadUrl(documentId: string): string {
+  return `${API_URL}/documents/${documentId}/download`;
+}
+
+/** Descarga un documento con autenticación (evita 401 en window.open) */
+export async function downloadDocument(documentId: string, fileName?: string): Promise<void> {
+  const token = await getAccessToken();
+  const url = getDocumentDownloadUrl(documentId);
+
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Error de servidor' }));
+    throw new ApiError(res.status, body.error ?? 'Error al descargar el archivo');
+  }
+
+  // Obtener el nombre del archivo del header Content-Disposition o usar el proporcionado
+  const contentDisposition = res.headers.get('Content-Disposition');
+  let downloadName = fileName ?? 'documento';
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match?.[1]) {
+      downloadName = match[1].replace(/['"]/g, '');
+    }
+  }
+
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -89,6 +163,17 @@ export interface ApiDocument {
   updatedAt: string;
   owner?: { id: string; name: string; email: string; avatarUrl: string | null } | null;
   group?: { id: string; name: string } | null;
+  case_?: {
+    id: string;
+    caseNumber: string;
+    title: string;
+    client: string | null;
+    court: string | null;
+    caseType: string | null;
+    status: string;
+    description: string | null;
+    startDate: string | null;
+  } | null;
   permissions?: ApiDocumentPermission[];
   versions?: ApiDocumentVersion[];
   comments?: ApiDocumentComment[];
@@ -119,6 +204,7 @@ export interface ApiDocumentComment {
   isResolved: boolean;
   createdAt: string;
   user: { id: string; name: string; avatarUrl: string | null };
+  replies?: ApiDocumentComment[];
 }
 
 export interface ApiDocumentAssignment {
@@ -293,7 +379,14 @@ export const documentsApi = {
     method: 'POST',
   }),
 
-  listTrash: () => apiFetch<ApiDocument[]>('/documents/trash'),
+  listTrash: async (): Promise<ApiDocument[]> => {
+    const res = await apiFetch<{ data: ApiDocument[]; total: number }>('/documents/trash');
+    return (res as any).data ?? res;
+  },
+
+  permanentDelete: (id: string) => apiFetch<{ message: string }>(`/documents/${id}/permanent`, {
+    method: 'DELETE',
+  }),
 
   createVersion: (id: string, data: { changeNote?: string }) =>
     apiFetch<ApiDocumentVersion>(`/documents/${id}/versions`, {
@@ -306,6 +399,28 @@ export const documentsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  /** Sube un archivo al backend y crea el registro de documento */
+  upload: (file: File, metadata?: {
+    name?: string;
+    description?: string;
+    groupId?: string;
+    caseId?: string;
+    tags?: string[];
+  }) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (metadata?.name) formData.append('name', metadata.name);
+    if (metadata?.description) formData.append('description', metadata.description);
+    if (metadata?.groupId) formData.append('groupId', metadata.groupId);
+    if (metadata?.caseId) formData.append('caseId', metadata.caseId);
+    if (metadata?.tags) formData.append('tags', JSON.stringify(metadata.tags));
+    return apiFetchUpload<ApiDocument>('/documents/upload', formData);
+  },
+
+  /** Extrae el contenido HTML de un documento (DOCX, TXT) para el editor */
+  getContent: (id: string) =>
+    apiFetch<{ html: string; messages?: any[] }>(`/documents/${id}/content`),
 };
 
 // ─── CONVENIOS ──────────────────────────────────────────────────────────
