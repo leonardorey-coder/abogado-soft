@@ -1,6 +1,7 @@
 // ============================================================================
 // DocumentEditor — Vista de detalle/edición de documento con SuperDoc
 // Integra el editor DOCX de código abierto SuperDoc para edición avanzada
+// Con colaboración en tiempo real usando Liveblocks
 // URL única: #/document/:id
 // ============================================================================
 
@@ -11,7 +12,29 @@ import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
 
+// Liveblocks for real-time collaboration
+import { createClient } from '@liveblocks/client';
+import { LiveblocksYjsProvider } from '@liveblocks/yjs';
+import * as Y from 'yjs';
+
+// SuperDoc export options type (defined locally since not exported from superdoc)
+type SuperDocExportOptions = Record<string, unknown>;
+
 type EditorTab = 'EDITOR' | 'HISTORY' | 'COMMENTS' | 'DETAILS';
+
+// Liveblocks client - only initialize if we have a valid API key
+const LIVEBLOCKS_PUBLIC_KEY = import.meta.env.VITE_LIVEBLOCKS_PUBLIC_KEY || '';
+// Only create client if key exists and starts with 'pk_' (valid Liveblocks public key)
+const liveblocksClient = LIVEBLOCKS_PUBLIC_KEY && LIVEBLOCKS_PUBLIC_KEY.startsWith('pk_')
+  ? createClient({ publicApiKey: LIVEBLOCKS_PUBLIC_KEY })
+  : null;
+
+// Debug: log if Liveblocks is enabled
+if (liveblocksClient) {
+  console.log('[DocumentEditor] Liveblocks collaboration enabled');
+} else {
+  console.log('[DocumentEditor] Liveblocks disabled - no valid API key');
+}
 
 interface DocumentEditorProps {
   onNavigate: (view: ViewState) => void;
@@ -61,34 +84,77 @@ function getShareUrl(documentId: string): string {
   return `${base}#/document/${documentId}`;
 }
 
-// ─── SuperDoc Editor Component ───────────────────────────────────────────────
+// ─── Active Users Component ──────────────────────────────────────────────────
+
+interface ActiveUser {
+  name: string;
+  email: string;
+  color?: string;
+}
+
+const ActiveUsersIndicator: React.FC<{ users: ActiveUser[] }> = ({ users }) => {
+  if (users.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-500 font-medium">En línea:</span>
+      <div className="flex -space-x-2">
+        {users.slice(0, 5).map((user, idx) => (
+          <div
+            key={user.email || idx}
+            className="size-7 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+            style={{ backgroundColor: user.color || '#6366f1' }}
+            title={user.name}
+          >
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+        ))}
+        {users.length > 5 && (
+          <div className="size-7 rounded-full border-2 border-white dark:border-gray-800 bg-gray-400 flex items-center justify-center text-[10px] font-bold text-white">
+            +{users.length - 5}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── SuperDoc Editor Component with Liveblocks ───────────────────────────────
 
 interface SuperDocEditorProps {
+  documentId: string;
   documentBlob: Blob | null;
   documentName: string;
   userName: string;
   userEmail: string;
   onReady?: (editor: SuperDoc) => void;
   onUpdate?: () => void;
+  onActiveUsersChange?: (users: ActiveUser[]) => void;
 }
 
 interface SuperDocEditorRef {
-  export: (options?: { isFinalDoc?: boolean }) => Promise<Blob>;
+  export: (options?: SuperDocExportOptions) => Promise<Blob | null>;
   setMode: (mode: 'editing' | 'viewing' | 'suggesting') => void;
   getHTML: () => string[];
 }
 
 const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
-  ({ documentBlob, documentName, userName, userEmail, onReady, onUpdate }, ref) => {
+  ({ documentId, documentBlob, documentName, userName, userEmail, onReady, onUpdate, onActiveUsersChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
+    const providerRef = useRef<LiveblocksYjsProvider | null>(null);
+    const ydocRef = useRef<Y.Doc | null>(null);
+    const leaveRoomRef = useRef<(() => void) | null>(null);
     const [isReady, setIsReady] = useState(false);
+    const [isSynced, setIsSynced] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
     useImperativeHandle(ref, () => ({
-      export: async (options) => {
+      export: async (options?: SuperDocExportOptions): Promise<Blob | null> => {
         if (!superdocRef.current) throw new Error('Editor not ready');
-        return await superdocRef.current.export(options);
+        const result = await superdocRef.current.export(options as any);
+        return result instanceof Blob ? result : null;
       },
       setMode: (mode) => {
         superdocRef.current?.setDocumentMode(mode);
@@ -99,21 +165,20 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
     }));
 
     useEffect(() => {
-      if (!containerRef.current || !documentBlob) return;
+      if (!containerRef.current || !documentBlob || !documentId) return;
 
       let destroyed = false;
 
       const initEditor = async () => {
         try {
           setError(null);
+          setConnectionStatus(liveblocksClient ? 'connecting' : 'connected');
 
-          superdocRef.current = new SuperDoc({
+          // Initialize SuperDoc config
+          const superdocConfig: any = {
             selector: containerRef.current!,
-            document: {
-              id: documentName,
-              type: 'docx',
-              data: documentBlob,
-            },
+            // SuperDoc accepts: File, Blob, URL string, or config object
+            document: documentBlob,
             user: {
               name: userName,
               email: userEmail,
@@ -122,19 +187,90 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
             viewOptions: {
               layout: 'print',
             },
-            onReady: ({ superdoc }) => {
+            colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#6366f1', '#f59e0b'],
+            onReady: ({ superdoc }: { superdoc: SuperDoc }) => {
               if (destroyed) return;
               setIsReady(true);
+              setConnectionStatus('connected');
               onReady?.(superdoc);
             },
             onEditorUpdate: () => {
               onUpdate?.();
             },
-            onException: ({ error }) => {
+            onException: ({ error }: { error: Error }) => {
               console.error('SuperDoc error:', error);
               setError('Error en el editor de documentos');
             },
-          });
+          };
+
+          // Setup Liveblocks collaboration if API key is provided
+          if (liveblocksClient) {
+            try {
+              // Create Y.js document
+              ydocRef.current = new Y.Doc();
+
+              const roomResult = liveblocksClient.enterRoom(`document-${documentId}`, {
+                initialPresence: {
+                  cursor: null,
+                  user: { name: userName, email: userEmail }
+                }
+              });
+
+              leaveRoomRef.current = roomResult.leave;
+
+              // Create Liveblocks Y.js provider
+              providerRef.current = new LiveblocksYjsProvider(roomResult.room, ydocRef.current);
+
+              // Listen to sync status
+              providerRef.current.on('sync', (synced: boolean) => {
+                if (destroyed) return;
+                setIsSynced(synced);
+                if (synced) {
+                  setConnectionStatus('connected');
+                }
+              });
+
+              // Track active users via awareness
+              providerRef.current.awareness.on('change', () => {
+                if (destroyed) return;
+                const states = Array.from(providerRef.current!.awareness.getStates().values()) as any[];
+                const users: ActiveUser[] = states
+                  .filter(state => state.user)
+                  .map(state => ({
+                    name: state.user.name || 'Usuario',
+                    email: state.user.email || '',
+                    color: state.user.color
+                  }));
+                onActiveUsersChange?.(users);
+              });
+
+              // Add collaboration module to SuperDoc config
+              superdocConfig.modules = {
+                collaboration: {
+                  ydoc: ydocRef.current,
+                  provider: providerRef.current,
+                },
+              };
+
+              superdocConfig.onAwarenessUpdate = ({ states }: { states: any[] }) => {
+                if (destroyed) return;
+                const users: ActiveUser[] = states
+                  .filter(state => state.user)
+                  .map(state => ({
+                    name: state.user?.name || 'Usuario',
+                    email: state.user?.email || '',
+                    color: state.user?.color
+                  }));
+                onActiveUsersChange?.(users);
+              };
+            } catch (liveblocksError) {
+              console.warn('Liveblocks setup failed, continuing without collaboration:', liveblocksError);
+              // Continue without collaboration if Liveblocks fails
+            }
+          }
+
+          // Create SuperDoc instance
+          superdocRef.current = new SuperDoc(superdocConfig);
         } catch (err: any) {
           console.error('Error initializing SuperDoc:', err);
           setError(err.message || 'Error al inicializar el editor');
@@ -147,9 +283,16 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         destroyed = true;
         superdocRef.current?.destroy();
         superdocRef.current = null;
+        providerRef.current?.destroy();
+        providerRef.current = null;
+        ydocRef.current?.destroy();
+        ydocRef.current = null;
+        leaveRoomRef.current?.();
+        leaveRoomRef.current = null;
         setIsReady(false);
+        setIsSynced(false);
       };
-    }, [documentBlob, documentName, userName, userEmail]);
+    }, [documentBlob, documentId, documentName, userName, userEmail]);
 
     if (error) {
       return (
@@ -216,6 +359,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
 
   // Unsaved changes
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Active users for real-time collaboration
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
 
   // ─── Fetch document ──────────────────────────────────────────────────
   const fetchDocument = useCallback(async () => {
@@ -330,6 +476,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
     if (!editorRef.current || !doc) return;
     try {
       const blob = await editorRef.current.export({ isFinalDoc: true });
+
+      if (!blob) {
+        console.error('Export returned no blob');
+        return;
+      }
 
       // Trigger download
       const url = URL.createObjectURL(blob);
@@ -448,8 +599,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
                 key={mode}
                 onClick={() => handleModeChange(mode)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${editorMode === mode
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  ? 'bg-primary text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
               >
                 <span className="material-symbols-outlined text-base">
@@ -472,12 +623,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
             ) : documentBlob ? (
               <SuperDocEditor
                 ref={editorRef}
+                documentId={doc.id}
                 documentBlob={documentBlob}
                 documentName={doc.name}
                 userName={authUser?.name ?? 'Usuario'}
                 userEmail={authUser?.email ?? 'usuario@example.com'}
-                onReady={() => console.log('SuperDoc ready')}
+                onReady={() => console.log('[SuperDoc] Editor ready', { collaboration: !!liveblocksClient })}
                 onUpdate={() => setHasChanges(true)}
+                onActiveUsersChange={setActiveUsers}
               />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">
@@ -852,9 +1005,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
                   </button>
                 </div>
                 {!showDiff && (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <span className="material-symbols-outlined text-green-500 text-lg">cloud_done</span>
-                    <span>Última actualización: {formatTimeAgo(doc.updatedAt)}</span>
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    {/* Active users indicator */}
+                    {activeUsers.length > 0 && (
+                      <ActiveUsersIndicator users={activeUsers} />
+                    )}
+                    {liveblocksClient && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-xs text-green-600 font-medium">Colaboración activa</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-green-500 text-lg">cloud_done</span>
+                      <span>Última actualización: {formatTimeAgo(doc.updatedAt)}</span>
+                    </div>
                   </div>
                 )}
               </div>

@@ -19,6 +19,9 @@
     "db:studio": "cd backend && bunx prisma studio"
   },
   "dependencies": {
+    "@hocuspocus/provider": "^3.4.4",
+    "@liveblocks/client": "^3.13.4",
+    "@liveblocks/yjs": "^3.13.4",
     "@onlyoffice/document-editor-react": "^2.1.1",
     "@supabase/supabase-js": "^2.95.3",
     "@tiptap/extension-collaboration": "^3.19.0",

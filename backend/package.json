@@ -18,8 +18,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/websocket": "^11.2.0",
+    "@hocuspocus/extension-database": "^3.4.4",
+    "@hocuspocus/extension-logger": "^3.4.4",
+    "@hocuspocus/server": "^3.4.4",
     "@prisma/client": "^6.9.0",
     "@supabase/supabase-js": "^2.49.4",
+    "@superdoc-dev/superdoc-yjs-collaboration": "^1.0.2",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-collaboration": "^3.19.0",
     "@tiptap/extension-image": "^3.19.0",
@@ -30,6 +35,7 @@
     "@tiptap/starter-kit": "^3.19.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "fastify": "^5.7.4",
     "helmet": "^8.1.0",
     "html-to-docx": "^1.8.0",
     "jsonwebtoken": "^9.0.2",
