@@ -1,7 +1,6 @@
 // ============================================================================
 // DocumentEditor — Vista de detalle/edición de documento con SuperDoc
-// Integra el editor DOCX de código abierto SuperDoc para edición avanzada
-// Con colaboración en tiempo real usando Liveblocks
+// Almacenamiento: Google Drive API (sin WebSockets ni Liveblocks)
 // URL única: #/document/:id
 // ============================================================================
 
@@ -12,29 +11,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
 
-// Liveblocks for real-time collaboration
-import { createClient } from '@liveblocks/client';
-import { LiveblocksYjsProvider } from '@liveblocks/yjs';
-import * as Y from 'yjs';
+const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
 // SuperDoc export options type (defined locally since not exported from superdoc)
 type SuperDocExportOptions = Record<string, unknown>;
 
 type EditorTab = 'EDITOR' | 'HISTORY' | 'COMMENTS' | 'DETAILS';
-
-// Liveblocks client - only initialize if we have a valid API key
-const LIVEBLOCKS_PUBLIC_KEY = import.meta.env.VITE_LIVEBLOCKS_PUBLIC_KEY || '';
-// Only create client if key exists and starts with 'pk_' (valid Liveblocks public key)
-const liveblocksClient = LIVEBLOCKS_PUBLIC_KEY && LIVEBLOCKS_PUBLIC_KEY.startsWith('pk_')
-  ? createClient({ publicApiKey: LIVEBLOCKS_PUBLIC_KEY })
-  : null;
-
-// Debug: log if Liveblocks is enabled
-if (liveblocksClient) {
-  console.log('[DocumentEditor] Liveblocks collaboration enabled');
-} else {
-  console.log('[DocumentEditor] Liveblocks disabled - no valid API key');
-}
+type SyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
 
 interface DocumentEditorProps {
   onNavigate: (view: ViewState) => void;
@@ -142,13 +125,8 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
   ({ documentId, documentBlob, documentName, userName, userEmail, onReady, onUpdate, onActiveUsersChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
-    const providerRef = useRef<LiveblocksYjsProvider | null>(null);
-    const ydocRef = useRef<Y.Doc | null>(null);
-    const leaveRoomRef = useRef<(() => void) | null>(null);
     const [isReady, setIsReady] = useState(false);
-    const [isSynced, setIsSynced] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
     useImperativeHandle(ref, () => ({
       export: async (options?: SuperDocExportOptions): Promise<Blob | null> => {
@@ -172,104 +150,26 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
       const initEditor = async () => {
         try {
           setError(null);
-          setConnectionStatus(liveblocksClient ? 'connecting' : 'connected');
 
-          // Initialize SuperDoc config
           const superdocConfig: any = {
             selector: containerRef.current!,
-            // SuperDoc accepts: File, Blob, URL string, or config object
             document: documentBlob,
-            user: {
-              name: userName,
-              email: userEmail,
-            },
+            user: { name: userName, email: userEmail },
             documentMode: 'editing',
-            viewOptions: {
-              layout: 'print',
-            },
+            viewOptions: { layout: 'print' },
             colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#6366f1', '#f59e0b'],
             onReady: ({ superdoc }: { superdoc: SuperDoc }) => {
               if (destroyed) return;
               setIsReady(true);
-              setConnectionStatus('connected');
               onReady?.(superdoc);
             },
-            onEditorUpdate: () => {
-              onUpdate?.();
-            },
+            onEditorUpdate: () => { onUpdate?.(); },
             onException: ({ error }: { error: Error }) => {
               console.error('SuperDoc error:', error);
               setError('Error en el editor de documentos');
             },
           };
 
-          // Setup Liveblocks collaboration if API key is provided
-          if (liveblocksClient) {
-            try {
-              // Create Y.js document
-              ydocRef.current = new Y.Doc();
-
-              const roomResult = liveblocksClient.enterRoom(`document-${documentId}`, {
-                initialPresence: {
-                  cursor: null,
-                  user: { name: userName, email: userEmail }
-                }
-              });
-
-              leaveRoomRef.current = roomResult.leave;
-
-              // Create Liveblocks Y.js provider
-              providerRef.current = new LiveblocksYjsProvider(roomResult.room, ydocRef.current);
-
-              // Listen to sync status
-              providerRef.current.on('sync', (synced: boolean) => {
-                if (destroyed) return;
-                setIsSynced(synced);
-                if (synced) {
-                  setConnectionStatus('connected');
-                }
-              });
-
-              // Track active users via awareness
-              providerRef.current.awareness.on('change', () => {
-                if (destroyed) return;
-                const states = Array.from(providerRef.current!.awareness.getStates().values()) as any[];
-                const users: ActiveUser[] = states
-                  .filter(state => state.user)
-                  .map(state => ({
-                    name: state.user.name || 'Usuario',
-                    email: state.user.email || '',
-                    color: state.user.color
-                  }));
-                onActiveUsersChange?.(users);
-              });
-
-              // Add collaboration module to SuperDoc config
-              superdocConfig.modules = {
-                collaboration: {
-                  ydoc: ydocRef.current,
-                  provider: providerRef.current,
-                },
-              };
-
-              superdocConfig.onAwarenessUpdate = ({ states }: { states: any[] }) => {
-                if (destroyed) return;
-                const users: ActiveUser[] = states
-                  .filter(state => state.user)
-                  .map(state => ({
-                    name: state.user?.name || 'Usuario',
-                    email: state.user?.email || '',
-                    color: state.user?.color
-                  }));
-                onActiveUsersChange?.(users);
-              };
-            } catch (liveblocksError) {
-              console.warn('Liveblocks setup failed, continuing without collaboration:', liveblocksError);
-              // Continue without collaboration if Liveblocks fails
-            }
-          }
-
-          // Create SuperDoc instance
           superdocRef.current = new SuperDoc(superdocConfig);
         } catch (err: any) {
           console.error('Error initializing SuperDoc:', err);
@@ -283,14 +183,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         destroyed = true;
         superdocRef.current?.destroy();
         superdocRef.current = null;
-        providerRef.current?.destroy();
-        providerRef.current = null;
-        ydocRef.current?.destroy();
-        ydocRef.current = null;
-        leaveRoomRef.current?.();
-        leaveRoomRef.current = null;
         setIsReady(false);
-        setIsSynced(false);
       };
     }, [documentBlob, documentId, documentName, userName, userEmail]);
 
@@ -628,7 +521,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
                 documentName={doc.name}
                 userName={authUser?.name ?? 'Usuario'}
                 userEmail={authUser?.email ?? 'usuario@example.com'}
-                onReady={() => console.log('[SuperDoc] Editor ready', { collaboration: !!liveblocksClient })}
+                onReady={() => console.log('[SuperDoc] Editor ready')}
                 onUpdate={() => setHasChanges(true)}
                 onActiveUsersChange={setActiveUsers}
               />
@@ -1010,12 +903,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
                     {activeUsers.length > 0 && (
                       <ActiveUsersIndicator users={activeUsers} />
                     )}
-                    {liveblocksClient && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-xs text-green-600 font-medium">Colaboración activa</span>
-                      </div>
-                    )}
+
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-green-500 text-lg">cloud_done</span>
                       <span>Última actualización: {formatTimeAgo(doc.updatedAt)}</span>

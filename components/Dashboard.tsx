@@ -268,10 +268,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
-        {/* Welcome Heading */}
-        <div className="flex flex-col gap-1">
-          <h2 className="text-3xl font-black tracking-tight dark:text-white">Bienvenido, {user?.name ?? 'Usuario'}</h2>
-          <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Resumen general de su despacho legal al día de hoy.</p>
+        {/* Welcome & Despacho Hero */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-2">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-3xl font-black tracking-tight dark:text-white">Bienvenido, {user?.name ?? 'Usuario'}</h2>
+            <p className="text-[#616f89] dark:text-[#a0aec0] text-lg font-medium">Resumen general de su despacho legal al día de hoy.</p>
+          </div>
+
+          {/* Card de Despacho (Equipo) Reposicionada */}
+          {user?.groupMemberships && user.groupMemberships.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-sm p-4 flex flex-row items-center gap-4 shrink-0 transition-all hover:border-primary/40 hover:shadow-md max-w-sm w-full lg:w-auto">
+              <div className="bg-primary/10 text-primary w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[24px]">groups</span>
+              </div>
+              <div className="flex-1 min-w-0 pr-2">
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white truncate">
+                  {user.groupMemberships[0].group.name}
+                </h3>
+                {user.groupMemberships[0].group.description && (
+                  <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    {user.groupMemberships[0].group.description}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate(ViewState.TEAM)}
+                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white transition-all shadow-sm group/btn"
+                title="Ver equipo"
+              >
+                <span className="material-symbols-outlined text-[20px] transition-transform group-hover/btn:translate-x-0.5">arrow_forward</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -332,36 +361,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Su Equipo de Trabajo */}
-        {user?.groupMemberships && user.groupMemberships.length > 0 && (
-          <section className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm overflow-hidden">
-            <div className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="bg-primary/10 text-primary p-3 rounded-xl">
-                  <span className="material-symbols-outlined text-2xl">groups</span>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold dark:text-white">
-                    {user.groupMemberships[0].group.name}
-                  </h3>
-                  {user.groupMemberships[0].group.description && (
-                    <p className="text-sm text-[#616f89] dark:text-[#a0aec0] mt-0.5">
-                      {user.groupMemberships[0].group.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNavigate(ViewState.SECURITY)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                Ver equipo
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
-              </button>
-            </div>
-          </section>
-        )}
+        {/* Team card moved to the top header group */}
 
         <div className="pt-4">
           <h3 className="text-2xl font-bold flex items-center gap-2 dark:text-white">
@@ -563,10 +563,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     )}
                   </h3>
 
-                  <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
-                    <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>calendar_today</span>
-                    <span>{doc.lastModified}</span>
-                  </p>
+                  <div className="flex flex-col gap-1.5 mb-3">
+                    <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm">
+                      <span className="material-symbols-outlined text-[18px] shrink-0" aria-hidden>calendar_today</span>
+                      <span>{doc.lastModified}</span>
+                    </p>
+                    {doc.lastEditor && (
+                      <p className="flex items-center gap-2 text-slate-400 dark:text-slate-500 font-medium text-[13px]">
+                        <span className="material-symbols-outlined text-[16px] shrink-0" aria-hidden>edit</span>
+                        <span className="truncate">Editado por: {doc.lastEditor}</span>
+                      </p>
+                    )}
+                  </div>
 
                   {isExpiring && (
                     <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50" role="alert">

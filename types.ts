@@ -51,6 +51,7 @@ export interface Document {
   expirationDate?: string;
   documentPermissions?: DocumentPermissionEntry[];
   currentUserPermission?: DocumentPermissionLevel;
+  lastEditor?: string;
 }
 
 export interface DocumentVersion {

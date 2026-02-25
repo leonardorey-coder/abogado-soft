@@ -68,6 +68,7 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
       : undefined,
     documentPermissions: permissions,
     currentUserPermission: undefined, // se calcula por contexto
+    lastEditor: doc.owner?.name ?? 'Juan Pérez', // Default mock if owner not found
   };
 }
 
