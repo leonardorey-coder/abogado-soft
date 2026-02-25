@@ -19,13 +19,12 @@ const getFileStatusBadge = (status: FileStatus) => {
 };
 
 const getFileStatusOptionClass = (status: FileStatus, isSelected: boolean) => {
-  const base = "w-full text-left px-4 py-2 text-sm font-bold flex items-center gap-2 transition-colors ";
-  const hover = "hover:opacity-90 ";
+  const base = "w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 transition-colors ";
   switch (status) {
-    case "ACTIVO": return base + hover + (isSelected ? "text-green-800 dark:text-green-300 bg-green-50 dark:bg-green-900/20" : "text-green-700 dark:text-green-400");
-    case "PENDIENTE": return base + hover + (isSelected ? "text-yellow-800 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20" : "text-yellow-700 dark:text-yellow-400");
-    case "INACTIVO": return base + hover + (isSelected ? "text-red-800 dark:text-red-300 bg-red-50 dark:bg-red-900/20" : "text-red-700 dark:text-red-400");
-    default: return base + hover + "text-[#111318] dark:text-white";
+    case "ACTIVO": return base + (isSelected ? "text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-green-600 dark:hover:text-green-400");
+    case "PENDIENTE": return base + (isSelected ? "text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-yellow-600 dark:hover:text-yellow-400");
+    case "INACTIVO": return base + (isSelected ? "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/50" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-800 dark:hover:text-slate-200");
+    default: return base + "text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50";
   }
 };
 
@@ -185,25 +184,33 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
                 <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] font-medium text-sm">{doc.type}</td>
                 <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] text-sm">{doc.lastModified}</td>
                 <td className="px-6 py-4 text-center">
-                  <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative inline-block">
-                    <button type="button" onClick={() => setStatusDropdownDocId(id => id === doc.id ? null : doc.id)} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase cursor-pointer transition-opacity hover:opacity-90 ${getFileStatusBadge(doc.fileStatus)}`}>
-                      {doc.fileStatus}<span className="material-symbols-outlined text-sm">expand_more</span>
-                    </button>
-                    {statusDropdownDocId === doc.id && (
-                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 min-w-[140px] rounded-lg border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-lg overflow-hidden">
-                        {FILE_STATUS_OPTIONS.map(opt => (<button key={opt.value} type="button" onClick={() => handleStatusChange(doc.id, opt.value)} className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}>{opt.label}</button>))}
-                      </div>
-                    )}
-                  </div>
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}>
+                    {doc.fileStatus}
+                  </span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button type="button" onClick={() => handleVer(doc)} className="bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined text-lg">visibility</span>Ver
+                  <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative inline-block text-left">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setStatusDropdownDocId(id => id === doc.id ? null : doc.id); }} className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                      <span className="material-symbols-outlined">more_vert</span>
                     </button>
-                    <button type="button" onClick={() => handleEliminar(doc)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center" title="Enviar a papelera">
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </button>
+                    {statusDropdownDocId === doc.id && (
+                      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden py-1 transform-gpu">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); handleVer(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                          <span className="material-symbols-outlined text-[20px] text-primary">visibility</span>Abrir Documento
+                        </button>
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
+                        <div className="px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Cambiar Estado</div>
+                        {FILE_STATUS_OPTIONS.map(opt => (
+                          <button key={opt.value} type="button" onClick={(e) => { e.stopPropagation(); handleStatusChange(doc.id, opt.value); }} className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}>
+                            <span className="material-symbols-outlined text-[18px]">{doc.fileStatus === opt.value ? "radio_button_checked" : "radio_button_unchecked"}</span>{opt.label}
+                          </button>
+                        ))}
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
+                        <button type="button" onClick={(e) => { e.stopPropagation(); handleEliminar(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                          <span className="material-symbols-outlined text-[20px]">delete</span>Enviar a papelera
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>

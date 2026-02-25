@@ -58,22 +58,22 @@ const getSharingStatusColor = (status: SharingStatus) => {
 };
 
 const getStatusButtonColor = (status: FileStatus, isSelected: boolean) => {
-    if (!isSelected) return 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600';
-    switch (status) {
-      case 'ACTIVO': return 'bg-green-500 text-white ring-2 ring-green-200 dark:ring-green-900';
-      case 'PENDIENTE': return 'bg-yellow-500 text-white ring-2 ring-yellow-200 dark:ring-yellow-900';
-      case 'INACTIVO': return 'bg-slate-500 text-white ring-2 ring-slate-200 dark:ring-slate-600';
-      default: return 'bg-gray-500 text-white';
-    }
+  if (!isSelected) return 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600';
+  switch (status) {
+    case 'ACTIVO': return 'bg-green-500 text-white ring-2 ring-green-200 dark:ring-green-900';
+    case 'PENDIENTE': return 'bg-yellow-500 text-white ring-2 ring-yellow-200 dark:ring-yellow-900';
+    case 'INACTIVO': return 'bg-slate-500 text-white ring-2 ring-slate-200 dark:ring-slate-600';
+    default: return 'bg-gray-500 text-white';
+  }
 };
 
 const getFileIcon = (type: string) => {
-    switch (type) {
-        case 'DOCX': return { icon: 'description', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' };
-        case 'PDF': return { icon: 'picture_as_pdf', color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' };
-        case 'XLSX': return { icon: 'table_view', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' };
-        default: return { icon: 'article', color: 'bg-slate-100 text-slate-600' };
-    }
+  switch (type) {
+    case 'DOCX': return { icon: 'description', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' };
+    case 'PDF': return { icon: 'picture_as_pdf', color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' };
+    case 'XLSX': return { icon: 'table_view', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' };
+    default: return { icon: 'article', color: 'bg-slate-100 text-slate-600' };
+  }
 }
 
 const matchesSearch = (doc: Document, q: string) => {
@@ -226,9 +226,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (onOpenDocument) {
       onOpenDocument(doc.id, doc.type);
     } else if (doc.type === 'XLSX') {
-        onNavigate(ViewState.EXCEL_EDITOR);
+      onNavigate(ViewState.EXCEL_EDITOR);
     } else {
-        onNavigate(ViewState.EDITOR);
+      onNavigate(ViewState.EDITOR);
     }
   };
 
@@ -270,51 +270,66 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
         {/* Welcome Heading */}
         <div className="flex flex-col gap-1">
-            <h2 className="text-3xl font-black tracking-tight dark:text-white">Bienvenido, {user?.name ?? 'Usuario'}</h2>
-            <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Resumen general de su despacho legal al día de hoy.</p>
+          <h2 className="text-3xl font-black tracking-tight dark:text-white">Bienvenido, {user?.name ?? 'Usuario'}</h2>
+          <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Resumen general de su despacho legal al día de hoy.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos Activos</p>
-                    <span className="material-symbols-outlined text-primary">verified</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">{counts.activos}</p>
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
-                </div>
+          <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos Activos</p>
+              <span className="material-symbols-outlined text-green-500">verified</span>
             </div>
-            <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Pendientes</p>
-                    <span className="material-symbols-outlined text-primary">pending</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">{counts.pendientes}</p>
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Por revisar</p>
-                </div>
+            <div className="flex items-baseline gap-2 mb-3">
+              <p className="text-3xl font-bold dark:text-white">{counts.activos}</p>
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
             </div>
-            <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Expirados</p>
-                    <span className="material-symbols-outlined text-primary">error</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">{counts.expirados}</p>
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
-                </div>
+            {counts.todos > 0 && (
+              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-1 overflow-hidden">
+                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${(counts.activos / counts.todos) * 100}%` }}></div>
+              </div>
+            )}
+          </div>
+          <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Pendientes</p>
+              <span className="material-symbols-outlined text-yellow-500">pending</span>
             </div>
-            <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos Guardados</p>
-                    <span className="material-symbols-outlined text-primary">description</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold dark:text-white">{counts.todos}</p>
-                    <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total en lista</p>
-                </div>
+            <div className="flex items-baseline gap-2 mb-3">
+              <p className="text-3xl font-bold dark:text-white">{counts.pendientes}</p>
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Por revisar</p>
             </div>
+            {counts.todos > 0 && (
+              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-1 overflow-hidden">
+                <div className="bg-yellow-500 h-1.5 rounded-full" style={{ width: `${(counts.pendientes / counts.todos) * 100}%` }}></div>
+              </div>
+            )}
+          </div>
+          <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Expirados</p>
+              <span className="material-symbols-outlined text-red-500">error</span>
+            </div>
+            <div className="flex items-baseline gap-2 mb-3">
+              <p className="text-3xl font-bold dark:text-white">{counts.expirados}</p>
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Estado de archivo</p>
+            </div>
+            {counts.todos > 0 && (
+              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-1 overflow-hidden">
+                <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${(counts.expirados / counts.todos) * 100}%` }}></div>
+              </div>
+            )}
+          </div>
+          <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm flex flex-col justify-center">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos Guardados</p>
+              <span className="material-symbols-outlined text-primary">description</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <p className="text-3xl font-bold dark:text-white">{counts.todos}</p>
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total en lista</p>
+            </div>
+          </div>
         </div>
 
         {/* Su Equipo de Trabajo */}
@@ -354,51 +369,51 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Mis Documentos Recientes
           </h3>
         </div>
-        
+
         {/* Filter Pills */}
         <div className="flex gap-4 flex-wrap overflow-x-auto pb-2">
-            <button 
-                onClick={() => setFilter('TODOS')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === 'TODOS' ? 'bg-primary text-white' : 'bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className="material-symbols-outlined text-xl">check_circle</span>
-              Todos ({counts.todos})
-            </button>
-            <button 
-                onClick={() => setFilter('ACTIVOS')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'ACTIVOS' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === 'ACTIVOS' ? 'text-white' : 'text-green-600'}`}>verified</span>
-              Activos ({counts.activos})
-            </button>
-            <button 
-                onClick={() => setFilter('PENDIENTES')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'PENDIENTES' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === 'PENDIENTES' ? 'text-white' : 'text-orange-600'}`}>pending</span>
-              Pendientes ({counts.pendientes})
-            </button>
-            <button 
-                onClick={() => setFilter('VISTO')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'VISTO' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === 'VISTO' ? 'text-white' : 'text-blue-600'}`}>visibility</span>
-              Visto ({counts.visto})
-            </button>
-            <button 
-                onClick={() => setFilter('EDITADO')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'EDITADO' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === 'EDITADO' ? 'text-white' : 'text-purple-600'}`}>edit_document</span>
-              Editado ({counts.editado})
-            </button>
-            <button 
-                onClick={() => setFilter('EXPIRADOS')}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'EXPIRADOS' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === 'EXPIRADOS' ? 'text-white' : 'text-red-600'}`}>error</span>
-              Expirados ({counts.expirados})
-            </button>
+          <button
+            onClick={() => setFilter('TODOS')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === 'TODOS' ? 'bg-primary text-white' : 'bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className="material-symbols-outlined text-xl">check_circle</span>
+            Todos ({counts.todos})
+          </button>
+          <button
+            onClick={() => setFilter('ACTIVOS')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'ACTIVOS' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-xl ${filter === 'ACTIVOS' ? 'text-white' : 'text-green-600'}`}>verified</span>
+            Activos ({counts.activos})
+          </button>
+          <button
+            onClick={() => setFilter('PENDIENTES')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'PENDIENTES' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-xl ${filter === 'PENDIENTES' ? 'text-white' : 'text-orange-600'}`}>pending</span>
+            Pendientes ({counts.pendientes})
+          </button>
+          <button
+            onClick={() => setFilter('VISTO')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'VISTO' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-xl ${filter === 'VISTO' ? 'text-white' : 'text-blue-600'}`}>visibility</span>
+            Visto ({counts.visto})
+          </button>
+          <button
+            onClick={() => setFilter('EDITADO')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'EDITADO' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-xl ${filter === 'EDITADO' ? 'text-white' : 'text-purple-600'}`}>edit_document</span>
+            Editado ({counts.editado})
+          </button>
+          <button
+            onClick={() => setFilter('EXPIRADOS')}
+            className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold transition-all shadow-sm whitespace-nowrap ${filter === 'EXPIRADOS' ? 'bg-primary text-white border-2 border-primary' : 'bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-xl ${filter === 'EXPIRADOS' ? 'text-white' : 'text-red-600'}`}>error</span>
+            Expirados ({counts.expirados})
+          </button>
         </div>
 
         {searchQuery.trim() && filteredDocuments.length === 0 && (
@@ -422,192 +437,188 @@ export const Dashboard: React.FC<DashboardProps> = ({
             ))}
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos recientes">
-          {filteredDocuments.map((doc) => {
-            const { icon, color } = getFileIcon(doc.type);
-            const isExpiring = doc.fileStatus === 'PENDIENTE' && doc.expirationDate;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos recientes">
+            {filteredDocuments.map((doc) => {
+              const { icon, color } = getFileIcon(doc.type);
+              const isExpiring = doc.fileStatus === 'PENDIENTE' && doc.expirationDate;
 
-            return (
-              <article
-                key={doc.id}
-                role="listitem"
-                onClick={() => handleDocumentClick(doc)}
-                className="min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full"
-              >
-                <header className="flex items-start justify-between gap-3 mb-4">
-                  <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden>
-                    <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 justify-end shrink-0 items-center">
-                    <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getFileStatusColor(doc.fileStatus)}`}>
-                      {doc.fileStatus}
-                    </span>
-                    {doc.collaborationStatus && (
-                      <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getCollaborationStatusColor(doc.collaborationStatus)}`}>
-                        {doc.collaborationStatus}
-                      </span>
-                    )}
-                    <div className="relative" ref={menuOpenDocId === doc.id ? menuAnchorRef : undefined}>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(menuOpenDocId === doc.id ? null : doc.id); }}
-                        className="min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                        aria-label="Más opciones"
-                        aria-expanded={menuOpenDocId === doc.id}
-                        aria-haspopup="true"
-                      >
-                        <span className="flex flex-col items-center gap-0.5" aria-hidden>
-                          <span className="w-1 h-1 rounded-full bg-current" />
-                          <span className="w-1 h-1 rounded-full bg-current" />
-                          <span className="w-1 h-1 rounded-full bg-current" />
-                        </span>
-                      </button>
-                      {menuOpenDocId === doc.id && (
-                        <div
-                          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
-                          role="menu"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={(e) => handleArchive(e, doc)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg"
-                          >
-                            <span className="material-symbols-outlined text-lg">
-                              {doc.fileStatus === "INACTIVO" ? "unarchive" : "archive"}
-                            </span>
-                            {doc.fileStatus === "INACTIVO" ? "Desarchivar" : "Archivar"}
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={(e) => handlePermissions(e, doc)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 rounded-lg"
-                          >
-                            <span className="material-symbols-outlined text-lg">shield</span>
-                            Permisos
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={(e) => handleDelete(e, doc)}
-                            className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-lg"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                            {confirmDeleteDocId === doc.id ? "Clic para confirmar" : "Eliminar"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </header>
-
-                <h3 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
-                  {doc.name.split('_').map((part, i) =>
-                    i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>
-                  )}
-                </h3>
-
-                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
-                  <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>calendar_today</span>
-                  <span>{doc.lastModified}</span>
-                </p>
-
-                {isExpiring && (
-                  <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50" role="alert">
-                    <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>warning</span>
-                    <span className="text-xs font-bold">Vence el {doc.expirationDate}</span>
-                  </div>
-                )}
-
-                <footer
-                  className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 cursor-default flex flex-col gap-4"
-                  onClick={(e) => e.stopPropagation()}
+              return (
+                <article
+                  key={doc.id}
+                  role="listitem"
+                  onClick={() => handleDocumentClick(doc)}
+                  className="min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full"
                 >
-                  <section aria-label="Estado del documento">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2.5">Estado</p>
-                    <div className="flex flex-wrap gap-2">
-                      {(['ACTIVO', 'PENDIENTE', 'INACTIVO'] as FileStatus[]).map((status) => (
+                  <header className="flex items-start justify-between gap-3 mb-4">
+                    <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden>
+                      <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 justify-end shrink-0 items-center">
+                      <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getFileStatusColor(doc.fileStatus)}`}>
+                        {doc.fileStatus}
+                      </span>
+                      {doc.collaborationStatus && (
+                        <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getCollaborationStatusColor(doc.collaborationStatus)}`}>
+                          {doc.collaborationStatus}
+                        </span>
+                      )}
+                      <div className="relative" ref={menuOpenDocId === doc.id ? menuAnchorRef : undefined}>
                         <button
-                          key={status}
-                          onClick={(e) => handleStatusChange(e, doc.id, status)}
-                          title={`Marcar como ${status}`}
-                          className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.fileStatus === status)}`}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(menuOpenDocId === doc.id ? null : doc.id); }}
+                          className="min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          aria-label="Más opciones"
+                          aria-expanded={menuOpenDocId === doc.id}
+                          aria-haspopup="true"
                         >
-                          <span className="material-symbols-outlined text-lg" aria-hidden>
-                            {status === 'ACTIVO' && 'check'}
-                            {status === 'PENDIENTE' && 'hourglass_empty'}
-                            {status === 'INACTIVO' && 'block'}
+                          <span className="flex flex-col items-center gap-0.5" aria-hidden>
+                            <span className="w-1 h-1 rounded-full bg-current" />
+                            <span className="w-1 h-1 rounded-full bg-current" />
+                            <span className="w-1 h-1 rounded-full bg-current" />
                           </span>
                         </button>
-                      ))}
+                        {menuOpenDocId === doc.id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
+                            role="menu"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {/* Opciones de Estado en el Menú de 3 Puntos */}
+                            <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700">
+                              <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Estado</p>
+                              <div className="flex items-center flex-wrap gap-1.5">
+                                {(['ACTIVO', 'PENDIENTE', 'INACTIVO'] as FileStatus[]).map((status) => (
+                                  <button
+                                    key={status}
+                                    onClick={(e) => { setMenuOpenDocId(null); handleStatusChange(e, doc.id, status); }}
+                                    title={`Marcar como ${status}`}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ${getStatusButtonColor(status, doc.fileStatus === status)}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]" aria-hidden>
+                                      {status === 'ACTIVO' && 'check'}
+                                      {status === 'PENDIENTE' && 'hourglass_empty'}
+                                      {status === 'INACTIVO' && 'block'}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(e) => handleArchive(e, doc)}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-lg">
+                                {doc.fileStatus === "INACTIVO" ? "unarchive" : "archive"}
+                              </span>
+                              {doc.fileStatus === "INACTIVO" ? "Desarchivar" : "Archivar"}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(null); setShareDocument(doc); }}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-lg">share</span>
+                              Compartir
+                            </button>
+                            {showAccesoCompleto && doc.currentUserPermission !== "admin" && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(null); handleAccesoCompleto(e, doc); }}
+                                className="w-full px-4 py-2 text-left text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2"
+                              >
+                                <span className="material-symbols-outlined text-lg">lock_open</span>
+                                Acceso completo
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(e) => handlePermissions(e, doc)}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-lg">shield</span>
+                              Permisos
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(e) => handleDelete(e, doc)}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 rounded-b-lg"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                              {confirmDeleteDocId === doc.id ? "Clic para confirmar" : "Eliminar"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </section>
-                  {doc.sharingStatus && (
-                    <div className="flex items-center gap-2" aria-label="Compartido">
-                      <span className="material-symbols-outlined text-lg text-slate-400" aria-hidden>share</span>
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${getSharingStatusColor(doc.sharingStatus)}`}>
+                  </header>
+
+                  <h3 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
+                    {doc.name.split('_').map((part, i) =>
+                      i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>
+                    )}
+                  </h3>
+
+                  <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
+                    <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>calendar_today</span>
+                    <span>{doc.lastModified}</span>
+                  </p>
+
+                  {isExpiring && (
+                    <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/50" role="alert">
+                      <span className="material-symbols-outlined text-lg shrink-0" aria-hidden>warning</span>
+                      <span className="text-xs font-bold">Vence el {doc.expirationDate}</span>
+                    </div>
+                  )}
+
+                  <footer
+                    className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2"
+                  >
+                    {doc.sharingStatus && (
+                      <span className={`px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex ${getSharingStatusColor(doc.sharingStatus)}`}>
+                        <span className="material-symbols-outlined text-[14px]">share</span>
                         {doc.sharingStatus}
                       </span>
-                    </div>
-                  )}
-                  {(doc.currentUserPermission !== undefined || (doc.documentPermissions?.length ?? 0) > 0) && (
-                    <div className="flex items-center gap-2 flex-wrap" aria-label="Permisos">
-                      <span className="material-symbols-outlined text-lg text-slate-400" aria-hidden>shield</span>
-                      {doc.currentUserPermission !== undefined && (
-                        <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase border bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
-                          Tú: {permissionLabel[doc.currentUserPermission]}
-                        </span>
-                      )}
-                      {doc.documentPermissions && doc.documentPermissions.some((p) => p.level === "admin" && p.userName !== "Tú") && (
-                        <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase border bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
-                          Admin
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {showAccesoCompleto && doc.currentUserPermission !== "admin" && (
-                    <button
-                      type="button"
-                      onClick={(e) => handleAccesoCompleto(e, doc)}
-                      className="w-full min-h-[44px] py-3 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                    >
-                      <span className="material-symbols-outlined text-lg" aria-hidden>lock_open</span>
-                      Acceso completo
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShareDocument(doc); }}
-                    className="w-full min-h-[44px] py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-lg" aria-hidden>share</span>
-                    Compartir
-                  </button>
-                </footer>
-              </article>
-            );
-          })}
+                    )}
+                    {(doc.currentUserPermission !== undefined || (doc.documentPermissions?.length ?? 0) > 0) && (
+                      <span className="px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
+                        <span className="material-symbols-outlined text-[14px]">shield</span>
+                        {doc.currentUserPermission !== undefined ? `Tú: ${permissionLabel[doc.currentUserPermission]}` : 'Permisos'}
+                      </span>
+                    )}
+                    {doc.documentPermissions && doc.documentPermissions.some((p) => p.level === "admin" && p.userName !== "Tú") && (
+                      <span className="px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
+                        <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
+                        Admin
+                      </span>
+                    )}
+                  </footer>
+                </article>
+              );
+            })}
 
-          {/* Add New Card */}
-          <div 
-             onClick={() => onOpenUploadModal?.()}
-             className="bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer min-h-[300px]"
-          >
-            <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
-              <span className="material-symbols-outlined text-4xl">add</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold text-slate-600 dark:text-slate-400">
-                Nuevo Documento
-              </p>
-              <p className="text-slate-500 dark:text-slate-500 text-sm mt-1">
-                Subir archivo
-              </p>
+            {/* Add New Card */}
+            <div
+              onClick={() => onOpenUploadModal?.()}
+              className="bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer min-h-[300px]"
+            >
+              <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
+                <span className="material-symbols-outlined text-4xl">add</span>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-slate-600 dark:text-slate-400">
+                  Nuevo Documento
+                </p>
+                <p className="text-slate-500 dark:text-slate-500 text-sm mt-1">
+                  Subir archivo
+                </p>
+              </div>
             </div>
           </div>
-        </div>
         )}
 
       </main>
