@@ -1,11 +1,23 @@
 import { z } from 'zod';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { ParamsFlatDictionary } from 'express-serve-static-core';
+
+// ─── Tipos auxiliares ────────────────────────────────────────────────────────
+
+/**
+ * Extiende Request de Express con params garantizados como string-only.
+ * Úsalo en los handlers de rutas que usen validateParams().
+ */
+export interface TypedRequest<P extends ParamsFlatDictionary = ParamsFlatDictionary>
+  extends Request {
+  params: P;
+}
 
 /**
  * Middleware factory que valida req.body contra un schema Zod.
  * Si falla, lanza ZodError que el errorHandler captura.
  */
-export function validate<T extends z.ZodTypeAny>(schema: T) {
+export function validate<T extends z.ZodTypeAny>(schema: T): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction): void => {
     req.body = schema.parse(req.body);
     next();
@@ -16,7 +28,7 @@ export function validate<T extends z.ZodTypeAny>(schema: T) {
  * Middleware factory que valida req.query contra un schema Zod.
  * Express 5 hace req.query readonly, así que usamos Object.defineProperty.
  */
-export function validateQuery<T extends z.ZodTypeAny>(schema: T) {
+export function validateQuery<T extends z.ZodTypeAny>(schema: T): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const parsed = schema.parse(req.query);
     Object.defineProperty(req, 'query', {
@@ -29,12 +41,13 @@ export function validateQuery<T extends z.ZodTypeAny>(schema: T) {
 }
 
 /**
- * Middleware factory que valida req.params contra un schema Zod.
+ * Middleware factory que valida req.params contra un schema Zod y reemplaza
+ * req.params con el objeto validado (garantizado como Record<string, string>).
  * Express 5 hace req.params readonly, así que usamos Object.defineProperty.
  */
-export function validateParams<T extends z.ZodTypeAny>(schema: T) {
+export function validateParams<T extends z.ZodTypeAny>(schema: T): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const parsed = schema.parse(req.params);
+    const parsed = schema.parse(req.params) as ParamsFlatDictionary;
     Object.defineProperty(req, 'params', {
       value: parsed,
       writable: true,

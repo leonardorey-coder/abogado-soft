@@ -1,0 +1,194 @@
+// ============================================================================
+// Google Drive Service — Integración con Google Drive API v3
+// Almacenamiento en nube sin VPS: upload/download/versiones via OAuth2
+// ============================================================================
+
+import { google, drive_v3 } from 'googleapis';
+import { Readable } from 'stream';
+
+// ─── OAuth2 Client ──────────────────────────────────────────────────────────
+
+let driveClient: drive_v3.Drive | null = null;
+
+export function getDriveClient(): drive_v3.Drive {
+    if (driveClient) return driveClient;
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+    if (!clientId || !clientSecret || !refreshToken) {
+        throw new Error('[GoogleDrive] Faltan variables de entorno: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN');
+    }
+
+    const auth = new google.auth.OAuth2(
+        clientId,
+        clientSecret,
+        process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:4000/api/drive/auth/callback',
+    );
+
+    auth.setCredentials({ refresh_token: refreshToken });
+
+    driveClient = google.drive({ version: 'v3', auth });
+    return driveClient;
+}
+
+// ─── Obtener/crear carpeta base de AbogadoSoft ──────────────────────────────
+
+let cachedFolderId: string | null = null;
+
+export async function getOrCreateFolder(name = 'AbogadoSoft'): Promise<string> {
+    if (cachedFolderId) return cachedFolderId;
+
+    const drive = getDriveClient();
+
+    const res = await drive.files.list({
+        q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        fields: 'files(id, name)',
+    });
+
+    if (res.data.files && res.data.files.length > 0) {
+        cachedFolderId = res.data.files[0].id!;
+        return cachedFolderId;
+    }
+
+    const folder = await drive.files.create({
+        requestBody: {
+            name,
+            mimeType: 'application/vnd.google-apps.folder',
+        },
+        fields: 'id',
+    });
+
+    cachedFolderId = folder.data.id!;
+    return cachedFolderId;
+}
+
+// ─── Upload de archivo (crear nuevo en Drive) ───────────────────────────────
+
+export interface DriveUploadResult {
+    driveFileId: string;
+    driveRevisionId: string | null;
+    webViewLink: string | null;
+}
+
+export async function uploadFile(
+    name: string,
+    mimeType: string,
+    content: Buffer,
+    folderId?: string,
+): Promise<DriveUploadResult> {
+    const drive = getDriveClient();
+    const folder = folderId ?? (await getOrCreateFolder());
+
+    const res = await drive.files.create({
+        requestBody: {
+            name,
+            parents: [folder],
+        },
+        media: {
+            mimeType,
+            body: Readable.from(content),
+        },
+        fields: 'id, webViewLink, headRevisionId',
+    });
+
+    return {
+        driveFileId: res.data.id!,
+        driveRevisionId: res.data.headRevisionId ?? null,
+        webViewLink: res.data.webViewLink ?? null,
+    };
+}
+
+// ─── Actualizar archivo ya existente en Drive ────────────────────────────────
+
+export async function updateFile(
+    driveFileId: string,
+    mimeType: string,
+    content: Buffer,
+): Promise<{ driveRevisionId: string | null }> {
+    const drive = getDriveClient();
+
+    const res = await drive.files.update({
+        fileId: driveFileId,
+        media: {
+            mimeType,
+            body: Readable.from(content),
+        },
+        fields: 'id, headRevisionId',
+    });
+
+    return { driveRevisionId: res.data.headRevisionId ?? null };
+}
+
+// ─── Descargar archivo desde Drive ──────────────────────────────────────────
+
+export async function downloadFile(driveFileId: string): Promise<Buffer> {
+    const drive = getDriveClient();
+
+    const res = await drive.files.get(
+        { fileId: driveFileId, alt: 'media' },
+        { responseType: 'arraybuffer' },
+    );
+
+    return Buffer.from(res.data as ArrayBuffer);
+}
+
+// ─── Listar revisiones de un archivo en Drive ───────────────────────────────
+
+export interface DriveRevision {
+    id: string;
+    modifiedTime: string | null | undefined;
+    size: string | null | undefined;
+    lastModifyingUser: string | null;
+}
+
+export async function getRevisions(driveFileId: string): Promise<DriveRevision[]> {
+    const drive = getDriveClient();
+
+    const res = await drive.revisions.list({
+        fileId: driveFileId,
+        fields: 'revisions(id, modifiedTime, size, lastModifyingUser)',
+    });
+
+    return (res.data.revisions ?? []).map((r) => ({
+        id: r.id!,
+        modifiedTime: r.modifiedTime,
+        size: r.size,
+        lastModifyingUser: r.lastModifyingUser?.displayName ?? null,
+    }));
+}
+
+// ─── Descargar una revisión específica ──────────────────────────────────────
+
+export async function downloadRevision(driveFileId: string, revisionId: string): Promise<Buffer> {
+    const drive = getDriveClient();
+
+    // NOTE: La API de revisiones no tiene alt:media en el cliente oficial de google.
+    // Se usa el endpoint de export/download directo via HTTP.
+    const res = await drive.revisions.get(
+        { fileId: driveFileId, revisionId, alt: 'media' } as any,
+        { responseType: 'arraybuffer' },
+    );
+
+    return Buffer.from((res as any).data as ArrayBuffer);
+}
+
+// ─── Eliminar archivo de Drive ───────────────────────────────────────────────
+
+export async function deleteFile(driveFileId: string): Promise<void> {
+    const drive = getDriveClient();
+    await drive.files.delete({ fileId: driveFileId });
+}
+
+// ─── Verificar si las credenciales son válidas ──────────────────────────────
+
+export async function verifyCredentials(): Promise<boolean> {
+    try {
+        const drive = getDriveClient();
+        await drive.about.get({ fields: 'user' });
+        return true;
+    } catch {
+        return false;
+    }
+}

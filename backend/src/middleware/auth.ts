@@ -43,10 +43,10 @@ async function verifySupabaseToken(accessToken: string): Promise<{ id: string; e
 
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const data = await res.json() as { id?: string; email?: string };
     if (!data?.id) return null;
 
-    return { id: data.id, email: data.email };
+    return { id: data.id, email: data.email ?? '' };
   } catch {
     return null;
   }

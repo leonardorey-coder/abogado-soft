@@ -32,28 +32,18 @@ function getOrCreateYDoc(docId: string): DocEntry {
 
 async function loadYDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
   try {
-    const document = await prisma.document.findUnique({
-      where: { id: docId },
-      select: { ydocState: true },
-    });
-    if (document?.ydocState) {
-      const state = new Uint8Array(document.ydocState);
-      Y.applyUpdate(ydoc, state);
-      console.log(`[WS] Loaded Y.Doc for ${docId} (${state.length} bytes)`);
-    }
+    // ydocState fue eliminado del schema — el estado Y.js se mantiene en memoria.
+    // La persistencia de documentos se realiza vía Google Drive.
+    console.log(`[WS] Y.Doc ${docId} inicializado (sin estado persistido en DB)`);
   } catch (error) {
     console.error(`[WS] Error loading doc ${docId}:`, error);
   }
 }
 
-async function saveYDocToDB(docId: string, ydoc: Y.Doc): Promise<void> {
+async function saveYDocToDB(docId: string, _ydoc: Y.Doc): Promise<void> {
   try {
-    const state = Y.encodeStateAsUpdate(ydoc);
-    await prisma.document.update({
-      where: { id: docId },
-      data: { ydocState: Buffer.from(state) },
-    });
-    console.log(`[WS] Saved Y.Doc for ${docId} (${state.length} bytes)`);
+    // ydocState fue eliminado del schema — sincronización vía Google Drive.
+    console.log(`[WS] Y.Doc ${docId} — persistencia en Drive (no en DB)`);
   } catch (error) {
     console.error(`[WS] Error saving doc ${docId}:`, error);
   }

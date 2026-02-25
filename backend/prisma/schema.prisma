@@ -11,8 +11,6 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
   extensions = [uuid_ossp(map: "uuid-ossp"), pgcrypto]
 }
 
@@ -178,46 +176,44 @@ enum ActivityType {
 // ─────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email         String    @unique @db.VarChar(255)
-  name          String    @db.VarChar(255)
-  passwordHash  String?   @map("password_hash") @db.VarChar(255)
-  role          UserRole  @default(asistente)
-  avatarUrl     String?   @map("avatar_url")
-  phone         String?   @db.VarChar(50)
-  officeName    String?   @map("office_name") @db.VarChar(255)
-  department    String?   @db.VarChar(255)
-  position      String?   @db.VarChar(255)
-  adminPinHash  String?   @map("admin_pin_hash") @db.VarChar(255)
-  isActive      Boolean   @default(true) @map("is_active")
-  lastLogin     DateTime? @map("last_login") @db.Timestamptz()
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  name         String    @db.VarChar(255)
+  passwordHash String?   @map("password_hash") @db.VarChar(255)
+  role         UserRole  @default(asistente)
+  avatarUrl    String?   @map("avatar_url")
+  phone        String?   @db.VarChar(50)
+  officeName   String?   @map("office_name") @db.VarChar(255)
+  department   String?   @db.VarChar(255)
+  position     String?   @db.VarChar(255)
+  adminPinHash String?   @map("admin_pin_hash") @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLogin    DateTime? @map("last_login") @db.Timestamptz()
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   // Relaciones
-  ownedGroups           Group[]                  @relation("GroupOwner")
-  groupMemberships      GroupMember[]
-  ownedDocuments        Document[]               @relation("DocOwner")
-  deletedDocuments      Document[]               @relation("DocDeleter")
-  permissionsGranted    DocumentPermission[]     @relation("PermGranter")
-  permissionsReceived   DocumentPermission[]     @relation("PermUser")
-  assignmentsReceived   DocumentAssignment[]     @relation("AssignedTo")
-  assignmentsSent       DocumentAssignment[]     @relation("AssignedBy")
-  documentVersions      DocumentVersion[]
-  documentComments      DocumentComment[]
-  activityLogs          ActivityLog[]
-  conveniosResponsable  Convenio[]
+  ownedGroups            Group[]              @relation("GroupOwner")
+  groupMemberships       GroupMember[]
+  ownedDocuments         Document[]           @relation("DocOwner")
+  deletedDocuments       Document[]           @relation("DocDeleter")
+  permissionsGranted     DocumentPermission[] @relation("PermGranter")
+  permissionsReceived    DocumentPermission[] @relation("PermUser")
+  assignmentsReceived    DocumentAssignment[] @relation("AssignedTo")
+  assignmentsSent        DocumentAssignment[] @relation("AssignedBy")
+  documentVersions       DocumentVersion[]
+  documentComments       DocumentComment[]
+  activityLogs           ActivityLog[]
+  conveniosResponsable   Convenio[]
   convenioDocumentsAdded ConvenioDocument[]
-  backups               Backup[]
-  adminAccessLogs       AdminAccessLog[]
-  caseDocumentsAdded    CaseDocument[]
-  casesResponsible      Case[]
-  collaborationPresence CollaborationPresence[]
-  collaborationOps      CollaborationOperation[]
-  documentLocks         DocumentLock[]
-  settings              UserSettings?
-  sessions              UserSession[]
-  notifications         Notification[]
+  backups                Backup[]
+  adminAccessLogs        AdminAccessLog[]
+  caseDocumentsAdded     CaseDocument[]
+  casesResponsible       Case[]
+  settings               UserSettings?
+  sessions               UserSession[]
+  notifications          Notification[]
+  documentSyncLogs       DocumentSyncLog[]
 
   @@index([email])
   @@index([role])
@@ -239,7 +235,7 @@ model Group {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  owner       User          @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User                 @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     GroupMember[]
   documents   Document[]
   permissions DocumentPermission[]
@@ -273,51 +269,55 @@ model GroupMember {
 // ─────────────────────────────────────────────
 
 model Document {
-  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String               @db.VarChar(500)
-  type                DocumentType
-  size                BigInt               @default(0)
-  localPath           String?              @map("local_path")
-  cloudUrl            String?              @map("cloud_url")
-  ownerId             String?              @map("owner_id") @db.Uuid
-  groupId             String?              @map("group_id") @db.Uuid
-  caseId              String?              @map("case_id") @db.Uuid
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @db.VarChar(500)
+  type      DocumentType
+  size      BigInt       @default(0)
+  localPath String?      @map("local_path")
+  cloudUrl  String?      @map("cloud_url")
+  ownerId   String?      @map("owner_id") @db.Uuid
+  groupId   String?      @map("group_id") @db.Uuid
+  caseId    String?      @map("case_id") @db.Uuid
 
   fileStatus          FileStatus           @default(ACTIVO) @map("file_status")
   collaborationStatus CollaborationStatus? @map("collaboration_status")
   sharingStatus       SharingStatus?       @map("sharing_status")
 
-  version             Int                  @default(1)
-  checksum            String?              @db.VarChar(128)
+  version  Int     @default(1)
+  checksum String? @db.VarChar(128)
 
-  expirationDate      DateTime?            @map("expiration_date") @db.Date
+  expirationDate DateTime? @map("expiration_date") @db.Date
 
-  isDeleted           Boolean              @default(false) @map("is_deleted")
-  deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz()
-  deletedBy           String?              @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz()
+  deletedBy String?   @map("deleted_by") @db.Uuid
 
-  description         String?
-  tags                String[]
-  mimeType            String?              @map("mime_type") @db.VarChar(255)
-  ydocState           Bytes?               @map("ydoc_state")
+  description String?
+  tags        String[]
+  mimeType    String?  @map("mime_type") @db.VarChar(255)
 
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  // ─── Google Drive Sync ────────────────────────────────────────────────
+  driveFileId     String?    @map("drive_file_id") @db.VarChar(255)
+  driveRevisionId String?    @map("drive_revision_id") @db.VarChar(255)
+  lastSyncAt      DateTime?  @map("last_sync_at") @db.Timestamptz()
+  syncStatus      SyncStatus @default(pending) @map("sync_status")
 
-  owner               User?                @relation("DocOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  deleter             User?                @relation("DocDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
-  group               Group?               @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  case_               Case?                @relation("DocCase", fields: [caseId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  permissions          DocumentPermission[]
-  assignments          DocumentAssignment[]
-  versions             DocumentVersion[]
-  comments             DocumentComment[]
-  adminAccessLogs      AdminAccessLog[]
-  convenioDocuments    ConvenioDocument[]
-  caseDocuments        CaseDocument[]
-  collaborationSession CollaborationSession?
-  documentLocks        DocumentLock[]
+  owner   User?  @relation("DocOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deleter User?  @relation("DocDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
+  group   Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  case_   Case?  @relation("DocCase", fields: [caseId], references: [id], onDelete: SetNull)
+
+  permissions       DocumentPermission[]
+  assignments       DocumentAssignment[]
+  versions          DocumentVersion[]
+  comments          DocumentComment[]
+  adminAccessLogs   AdminAccessLog[]
+  convenioDocuments ConvenioDocument[]
+  caseDocuments     CaseDocument[]
+  documentSyncLogs  DocumentSyncLog[]
 
   @@index([ownerId])
   @@index([groupId])
@@ -376,9 +376,9 @@ model DocumentAssignment {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  assignee   User     @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: Cascade)
-  assigner   User     @relation("AssignedBy", fields: [assignedBy], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  assignee User     @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: Cascade)
+  assigner User     @relation("AssignedBy", fields: [assignedBy], references: [id], onDelete: Cascade)
 
   @@unique([documentId, assignedTo], map: "uq_doc_assignment")
   @@index([assignedTo])
@@ -418,22 +418,22 @@ model DocumentVersion {
 // ─────────────────────────────────────────────
 
 model DocumentComment {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId String  @map("document_id") @db.Uuid
-  userId     String  @map("user_id") @db.Uuid
-  parentId   String? @map("parent_id") @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  parentId   String?  @map("parent_id") @db.Uuid
   content    String
-  pageNumber Int?    @map("page_number")
-  positionX  Float?  @map("position_x") @db.Real
-  positionY  Float?  @map("position_y") @db.Real
-  isResolved Boolean @default(false) @map("is_resolved")
-  isDeleted  Boolean @default(false) @map("is_deleted")
+  pageNumber Int?     @map("page_number")
+  positionX  Float?   @map("position_x") @db.Real
+  positionY  Float?   @map("position_y") @db.Real
+  isResolved Boolean  @default(false) @map("is_resolved")
+  isDeleted  Boolean  @default(false) @map("is_deleted")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  document Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   DocumentComment? @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  document Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   DocumentComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
   replies  DocumentComment[] @relation("CommentThread")
 
   @@index([documentId])
@@ -447,16 +447,16 @@ model DocumentComment {
 // ─────────────────────────────────────────────
 
 model ActivityLog {
-  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String?      @map("user_id") @db.Uuid
-  activity   ActivityType
-  entityType String?      @map("entity_type") @db.VarChar(50)
-  entityId   String?      @map("entity_id") @db.Uuid
-  entityName String?      @map("entity_name") @db.VarChar(500)
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?      @map("user_id") @db.Uuid
+  activity    ActivityType
+  entityType  String?      @map("entity_type") @db.VarChar(50)
+  entityId    String?      @map("entity_id") @db.Uuid
+  entityName  String?      @map("entity_name") @db.VarChar(500)
   description String?
-  metadata   Json?        @db.JsonB
-  ipAddress  String?      @map("ip_address") @db.Inet
-  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  metadata    Json?        @db.JsonB
+  ipAddress   String?      @map("ip_address") @db.Inet
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -506,9 +506,9 @@ model ConvenioDocument {
   addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz()
   addedBy    String?  @map("added_by") @db.Uuid
 
-  convenio Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  addedByUser User?  @relation(fields: [addedBy], references: [id], onDelete: SetNull)
+  convenio    Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  addedByUser User?    @relation(fields: [addedBy], references: [id], onDelete: SetNull)
 
   @@id([convenioId, documentId])
   @@map("convenio_documents")
@@ -605,91 +605,14 @@ model CaseDocument {
   addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz()
   addedBy    String?  @map("added_by") @db.Uuid
 
-  case_    Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  addedByUser User? @relation(fields: [addedBy], references: [id], onDelete: SetNull)
+  case_       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  addedByUser User?    @relation(fields: [addedBy], references: [id], onDelete: SetNull)
 
   @@id([caseId, documentId])
   @@index([caseId])
   @@index([documentId])
   @@map("case_documents")
-}
-
-// ─────────────────────────────────────────────
-// 17. COLABORACIÓN EN TIEMPO REAL
-// ─────────────────────────────────────────────
-
-model CollaborationSession {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId String    @unique @map("document_id") @db.Uuid
-  isActive   Boolean   @default(true) @map("is_active")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  endedAt    DateTime? @map("ended_at") @db.Timestamptz()
-
-  document   Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  presence   CollaborationPresence[]
-  operations CollaborationOperation[]
-
-  @@index([documentId])
-  @@map("collaboration_sessions")
-}
-
-model CollaborationPresence {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId      String    @map("session_id") @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
-  cursorPosition Json?     @map("cursor_position") @db.JsonB
-  lastSeen       DateTime  @default(now()) @map("last_seen") @db.Timestamptz()
-  isActive       Boolean   @default(true) @map("is_active")
-  joinedAt       DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
-  leftAt         DateTime? @map("left_at") @db.Timestamptz()
-
-  session CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, userId], map: "uq_session_user")
-  @@index([sessionId])
-  @@index([userId])
-  @@map("collaboration_presence")
-}
-
-model CollaborationOperation {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId     String   @map("session_id") @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  operationType String   @map("operation_type") @db.VarChar(50)
-  position      Int?
-  length        Int?
-  content       String?
-  metadata      Json?    @db.JsonB
-  revision      BigInt
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  session CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([sessionId, revision])
-  @@index([createdAt])
-  @@map("collaboration_operations")
-}
-
-model DocumentLock {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId String    @map("document_id") @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  sectionId  String?   @map("section_id") @db.VarChar(255)
-  lockType   String    @default("section") @map("lock_type") @db.VarChar(20)
-  lockedAt   DateTime  @default(now()) @map("locked_at") @db.Timestamptz()
-  expiresAt  DateTime  @default(dbgenerated("(NOW() + '00:05:00'::interval)")) @map("expires_at") @db.Timestamptz()
-  releasedAt DateTime? @map("released_at") @db.Timestamptz()
-
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([documentId, sectionId], map: "uq_doc_section_lock")
-  @@index([documentId])
-  @@map("document_locks")
 }
 
 // ─────────────────────────────────────────────
@@ -783,4 +706,28 @@ model Notification {
   @@index([type])
   @@index([createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// 22. BITÁCORA DE SYNC CON GOOGLE DRIVE
+// ─────────────────────────────────────────────
+
+model DocumentSyncLog {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId      String        @map("document_id") @db.Uuid
+  userId          String?       @map("user_id") @db.Uuid
+  operation       SyncOperation
+  status          SyncStatus
+  driveRevisionId String?       @map("drive_revision_id") @db.VarChar(255)
+  errorMessage    String?       @map("error_message")
+  metadata        Json?         @db.JsonB
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("document_sync_log")
 }
