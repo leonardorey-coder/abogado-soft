@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ViewState } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
@@ -22,157 +22,190 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 }) => {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const navClass = (view: ViewState) =>
     view === currentView
-      ? "px-3 py-2 text-sm font-bold text-primary bg-primary/10 rounded-lg"
-      : "px-3 py-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors";
+      ? "px-3.5 py-2 text-sm font-bold text-primary bg-primary/10 rounded-xl transition-colors"
+      : "px-3.5 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors";
+
+  const dropdownItemClass = (view: ViewState) =>
+    view === currentView
+      ? "w-full text-left px-4 py-2.5 text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 transition-colors flex items-center justify-between"
+      : "w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center justify-between";
+
+  const handleNavAndClose = (view: ViewState) => {
+    onNavigate(view);
+    setShowMoreMenu(false);
+  };
+
+  const moreItemsActive = [ViewState.ASIGNED, ViewState.ACTIVITY_LOG, ViewState.SECURITY, ViewState.TRASH].includes(currentView);
 
   return (
-    <header className="h-16 flex items-center px-4 md:px-8 bg-white dark:bg-[#1a212f] border-b border-[#dbdfe6] dark:border-[#2d3748] sticky top-0 z-50">
-      <div className="flex items-center gap-4 flex-1 min-w-0">
+    <header className="h-[72px] flex items-center justify-between px-6 bg-white/80 dark:bg-[#1a212f]/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-all">
+      {/* Lado Izquierdo: Logo y Navegación Principal */}
+      <div className="flex items-center gap-6 flex-1 min-w-0">
         <div
-          className="flex items-center gap-2 mr-6 cursor-pointer shrink-0"
+          className="flex items-center gap-2.5 cursor-pointer shrink-0 group"
           onClick={() => onNavigate(ViewState.DASHBOARD)}
         >
-          <div className="bg-primary size-8 rounded-lg flex items-center justify-center text-white">
-            <span className="material-symbols-outlined text-xl">balance</span>
+          <div className="bg-primary w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-sm shadow-primary/20 group-hover:shadow-primary/40 transition-shadow">
+            <span className="material-symbols-outlined text-[20px]">balance</span>
           </div>
-          <h1 className="text-[#111318] dark:text-white text-lg font-bold leading-none hidden md:block">
+          <h1 className="text-slate-900 dark:text-white text-xl font-black tracking-tight hidden md:block">
             AbogadoSoft
           </h1>
         </div>
 
-        <div className="hidden md:block flex-1 min-w-0 overflow-hidden">
-          <nav className="flex items-center gap-1 overflow-x-auto overflow-y-hidden h-9 -mx-1 px-1 [scrollbar-gutter:stable]">
-            <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
-          <button
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-            className={navClass(ViewState.DASHBOARD)}
-          >
+        <nav className="hidden lg:flex items-center gap-1.5 relative">
+          <button onClick={() => onNavigate(ViewState.DASHBOARD)} className={navClass(ViewState.DASHBOARD)}>
             Inicio
           </button>
-          <button
-            onClick={() => onNavigate(ViewState.DOCUMENTS)}
-            className={navClass(ViewState.DOCUMENTS)}
-          >
+          <button onClick={() => onNavigate(ViewState.DOCUMENTS)} className={navClass(ViewState.DOCUMENTS)}>
             Documentos
           </button>
-          <button
-            onClick={() => onNavigate(ViewState.ASIGNED)}
-            className={navClass(ViewState.ASIGNED)}
-          >
-            Asignados
-          </button>
-          <button
-            onClick={() => onNavigate(ViewState.AGREEMENTS)}
-            className={navClass(ViewState.AGREEMENTS)}
-          >
+          <button onClick={() => onNavigate(ViewState.AGREEMENTS)} className={navClass(ViewState.AGREEMENTS)}>
             Convenios
           </button>
-          <button
-            onClick={() => onNavigate(ViewState.TEAM)}
-            className={navClass(ViewState.TEAM)}
-          >
-            Mi Equipo
+          <button onClick={() => onNavigate(ViewState.TEAM)} className={navClass(ViewState.TEAM)}>
+            Equipo
           </button>
-          <button
-            onClick={() => onNavigate(ViewState.ACTIVITY_LOG)}
-            className={navClass(ViewState.ACTIVITY_LOG)}
-          >
-            Bitácora
-          </button>
-          <button
-            onClick={() => onNavigate(ViewState.SECURITY)}
-            className={navClass(ViewState.SECURITY)}
-          >
-            Seguridad
-          </button>
-          <button
-            onClick={() => onNavigate(ViewState.TRASH)}
-            className={`${navClass(ViewState.TRASH)} relative flex items-center gap-1.5`}
-            aria-label={deletedCount > 0 ? `Papelera (${deletedCount} documento${deletedCount !== 1 ? "s" : ""})` : "Papelera"}
-          >
-            <span className="material-symbols-outlined text-lg">delete</span>
-            Papelera
-            {deletedCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-black">
-                {deletedCount > 99 ? "99+" : deletedCount}
-              </span>
-            )}
-          </button>
-            </div>
-          </nav>
-        </div>
 
-        <div className="relative w-full min-w-[10rem] max-w-[12rem] hidden sm:block shrink-0">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89]">
+          {/* Buscador Integrado (Solo en pantallas extra grandes si se quiere, o lo dejamos a la derecha) */}
+
+          {/* Menú Más */}
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className={`flex items-center gap-1 px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${moreItemsActive || showMoreMenu
+                ? "text-primary bg-primary/10"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                }`}
+            >
+              Más <span className={`material-symbols-outlined text-[18px] transition-transform ${showMoreMenu ? "rotate-180" : ""}`}>expand_more</span>
+            </button>
+            {showMoreMenu && (
+              <div className="absolute left-0 top-full mt-2 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-2 z-50 overflow-hidden">
+                <button onClick={() => handleNavAndClose(ViewState.ASIGNED)} className={dropdownItemClass(ViewState.ASIGNED)}>
+                  <span>Asignados</span>
+                </button>
+                <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
+                <button onClick={() => handleNavAndClose(ViewState.ACTIVITY_LOG)} className={dropdownItemClass(ViewState.ACTIVITY_LOG)}>
+                  <span>Bitácora</span>
+                </button>
+                <button onClick={() => handleNavAndClose(ViewState.SECURITY)} className={dropdownItemClass(ViewState.SECURITY)}>
+                  <span>Seguridad</span>
+                </button>
+                <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
+                <button onClick={() => handleNavAndClose(ViewState.TRASH)} className={`${dropdownItemClass(ViewState.TRASH)} ${currentView !== ViewState.TRASH ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300' : ''}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    <span>Papelera</span>
+                  </div>
+                  {deletedCount > 0 && (
+                    <span className="flex-shrink-0 min-w-[20px] h-[20px] flex items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-black">
+                      {deletedCount > 99 ? "99+" : deletedCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </nav>
+      </div>
+
+      {/* Lado Derecho: Buscador, Acciones y Usuario */}
+      <div className="flex items-center gap-4 shrink-0">
+        <div className="relative w-full max-w-[240px] hidden md:block shrink-0">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">
             search
           </span>
           <input
-            className="w-full h-9 pl-10 pr-4 bg-background-light dark:bg-[#101622] border-none rounded-lg focus:ring-2 focus:ring-primary text-sm placeholder:text-[#616f89]"
+            className="w-full h-10 pl-10 pr-4 bg-slate-100/80 dark:bg-slate-800/80 border border-transparent rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 text-sm placeholder:text-slate-500 transition-all font-medium text-slate-900 dark:text-white"
             placeholder="Buscar..."
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            aria-label="Buscar documentos"
+            aria-label="Buscar"
           />
         </div>
-      </div>
 
-      <div className="w-2 shrink-0" aria-hidden />
-
-      <div className="flex items-center gap-4 shrink-0">
         {onUploadClick && (
-          <>
-            <button
-              onClick={onUploadClick}
-              className="flex items-center gap-2 h-9 px-3 bg-background-light dark:bg-gray-800 rounded-lg text-[#111318] dark:text-white text-sm font-semibold border border-[#dbdfe6] dark:border-[#2d3748] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">upload_file</span>
-              <span className="hidden sm:inline">Subir</span>
-            </button>
-            <div className="h-8 w-[1px] bg-[#dbdfe6] dark:bg-[#2d3748] mx-2 hidden sm:block"></div>
-          </>
+          <button
+            onClick={onUploadClick}
+            className="flex items-center gap-1.5 h-10 px-4 bg-primary text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 hover:bg-blue-700 hover:shadow-lg active:scale-[0.98] transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            <span className="hidden sm:inline">Nuevo</span>
+          </button>
         )}
-        <div className="flex items-center gap-3 relative">
+
+        <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" aria-hidden />
+
+        <div className="flex items-center gap-3 relative" ref={userMenuRef}>
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold leading-none">{user?.name ?? 'Usuario'}</p>
-            <p className="text-xs text-[#616f89] dark:text-[#a0aec0]">{getRoleLabel(user?.role)}</p>
+            <p className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">{user?.name ?? 'Usuario'}</p>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{getRoleLabel(user?.role)}</p>
           </div>
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="size-10 rounded-full bg-cover bg-center border-2 border-white dark:border-[#2d3748] shadow-sm overflow-hidden focus:ring-2 focus:ring-primary"
+            className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-[2px] border-white dark:border-slate-700 shadow-sm overflow-hidden focus:ring-2 focus:ring-primary focus:outline-none transition-transform hover:scale-105 active:scale-95"
             aria-label="Menú de usuario"
           >
             {user?.avatarUrl ? (
               <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full bg-primary flex items-center justify-center text-white font-bold text-lg">
+              <div className="w-full h-full bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white font-black text-lg">
                 {(user?.name ?? 'U').charAt(0).toUpperCase()}
               </div>
             )}
           </button>
+
           {showUserMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute right-0 top-12 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl py-2 min-w-[180px]">
-                <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
-                </div>
-                <button
-                  onClick={async () => {
-                    setShowUserMenu(false);
-                    await logout();
-                    onNavigate(ViewState.LOGIN);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-lg">logout</span>
-                  Cerrar sesión
-                </button>
+            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl py-2 min-w-[220px] transform-gpu">
+              <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 mb-1">
+                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name}</p>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
               </div>
-            </>
+              {/* Mobile Navigation fallback (visible only on small screens inside user menu) */}
+              <div className="lg:hidden">
+                <div className="px-4 py-2 text-xs font-black text-slate-400 uppercase tracking-widest">Navegación</div>
+                <button onClick={() => handleNavAndClose(ViewState.DASHBOARD)} className={dropdownItemClass(ViewState.DASHBOARD)}>Inicio</button>
+                <button onClick={() => handleNavAndClose(ViewState.DOCUMENTS)} className={dropdownItemClass(ViewState.DOCUMENTS)}>Documentos</button>
+                <button onClick={() => handleNavAndClose(ViewState.AGREEMENTS)} className={dropdownItemClass(ViewState.AGREEMENTS)}>Convenios</button>
+                <button onClick={() => handleNavAndClose(ViewState.TEAM)} className={dropdownItemClass(ViewState.TEAM)}>Equipo</button>
+                <button onClick={() => handleNavAndClose(ViewState.ASIGNED)} className={dropdownItemClass(ViewState.ASIGNED)}>Asignados</button>
+                <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
+              </div>
+              <button
+                onClick={async () => {
+                  setShowUserMenu(false);
+                  await logout();
+                  onNavigate(ViewState.LOGIN);
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[18px]">logout</span>
+                Cerrar sesión
+              </button>
+            </div>
           )}
         </div>
       </div>
