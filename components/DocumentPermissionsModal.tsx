@@ -10,11 +10,11 @@ const PERMISSION_LABELS: Record<DocumentPermissionLevel, string> = {
 };
 
 const PERMISSION_DESCRIPTIONS: Record<DocumentPermissionLevel, string> = {
-  none: "Sin acceso asignado actualmente",
-  download: "Habilitar descarga de archivos adjuntos",
-  read: "Acceso de solo lectura para consulta",
-  write: "Permitir edición completa del caso",
-  admin: "Control total del documento y permisos",
+  none: "No puede ver ni interactuar con este documento",
+  download: "Solo puede descargar archivos adjuntos",
+  read: "Puede leer el contenido del expediente",
+  write: "Puede hacer modificaciones al contenido",
+  admin: "Control total, incluyendo gestión de permisos",
 };
 
 const AVATAR_COLORS = [
@@ -33,15 +33,11 @@ const DEFAULT_MEMBERS = [
   { id: "m4", name: "Lic. Roberto Sosa", initials: "RS" },
 ];
 
-function getLevelButtonClass(level: DocumentPermissionLevel): string {
-  const base = "flex min-w-[120px] cursor-pointer items-center justify-between overflow-hidden rounded-lg h-9 px-4 text-sm font-medium leading-normal transition-colors";
-  if (level === "none") {
-    return `${base} border border-dashed border-gray-300 dark:border-gray-600 text-[#616f89] dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800`;
-  }
-  if (level === "write" || level === "admin") {
-    return `${base} bg-primary text-white hover:bg-primary/90`;
-  }
-  return `${base} bg-[#f0f2f4] dark:bg-gray-800 text-[#111318] dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700`;
+function getLevelBadgeClass(level: DocumentPermissionLevel): string {
+  const base = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors border";
+  if (level === "admin") return `${base} bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/40`;
+  if (level === "write") return `${base} bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40`;
+  return `${base} bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800`;
 }
 
 interface MemberRow {
@@ -102,157 +98,172 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
     onClose();
   };
 
+  const activeMembers = filteredMembers.filter(m => m.level !== "none");
+  const inactiveMembers = filteredMembers.filter(m => m.level === "none");
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="bg-white dark:bg-[#1a2130] w-full max-w-[700px] rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800"
+        className="bg-white dark:bg-[#1a2130] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pt-8 px-8">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-[#111318] dark:text-white tracking-tight text-[28px] font-bold leading-tight">
-              Configuración de Acceso al Documento
+        {/* Header Compacto */}
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between shrink-0 bg-slate-50/50 dark:bg-transparent">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">folder_shared</span>
+              Compartir Documento
             </h1>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1"
-              aria-label="Cerrar"
-            >
-              <span className="material-symbols-outlined">close</span>
-            </button>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Administre quién tiene acceso y qué puede hacer en este expediente.
+            </p>
           </div>
-          <h2 className="text-[#111318] dark:text-gray-300 text-lg font-medium leading-tight tracking-[-0.015em] pb-4">
-            ¿Quién puede acceder a este documento?
-          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
         </div>
 
-        <div className="px-8 pb-4">
-          <div className="flex flex-1 flex-col items-start justify-between gap-4 rounded-lg border border-[#dbdfe6] dark:border-gray-700 bg-white dark:bg-[#1a2130] p-4 min-[480px]:flex-row min-[480px]:items-center">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                <span className="material-symbols-outlined">lock</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <p className="text-[#111318] dark:text-white text-base font-bold leading-tight">
-                  Acceso Limitado
-                </p>
-                <p className="text-[#616f89] dark:text-gray-400 text-sm font-normal leading-normal">
-                  Solo los miembros autorizados pueden ver este expediente legal.
-                </p>
-              </div>
-            </div>
+        {/* Search Bar - Seamless */}
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="relative flex items-center w-full">
+            <span className="material-symbols-outlined absolute left-3 text-slate-400 text-xl pointer-events-none">search</span>
+            <input
+              type="text"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#101622] text-sm text-slate-900 dark:text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-slate-400"
+              placeholder="Buscar por nombre o correo para asignar acceso..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         </div>
 
-        <div className="px-8 py-2">
-          <label className="flex flex-col min-w-40 h-11 w-full">
-            <div className="flex w-full flex-1 items-stretch rounded-lg h-full border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="text-[#616f89] flex bg-[#f0f2f4] dark:bg-gray-800 items-center justify-center pl-4">
-                <span className="material-symbols-outlined">search</span>
-              </div>
-              <input
-                type="text"
-                className="flex w-full min-w-0 flex-1 resize-none overflow-hidden text-[#111318] dark:text-white focus:outline-0 focus:ring-0 border-none bg-[#f0f2f4] dark:bg-gray-800 placeholder:text-[#616f89] dark:placeholder:text-gray-500 px-4 pl-2 text-base font-normal leading-normal"
-                placeholder="Buscar miembros de la firma..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </label>
-        </div>
+        {/* Scrollable Members Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
 
-        <div className="flex-1 overflow-y-auto max-h-[400px] px-4 py-2">
-          {filteredMembers.map((member) => (
-            <div
-              key={member.id}
-              className="flex items-center gap-4 px-4 min-h-[72px] py-3 justify-between border-b border-gray-100 dark:border-gray-800 last:border-0"
-            >
-              <div className={`flex items-center gap-4 ${member.level === "none" ? "opacity-60" : ""}`}>
-                <div
-                  className={`aspect-square rounded-full h-12 w-12 border border-gray-100 dark:border-gray-700 flex items-center justify-center font-bold ${member.colorClass}`}
-                  aria-hidden
-                >
-                  {member.initials}
-                </div>
-                <div className="flex flex-col justify-center">
-                  <p className="text-[#111318] dark:text-white text-base font-semibold leading-normal line-clamp-1">
-                    {member.name}
-                  </p>
-                  <p className="text-[#616f89] dark:text-gray-400 text-xs font-normal leading-normal">
-                    {PERMISSION_DESCRIPTIONS[member.level]}
-                  </p>
-                </div>
+          {/* Seccion 1: Los que tienen acceso */}
+          <div>
+            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 px-2">
+              Personas con Acceso ({activeMembers.length})
+            </h3>
+            {activeMembers.length === 0 ? (
+              <div className="text-center py-6 bg-slate-50 dark:bg-slate-800/50 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Nadie tiene acceso aún. El documento es privado.</p>
               </div>
-              <div className="shrink-0 relative">
-                <button
-                  type="button"
-                  className={getLevelButtonClass(member.level)}
-                  onClick={() => setOpenDropdownId(openDropdownId === member.id ? null : member.id)}
-                  aria-expanded={openDropdownId === member.id}
-                  aria-haspopup="listbox"
-                >
-                  <span className="truncate">{PERMISSION_LABELS[member.level]}</span>
-                  <span className="material-symbols-outlined !text-[18px]">expand_more</span>
-                </button>
-                {openDropdownId === member.id && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      aria-hidden
-                      onClick={() => setOpenDropdownId(null)}
-                    />
-                    <ul
-                      className="absolute right-0 top-full mt-1 z-20 min-w-[160px] py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
-                      role="listbox"
+            ) : (
+              <div className="space-y-1">
+                {activeMembers.map((member) => (
+                  <div key={member.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${member.colorClass}`}>
+                      {member.initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{member.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{PERMISSION_DESCRIPTIONS[member.level]}</p>
+                    </div>
+
+                    {/* Control de nivel con Menú Dropdown */}
+                    <div className="shrink-0 relative">
+                      <button
+                        type="button"
+                        className={getLevelBadgeClass(member.level)}
+                        onClick={() => setOpenDropdownId(openDropdownId === member.id ? null : member.id)}
+                      >
+                        {PERMISSION_LABELS[member.level]}
+                        <span className="material-symbols-outlined text-[18px]">expand_more</span>
+                      </button>
+
+                      {openDropdownId === member.id && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setOpenDropdownId(null)} />
+                          <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                            {LEVEL_ORDER.filter(l => l !== "none").map((level) => (
+                              <button
+                                key={level}
+                                type="button"
+                                onClick={() => setMemberLevel(member.id, level)}
+                                className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${member.level === level ? "text-primary font-bold bg-primary/5 target" : "text-slate-700 dark:text-slate-300 font-medium"}`}
+                              >
+                                {PERMISSION_LABELS[level]}
+                                {member.level === level && <span className="material-symbols-outlined text-base">check</span>}
+                              </button>
+                            ))}
+                            <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                            <button
+                              type="button"
+                              onClick={() => setMemberLevel(member.id, "none")}
+                              className="w-full px-4 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              Quitar acceso
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Seccion 2: Los que NO tienen acceso */}
+          {inactiveMembers.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 px-2 flex items-center justify-between">
+                Resto del Equipo
+                <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full normal-case font-medium">Sugerencias</span>
+              </h3>
+              <div className="space-y-1">
+                {inactiveMembers.map((member) => (
+                  <div key={member.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all ${member.colorClass}`}>
+                      {member.initials}
+                    </div>
+                    <div className="flex-1 min-w-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                      <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{member.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">No tiene acceso</p>
+                    </div>
+
+                    {/* Boton rápido "Agregar" => otorga 'read' con un solo click */}
+                    <button
+                      type="button"
+                      onClick={() => setMemberLevel(member.id, "read")}
+                      className="shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-bold text-primary bg-primary/10 hover:bg-primary hover:text-white transition-colors border border-transparent hover:border-primary opacity-0 group-hover:opacity-100 sm:opacity-100 focus:opacity-100"
                     >
-                      {LEVEL_ORDER.map((level) => (
-                        <li key={level} role="option" aria-selected={member.level === level}>
-                          <button
-                            type="button"
-                            onClick={() => setMemberLevel(member.id, level)}
-                            className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-lg mx-1 ${
-                              member.level === level
-                                ? "bg-primary/10 text-primary dark:text-primary"
-                                : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                            }`}
-                          >
-                            {PERMISSION_LABELS[level]}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+                      <span className="material-symbols-outlined text-[18px]">add</span>
+                      Dar Acceso
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+          )}
+
         </div>
 
-        <div className="px-8 py-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50 dark:bg-[#151b28]">
-          <p className="text-xs text-[#616f89] dark:text-gray-400 italic">
-            Los cambios se aplicarán inmediatamente a este expediente.
-          </p>
-          <div className="flex gap-3 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 sm:flex-none min-w-[100px] h-10 px-4 rounded-lg text-[#111318] dark:text-gray-200 text-sm font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex-1 sm:flex-none min-w-[160px] h-10 px-6 rounded-lg bg-primary text-white text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-            >
-              <span className="material-symbols-outlined !text-[18px]">save</span>
-              Guardar Cambios
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0 bg-slate-50 dark:bg-[#141921]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[20px]">check_circle</span>
+            Guardar Cambios
+          </button>
         </div>
       </div>
     </div>

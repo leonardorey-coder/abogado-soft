@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ViewState } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
-import UserFormModal, { UserFormData } from "./UserFormModal";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -32,6 +31,13 @@ interface ActivityItem {
   description: string;
   createdAt: string;
   user: { id: string; name: string; email: string; avatarUrl?: string | null };
+}
+
+interface GroupInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+  inviteCode?: string | null;
 }
 
 interface TeamPageProps {
@@ -74,13 +80,13 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   // CRUD state
-  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
-  const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<TeamUser | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [addCollaboratorOpen, setAddCollaboratorOpen] = useState(false);
+  const [groups, setGroups] = useState<GroupInfo[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const token = session?.access_token ?? "";
 
@@ -111,6 +117,26 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const openAddCollaborator = () => {
+    setAddCollaboratorOpen(true);
+    setGroups([]);
+    setGroupsLoading(true);
+    if (!token) return;
+    fetch(`${API_URL}/groups?page=1&limit=10`, {
+      headers: authHeader,
+    })
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((res) => setGroups(res.data ?? []))
+      .finally(() => setGroupsLoading(false));
+  };
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(key);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   };
 
   const handleChangeRole = async (u: TeamUser) => {
@@ -192,15 +218,7 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowInviteModal(true)}
-                className="flex items-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold shadow-sm hover:border-primary hover:text-primary transition-all"
-              >
-                <span className="material-symbols-outlined text-lg">content_copy</span>
-                ID del Despacho
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEditingUser(null); setModalMode("create"); }}
+                onClick={openAddCollaborator}
                 className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors"
               >
                 <span className="material-symbols-outlined text-lg">person_add</span>
@@ -326,15 +344,6 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
                   {isAdmin && (
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1">
-                        {/* Editar */}
-                        <button
-                          title="Editar"
-                          onClick={() => { setEditingUser(u); setModalMode("edit"); }}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[#616f89] dark:text-[#64748b] hover:text-blue-600 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-base">edit</span>
-                        </button>
-
                         {/* Cambiar rol */}
                         <button
                           title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
@@ -470,21 +479,6 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
         </section>
       </main>
 
-      {/* Create/Edit User Modal */}
-      {modalMode && (
-        <UserFormModal
-          mode={modalMode}
-          initialData={editingUser ? { id: editingUser.id, name: editingUser.name, email: editingUser.email, role: editingUser.role, officeName: editingUser.officeName ?? "", department: editingUser.department ?? "", position: editingUser.position ?? "", phone: editingUser.phone ?? "" } : undefined}
-          onClose={() => { setModalMode(null); setEditingUser(null); }}
-          onSuccess={() => {
-            setModalMode(null);
-            setEditingUser(null);
-            showSuccess(modalMode === "create" ? "Usuario creado exitosamente." : "Usuario actualizado.");
-            loadData();
-          }}
-        />
-      )}
-
       {/* Confirm Delete Modal */}
       {confirmDeleteUser && (
         <div
@@ -519,67 +513,91 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Invite Modal */}
-      {showInviteModal && currentUser && (currentUser as any).groupMemberships?.[0] && (
+      {/* Invite Modal (Restored from old commit) */}
+      {addCollaboratorOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={(e) => e.target === e.currentTarget && setShowInviteModal(false)}
+          className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => e.target === e.currentTarget && setAddCollaboratorOpen(false)}
         >
           <div className="bg-white dark:bg-[#1a212f] w-full max-w-md rounded-2xl shadow-xl border border-[#dbdfe6] dark:border-[#2d3748] overflow-hidden">
-            <div className="p-6 border-b border-[#dbdfe6] dark:border-[#2d3748] flex items-start justify-between">
+            <div className="p-6 border-b border-[#dbdfe6] dark:border-[#2d3748] flex justify-between items-start">
               <div>
-                <h3 className="text-xl font-bold text-[#111318] dark:text-white">
-                  Invitar al Despacho
-                </h3>
+                <h3 className="text-xl font-bold text-[#111318] dark:text-white">Agregar Colaborador</h3>
                 <p className="text-sm text-[#616f89] dark:text-[#a0aec0] mt-1">
-                  Comparta el ID único de grupo para nuevos miembros.
+                  Comparta el código o el ID del grupo para que otros se unan.
                 </p>
               </div>
               <button
-                onClick={() => setShowInviteModal(false)}
+                onClick={() => setAddCollaboratorOpen(false)}
                 className="text-[#616f89] dark:text-[#a0aec0] hover:text-[#111318] dark:hover:text-white transition-colors"
                 title="Cerrar"
               >
                 <span className="material-symbols-outlined text-xl">close</span>
               </button>
             </div>
-
             <div className="p-6 space-y-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">ID del grupo</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={(currentUser as any).groupMemberships[0].groupId}
-                    className="flex-1 min-w-0 rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText((currentUser as any).groupMemberships[0].groupId);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="shrink-0 flex items-center gap-1.5 rounded-lg px-4 py-2 bg-primary text-white text-sm font-bold hover:bg-blue-700 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-lg">
-                      {copied ? "check" : "content_copy"}
-                    </span>
-                    {copied ? "Copiado" : "Copiar"}
-                  </button>
-                </div>
-              </div>
-              <p className="text-[#616f89] dark:text-[#a0aec0] text-xs">
-                Ellos deberán ingresar este ID al momento de registrarse en la plataforma para poder ver los documentos de este entorno.
-              </p>
+              {groupsLoading ? (
+                <p className="text-[#616f89] dark:text-[#a0aec0] text-sm">Cargando…</p>
+              ) : !groups[0] ? (
+                <p className="text-[#616f89] dark:text-[#a0aec0] text-sm">No pertenece a un grupo. Cree uno desde completar perfil o contacte al administrador.</p>
+              ) : (
+                <>
+                  {groups[0].name && (
+                    <div>
+                      <p className="text-base font-bold text-[#111318] dark:text-white">{groups[0].name}</p>
+                      {groups[0].description && (
+                        <p className="text-sm text-[#616f89] dark:text-[#a0aec0] mt-0.5">{groups[0].description}</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">ID del grupo</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={groups[0].id}
+                        className="flex-1 min-w-0 rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(groups[0].id, "id")}
+                        className="shrink-0 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 bg-primary text-white text-sm font-bold hover:bg-blue-700 transition-colors w-[110px]"
+                      >
+                        <span className="material-symbols-outlined text-lg">{copiedId === "id" ? "check" : "content_copy"}</span>
+                        {copiedId === "id" ? "Copiado" : "Copiar"}
+                      </button>
+                    </div>
+                  </div>
+                  {groups[0].inviteCode && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">Código de invitación</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={groups[0].inviteCode}
+                          className="flex-1 min-w-0 rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white font-mono uppercase tracking-wider"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(groups[0].inviteCode!, "code")}
+                          className="shrink-0 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 bg-primary text-white text-sm font-bold hover:bg-blue-700 transition-colors w-[110px]"
+                        >
+                          <span className="material-symbols-outlined text-lg">{copiedId === "code" ? "check" : "content_copy"}</span>
+                          {copiedId === "code" ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-
-            <div className="px-6 py-4 border-t border-[#dbdfe6] dark:border-[#2d3748] flex justify-end">
+            <div className="px-6 py-4 border-t border-[#dbdfe6] dark:border-[#2d3748] flex justify-end bg-[#f8fafb] dark:bg-[#141921] rounded-b-2xl">
               <button
                 type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="px-4 py-2 text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                onClick={() => setAddCollaboratorOpen(false)}
+                className="px-4 py-2 text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
                 Cerrar
               </button>

@@ -401,7 +401,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
   const isPdf = doc?.mimeType === 'application/pdf';
   const isImage = doc?.mimeType?.startsWith('image/');
   const canUseSuperdoc = isDocx && doc?.localPath;
-  const fileUrl = doc ? getDocumentFileUrl(doc.id) : '';
+  const [iframeUrl, setIframeUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (doc) {
+      import('../lib/supabaseAuth').then(({ supabase }) => {
+        supabase.auth.getSession().then(({ data }) => {
+          const token = data.session?.access_token;
+          const url = getDocumentFileUrl(doc.id);
+          setIframeUrl(token ? `${url}?token=${token}` : url);
+        });
+      });
+    } else {
+      setIframeUrl('');
+    }
+  }, [doc]);
 
   // ─── Loading / Error states ──────────────────────────────────────────
 
@@ -536,11 +550,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
               <p className="text-gray-600 dark:text-gray-400 mb-4">
                 Vista previa de {isPdf ? 'PDF' : 'imagen'}
               </p>
-              <iframe
-                src={fileUrl}
-                className="w-full h-[600px] border border-gray-200 dark:border-gray-700 rounded-lg"
-                title={doc.name}
-              />
+              {iframeUrl ? (
+                <iframe
+                  src={iframeUrl}
+                  className="w-full h-[600px] border border-gray-200 dark:border-gray-700 rounded-lg bg-white"
+                  title={doc?.name || 'Documento'}
+                />
+              ) : (
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mb-4"></div>
+              )}
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">

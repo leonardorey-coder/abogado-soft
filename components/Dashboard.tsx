@@ -1,10 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
+import { getDocumentFileUrl } from '../lib/api';
+import { supabase } from '../lib/supabaseAuth';
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
+import { SuperDoc } from "superdoc";
+import "superdoc/style.css";
 
 interface DashboardProps {
   documents: Document[];
@@ -102,7 +106,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
   const [menuOpenDocId, setMenuOpenDocId] = useState<string | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const menuAnchorRef = useRef<HTMLDivElement | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewSuperDocRef = useRef<SuperDoc | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -121,12 +132,93 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleWindowDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
-    dragCounterRef.current--;
-    if (dragCounterRef.current <= 0) {
-      dragCounterRef.current = 0;
-      setIsDraggingOver(false);
+    if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setIsDraggingOver(false);
+      }
     }
   }, []);
+
+  useEffect(() => {
+    setPreviewUrl('');
+    setPreviewBlob(null);
+    setIsPreviewLoading(true);
+
+    if (previewDoc) {
+      if (previewDoc.type === 'DOCX') {
+        const fetchContent = async () => {
+          try {
+            const token = await supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+            const baseUrl = getDocumentFileUrl(previewDoc.id);
+            const res = await fetch(baseUrl, {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+
+            if (res.ok) {
+              const blob = await res.blob();
+              setPreviewBlob(blob);
+            } else {
+              setPreviewHtml('<p class="text-red-500 font-bold p-4">Error al cargar la previsualización del documento.</p>');
+            }
+          } catch (error) {
+            setPreviewHtml('<p class="text-red-500 font-bold p-4">Error de conexión al obtener el archivo.</p>');
+          } finally {
+            setIsPreviewLoading(false);
+          }
+        };
+        fetchContent();
+      } else {
+        supabase.auth.getSession().then(({ data }) => {
+          const token = data.session?.access_token;
+          const baseUrl = getDocumentFileUrl(previewDoc.id);
+          setPreviewUrl(token ? `${baseUrl}?token=${token}` : baseUrl);
+          setIsPreviewLoading(false);
+        });
+      }
+    } else {
+      setIsPreviewLoading(false);
+    }
+  }, [previewDoc]);
+
+  // Mount/Unmount SuperDoc once the blob is ready and container exists
+  useEffect(() => {
+    if (!previewBlob || !previewContainerRef.current || previewDoc?.type !== 'DOCX') return;
+
+    let destroyed = false;
+    try {
+      if (previewSuperDocRef.current) {
+        previewSuperDocRef.current.destroy();
+        previewSuperDocRef.current = null;
+      }
+
+      const config: any = {
+        selector: previewContainerRef.current,
+        document: previewBlob,
+        user: { name: user?.name || 'Invitado', email: user?.email || 'invitado@abogadosoft.com' },
+        documentMode: 'viewing',
+        viewOptions: { layout: 'web' },
+        onReady: () => {
+          if (destroyed) return;
+        },
+        onException: ({ error }: { error: Error }) => {
+          console.error("SuperDoc Preview Error:", error);
+        }
+      };
+
+      previewSuperDocRef.current = new SuperDoc(config);
+    } catch (e) {
+      console.error("SuperDoc Initialization failed", e);
+    }
+
+    return () => {
+      destroyed = true;
+      if (previewSuperDocRef.current) {
+        previewSuperDocRef.current.destroy();
+        previewSuperDocRef.current = null;
+      }
+    };
+  }, [previewBlob, previewContainerRef, previewDoc, user]);
 
   const handleWindowDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -277,29 +369,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Card de Despacho (Equipo) Reposicionada */}
           {user?.groupMemberships && user.groupMemberships.length > 0 && (
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-sm p-4 flex flex-row items-center gap-4 shrink-0 transition-all hover:border-primary/40 hover:shadow-md max-w-sm w-full lg:w-auto">
+            <button
+              onClick={() => onNavigate(ViewState.TEAM)}
+              className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-sm p-4 flex flex-row items-center gap-4 shrink-0 transition-all hover:border-primary/40 hover:shadow-md cursor-pointer group text-left max-w-sm w-full lg:w-auto outline-none focus-visible:border-primary"
+              title="Ver opciones de equipo"
+            >
               <div className="bg-primary/10 text-primary w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-[24px]">groups</span>
               </div>
               <div className="flex-1 min-w-0 pr-2">
-                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white truncate">
+                <h3 className="text-lg font-extrabold text-[#111318] dark:text-white truncate">
                   {user.groupMemberships[0].group.name}
                 </h3>
                 {user.groupMemberships[0].group.description && (
-                  <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  <p className="text-sm font-semibold text-[#616f89] dark:text-slate-400 truncate mt-0.5">
                     {user.groupMemberships[0].group.description}
                   </p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => onNavigate(ViewState.TEAM)}
-                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white transition-all shadow-sm group/btn"
-                title="Ver equipo"
+              <div
+                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-900/50 text-[#616f89] dark:text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shadow-sm"
               >
-                <span className="material-symbols-outlined text-[20px] transition-transform group-hover/btn:translate-x-0.5">arrow_forward</span>
-              </button>
-            </div>
+                <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
+              </div>
+            </button>
           )}
         </div>
 
@@ -454,29 +547,47 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <span className="material-symbols-outlined text-[32px] font-bold">{icon}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5 justify-end shrink-0 items-center">
-                      <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getFileStatusColor(doc.fileStatus)}`}>
+                      <span className={`px-2.5 py-1.5 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex ${getFileStatusColor(doc.fileStatus)}`}>
+                        <span className="material-symbols-outlined text-[12px]" aria-hidden>
+                          {doc.fileStatus === 'ACTIVO' ? 'verified' : doc.fileStatus === 'PENDIENTE' ? 'pending' : 'error'}
+                        </span>
                         {doc.fileStatus}
                       </span>
                       {doc.collaborationStatus && (
-                        <span className={`px-2.5 py-1.5 rounded-md text-[10px] font-black uppercase border ${getCollaborationStatusColor(doc.collaborationStatus)}`}>
+                        <span className={`px-2.5 py-1.5 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex ${getCollaborationStatusColor(doc.collaborationStatus)}`}>
+                          <span className="material-symbols-outlined text-[12px]" aria-hidden>
+                            {doc.collaborationStatus === 'VISTO' ? 'visibility' : doc.collaborationStatus === 'EDITADO' ? 'edit_document' : 'group'}
+                          </span>
                           {doc.collaborationStatus}
                         </span>
                       )}
                       <div className="relative" ref={menuOpenDocId === doc.id ? menuAnchorRef : undefined}>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(menuOpenDocId === doc.id ? null : doc.id); }}
-                          className="min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                          aria-label="Más opciones"
-                          aria-expanded={menuOpenDocId === doc.id}
-                          aria-haspopup="true"
-                        >
-                          <span className="flex flex-col items-center gap-0.5" aria-hidden>
-                            <span className="w-1 h-1 rounded-full bg-current" />
-                            <span className="w-1 h-1 rounded-full bg-current" />
-                            <span className="w-1 h-1 rounded-full bg-current" />
-                          </span>
-                        </button>
+                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-full p-1 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setPreviewDoc(doc); }}
+                            className="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-slate-500 hover:text-primary dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                            aria-label="Vista Rápida"
+                            title="Previsualizar"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">visibility</span>
+                          </button>
+                          <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(menuOpenDocId === doc.id ? null : doc.id); }}
+                            className="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                            aria-label="Más opciones"
+                            aria-expanded={menuOpenDocId === doc.id}
+                            aria-haspopup="true"
+                          >
+                            <span className="flex flex-col items-center gap-0.5" aria-hidden>
+                              <span className="w-1 h-1 rounded-full bg-current" />
+                              <span className="w-1 h-1 rounded-full bg-current" />
+                              <span className="w-1 h-1 rounded-full bg-current" />
+                            </span>
+                          </button>
+                        </div>
                         {menuOpenDocId === doc.id && (
                           <div
                             className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg"
@@ -553,6 +664,72 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             </button>
                           </div>
                         )}
+
+                        {/* QUICK PREVIEW POPOVER */}
+                        {previewDoc?.id === doc.id && (
+                          <>
+                            {/* Backdrop to close */}
+                            <div className="fixed inset-0 z-[55]" onClick={(e) => { e.stopPropagation(); setPreviewDoc(null); }} />
+                            <div
+                              className="absolute right-0 top-full mt-2 w-[360px] sm:w-[420px] h-[500px] z-[60] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden cursor-default animate-in fade-in zoom-in-95 origin-top-right"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {/* Header */}
+                              <div className="flex items-center justify-between p-2.5 px-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shrink-0">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <div className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center ${getFileIcon(previewDoc.type).color}`}>
+                                    <span className="material-symbols-outlined text-base font-bold">{getFileIcon(previewDoc.type).icon}</span>
+                                  </div>
+                                  <h3 className="font-bold text-xs text-slate-900 dark:text-white truncate">{previewDoc.name}</h3>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setPreviewDoc(null); handleDocumentClick(previewDoc); }}
+                                    className="w-7 h-7 flex items-center justify-center text-primary hover:bg-primary/10 rounded-md transition-colors"
+                                    title="Abrir Completo"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setPreviewDoc(null); }}
+                                    className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+                                    title="Cerrar"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+                              </div>
+                              {/* Content */}
+                              <div className="flex-1 overflow-auto bg-white dark:bg-slate-950">
+                                {isPreviewLoading ? (
+                                  <div className="flex flex-col items-center justify-center h-full">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent mb-2"></div>
+                                    <p className="text-gray-400 text-[10px] font-bold">Cargando...</p>
+                                  </div>
+                                ) : previewBlob && previewDoc.type === 'DOCX' ? (
+                                  <div className="flex justify-center w-full">
+                                    <div style={{ width: '850px', transform: 'scale(0.47)', transformOrigin: 'top center', height: 0 }}>
+                                      <div ref={previewContainerRef} className="superdoc-container" style={{ width: '850px', minHeight: '1800px' }} />
+                                    </div>
+                                  </div>
+                                ) : previewUrl ? (
+                                  <iframe
+                                    src={previewUrl}
+                                    className="w-full h-full border-none bg-white"
+                                    title={`Previsualización de ${previewDoc.name}`}
+                                  />
+                                ) : (
+                                  <div className="flex flex-col items-center justify-center h-full">
+                                    <span className="material-symbols-outlined text-3xl text-slate-300 mb-1">description</span>
+                                    <p className="text-slate-400 text-[10px] font-medium">No disponible</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </header>
@@ -588,14 +765,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   >
                     {doc.sharingStatus && (
                       <span className={`px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex ${getSharingStatusColor(doc.sharingStatus)}`}>
-                        <span className="material-symbols-outlined text-[14px]">share</span>
+                        <span className="material-symbols-outlined text-[12px]" aria-hidden></span>
                         {doc.sharingStatus}
                       </span>
                     )}
                     {(doc.currentUserPermission !== undefined || (doc.documentPermissions?.length ?? 0) > 0) && (
                       <span className="px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
                         <span className="material-symbols-outlined text-[14px]">shield</span>
-                        {doc.currentUserPermission !== undefined ? `Tú: ${permissionLabel[doc.currentUserPermission]}` : 'Permisos'}
+                        {doc.currentUserPermission !== undefined ? `Tú: ${permissionLabel[doc.currentUserPermission]} ` : 'Permisos'}
                       </span>
                     )}
                     {doc.documentPermissions && doc.documentPermissions.some((p) => p.level === "admin" && p.userName !== "Tú") && (
@@ -651,6 +828,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }}
         />
       )}
+
+
+
     </>
   );
 };

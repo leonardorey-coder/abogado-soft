@@ -58,13 +58,19 @@ async function verifySupabaseToken(accessToken: string): Promise<{ id: string; e
  */
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    let token = '';
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token;
+    }
+
+    if (!token) {
       res.status(401).json({ error: 'Token de autenticación requerido' });
       return;
     }
-
-    const token = authHeader.slice(7);
 
     // Verificar token contra Supabase Auth API
     const supabaseUser = await verifySupabaseToken(token);
@@ -119,13 +125,20 @@ export function authorize(...roles: Array<'admin' | 'asistente'>) {
  */
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
+    let token = '';
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token;
+    }
+
+    if (!token) {
       next();
       return;
     }
 
-    const token = authHeader.slice(7);
     const supabaseUser = await verifySupabaseToken(token);
 
     if (supabaseUser) {
