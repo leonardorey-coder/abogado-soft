@@ -1,26 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ViewState } from "../types";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 
 interface AppHeaderProps {
-  onNavigate: (view: ViewState) => void;
-  currentView: ViewState;
   onUploadClick?: () => void;
-  deletedCount?: number;
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
-  onNavigate,
-  currentView,
   onUploadClick,
-  deletedCount = 0,
   searchQuery = "",
   onSearchChange,
 }) => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -41,22 +36,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     };
   }, []);
 
-  const navClass = (view: ViewState) =>
-    view === currentView
+  const navClass = ({ isActive }: { isActive: boolean }) =>
+    isActive
       ? "px-3.5 py-2 text-sm font-bold text-primary bg-primary/10 rounded-xl transition-colors"
       : "px-3.5 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors";
 
-  const dropdownItemClass = (view: ViewState) =>
-    view === currentView
+  const dropdownItemClass = (active: boolean) =>
+    active
       ? "w-full text-left px-4 py-2.5 text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 transition-colors flex items-center justify-between"
       : "w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center justify-between";
-
-  const handleNavAndClose = (view: ViewState) => {
-    onNavigate(view);
-    setShowMoreMenu(false);
-  };
-
-  const moreItemsActive = [ViewState.ASIGNED, ViewState.ACTIVITY_LOG, ViewState.SECURITY, ViewState.TRASH].includes(currentView);
 
   return (
     <header className="h-[72px] flex items-center justify-between px-6 bg-white/80 dark:bg-[#1a212f]/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-all">
@@ -64,7 +52,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="flex items-center gap-6 flex-1 min-w-0">
         <div
           className="flex items-center gap-2.5 cursor-pointer shrink-0 group"
-          onClick={() => onNavigate(ViewState.DASHBOARD)}
+          onClick={() => navigate("/")}
         >
           <div className="bg-primary w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-sm shadow-primary/20 group-hover:shadow-primary/40 transition-shadow">
             <span className="material-symbols-outlined text-[20px]">balance</span>
@@ -75,26 +63,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         <nav className="hidden lg:flex items-center gap-1.5 relative">
-          <button onClick={() => onNavigate(ViewState.DASHBOARD)} className={navClass(ViewState.DASHBOARD)}>
+          <NavLink to="/" end className={navClass}>
             Inicio
-          </button>
-          <button onClick={() => onNavigate(ViewState.DOCUMENTS)} className={navClass(ViewState.DOCUMENTS)}>
+          </NavLink>
+          <NavLink to="/documentos" className={navClass}>
             Documentos
-          </button>
-          <button onClick={() => onNavigate(ViewState.AGREEMENTS)} className={navClass(ViewState.AGREEMENTS)}>
+          </NavLink>
+          <NavLink to="/convenios" className={navClass}>
             Convenios
-          </button>
-          <button onClick={() => onNavigate(ViewState.TEAM)} className={navClass(ViewState.TEAM)}>
+          </NavLink>
+          <NavLink to="/equipo" className={navClass}>
             Equipo
-          </button>
-
-          {/* Buscador Integrado (Solo en pantallas extra grandes si se quiere, o lo dejamos a la derecha) */}
+          </NavLink>
 
           {/* Menú Más */}
           <div className="relative" ref={moreMenuRef}>
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className={`flex items-center gap-1 px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${moreItemsActive || showMoreMenu
+              className={`flex items-center gap-1 px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${showMoreMenu
                 ? "text-primary bg-primary/10"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
                 }`}
@@ -103,28 +89,41 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </button>
             {showMoreMenu && (
               <div className="absolute left-0 top-full mt-2 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-2 z-50 overflow-hidden">
-                <button onClick={() => handleNavAndClose(ViewState.ASIGNED)} className={dropdownItemClass(ViewState.ASIGNED)}>
+                <NavLink
+                  to="/asignados"
+                  onClick={() => setShowMoreMenu(false)}
+                  className={({ isActive }) => dropdownItemClass(isActive)}
+                >
                   <span>Asignados</span>
-                </button>
+                </NavLink>
                 <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
-                <button onClick={() => handleNavAndClose(ViewState.ACTIVITY_LOG)} className={dropdownItemClass(ViewState.ACTIVITY_LOG)}>
+                <NavLink
+                  to="/actividad"
+                  onClick={() => setShowMoreMenu(false)}
+                  className={({ isActive }) => dropdownItemClass(isActive)}
+                >
                   <span>Bitácora</span>
-                </button>
-                <button onClick={() => handleNavAndClose(ViewState.SECURITY)} className={dropdownItemClass(ViewState.SECURITY)}>
+                </NavLink>
+                <NavLink
+                  to="/seguridad"
+                  onClick={() => setShowMoreMenu(false)}
+                  className={({ isActive }) => dropdownItemClass(isActive)}
+                >
                   <span>Seguridad</span>
-                </button>
+                </NavLink>
                 <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
-                <button onClick={() => handleNavAndClose(ViewState.TRASH)} className={`${dropdownItemClass(ViewState.TRASH)} ${currentView !== ViewState.TRASH ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300' : ''}`}>
+                <NavLink
+                  to="/papelera"
+                  onClick={() => setShowMoreMenu(false)}
+                  className={({ isActive }) =>
+                    `${dropdownItemClass(isActive)} ${!isActive ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300' : ''}`
+                  }
+                >
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                     <span>Papelera</span>
                   </div>
-                  {deletedCount > 0 && (
-                    <span className="flex-shrink-0 min-w-[20px] h-[20px] flex items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-black">
-                      {deletedCount > 99 ? "99+" : deletedCount}
-                    </span>
-                  )}
-                </button>
+                </NavLink>
               </div>
             )}
           </div>
@@ -184,21 +183,33 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name}</p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
               </div>
-              {/* Mobile Navigation fallback (visible only on small screens inside user menu) */}
+              {/* Mobile Navigation fallback */}
               <div className="lg:hidden">
                 <div className="px-4 py-2 text-xs font-black text-slate-400 uppercase tracking-widest">Navegación</div>
-                <button onClick={() => handleNavAndClose(ViewState.DASHBOARD)} className={dropdownItemClass(ViewState.DASHBOARD)}>Inicio</button>
-                <button onClick={() => handleNavAndClose(ViewState.DOCUMENTS)} className={dropdownItemClass(ViewState.DOCUMENTS)}>Documentos</button>
-                <button onClick={() => handleNavAndClose(ViewState.AGREEMENTS)} className={dropdownItemClass(ViewState.AGREEMENTS)}>Convenios</button>
-                <button onClick={() => handleNavAndClose(ViewState.TEAM)} className={dropdownItemClass(ViewState.TEAM)}>Equipo</button>
-                <button onClick={() => handleNavAndClose(ViewState.ASIGNED)} className={dropdownItemClass(ViewState.ASIGNED)}>Asignados</button>
+                {[
+                  { to: "/", label: "Inicio", end: true },
+                  { to: "/documentos", label: "Documentos" },
+                  { to: "/convenios", label: "Convenios" },
+                  { to: "/equipo", label: "Equipo" },
+                  { to: "/asignados", label: "Asignados" },
+                ].map(({ to, label, end }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    onClick={() => setShowUserMenu(false)}
+                    className={({ isActive }) => dropdownItemClass(isActive)}
+                  >
+                    {label}
+                  </NavLink>
+                ))}
                 <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
               </div>
               <button
                 onClick={async () => {
                   setShowUserMenu(false);
                   await logout();
-                  onNavigate(ViewState.LOGIN);
+                  navigate("/login");
                 }}
                 className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
               >

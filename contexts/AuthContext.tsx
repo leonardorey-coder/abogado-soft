@@ -44,7 +44,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const result = await getSession();
         if (mounted) {
           setSession(result.session);
-          setUser(result.user);
+          if (result.user) {
+            setUser(result.user);
+          } else if (result.session) {
+            // Sesión de Supabase válida pero backend no resolvió el perfil.
+            // Usar datos de Supabase como fallback mínimo.
+            const supaUser = result.session.user;
+            setUser({
+              id: supaUser.id,
+              email: supaUser.email ?? '',
+              name: supaUser.user_metadata?.full_name ?? supaUser.email ?? 'Usuario',
+              role: 'asistente',
+              isActive: true,
+              avatarUrl: supaUser.user_metadata?.avatar_url ?? null,
+            });
+          }
         }
       } catch (err) {
         console.error('Error checking session:', err);
@@ -63,9 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession);
 
         if (event === 'SIGNED_IN' && newSession) {
-          // Después de OAuth redirect o login, sincronizar con backend
           const supaUser = newSession.user;
           const { fetchCurrentUser } = await import('../lib/supabaseAuth');
+
+          // Solo poner loading si no tenemos usuario aún (evita parpadeo innecesario)
+          setUser(prev => {
+            if (!prev) setLoading(true);
+            return prev; // No cambiar el usuario todavía
+          });
 
           // Intentar obtener usuario existente del backend
           let appUser = await fetchCurrentUser(newSession.access_token);
@@ -75,7 +94,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             appUser = await syncUserAfterOAuth(supaUser, newSession.access_token);
           }
 
-          if (mounted) setUser(appUser);
+          if (mounted) {
+            if (appUser) {
+              setUser(appUser);
+            } else {
+              // Backend falló: usar datos de Supabase como fallback
+              setUser(prev => prev ?? ({
+                id: supaUser.id,
+                email: supaUser.email ?? '',
+                name: supaUser.user_metadata?.full_name ?? supaUser.email ?? 'Usuario',
+                role: 'asistente' as const,
+                isActive: true,
+                avatarUrl: supaUser.user_metadata?.avatar_url ?? null,
+              }));
+            }
+            setLoading(false);
+          }
         }
 
         if (event === 'SIGNED_OUT') {

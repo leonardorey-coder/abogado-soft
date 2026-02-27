@@ -4,7 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from "react";
-import { ViewState } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 
@@ -40,9 +40,7 @@ interface GroupInfo {
   inviteCode?: string | null;
 }
 
-interface TeamPageProps {
-  onNavigate: (view: ViewState) => void;
-}
+
 
 function formatTimeAgo(dateStr: string): string {
   if (!dateStr) return "—";
@@ -67,7 +65,8 @@ function activityIcon(activity: string): { icon: string; bg: string; color: stri
   return { icon: "history", bg: "bg-gray-100 dark:bg-gray-700", color: "text-gray-600 dark:text-gray-400" };
 }
 
-export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
+export const TeamPage: React.FC = () => {
+  const navigate = useNavigate();
   const { session, user: currentUser } = useAuth();
   const isAdmin = (currentUser as any)?.role === "admin";
 
@@ -199,9 +198,9 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
       <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
         {/* Breadcrumb */}
         <div className="flex flex-wrap gap-2 py-2">
-          <button type="button" className="text-[#616f89] dark:text-gray-400 text-sm font-medium hover:text-primary cursor-pointer" onClick={() => onNavigate(ViewState.DASHBOARD)}>
+          <Link to="/" className="text-[#616f89] dark:text-gray-400 text-sm font-medium hover:text-primary">
             Inicio
-          </button>
+          </Link>
           <span className="text-[#616f89] dark:text-gray-600 text-sm font-medium">/</span>
           <span className="text-[#111318] dark:text-white text-sm font-medium">Mi Equipo</span>
         </div>
@@ -407,7 +406,7 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
               <span className="material-symbols-outlined text-primary">assignment</span>
               Asignados recientes
             </h3>
-            <button type="button" onClick={() => onNavigate(ViewState.ASIGNED)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
+            <button type="button" onClick={() => navigate('/asignados')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
               Ir al panel completo
               <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-0.5">arrow_forward</span>
             </button>
@@ -449,7 +448,7 @@ export const TeamPage: React.FC<TeamPageProps> = ({ onNavigate }) => {
               <span className="material-symbols-outlined text-primary">history</span>
               Actividad Reciente
             </h3>
-            <button type="button" onClick={() => onNavigate(ViewState.ACTIVITY_LOG)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
+            <button type="button" onClick={() => navigate('/bitacora')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
               Ver todo el historial
               <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-0.5">arrow_forward</span>
             </button>

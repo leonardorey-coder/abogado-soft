@@ -1,13 +1,10 @@
 import React, { useEffect } from "react";
-import { ViewState } from "../types";
+import { Link } from "react-router-dom";
 
-interface SecurityInfoPageProps {
-  onNavigate: (view: ViewState) => void;
-}
 
 const legalP = "text-[1.125rem] leading-[1.75] text-[#374151] dark:text-[#d1d5db]";
 
-export const SecurityInfoPage: React.FC<SecurityInfoPageProps> = ({ onNavigate }) => {
+export const SecurityInfoPage: React.FC = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -97,14 +94,13 @@ export const SecurityInfoPage: React.FC<SecurityInfoPageProps> = ({ onNavigate }
           </section>
         </article>
         <div className="mt-20 border-t border-[#e5e7eb] dark:border-[#2d3748] pt-8">
-          <button
-            type="button"
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
+          <Link
+            to="/"
             className="flex items-center gap-2 text-sm font-bold text-primary hover:opacity-80 transition-opacity"
           >
             <span className="material-symbols-outlined">arrow_back</span>
             Volver al inicio
-          </button>
+          </Link>
         </div>
       </div>
     </main>

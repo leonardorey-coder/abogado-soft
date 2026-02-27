@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ViewState, Document, FileStatus } from "../types";
+import { Document, FileStatus } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { documentsApi } from "../lib/api";
 import { apiDocToFrontend } from "../lib/useDocuments";
 
 interface DocumentsListProps {
-  onNavigate: (view: ViewState) => void;
   searchQuery?: string;
   onOpenDocument?: (docId: string, docType?: string) => void;
 }
@@ -36,7 +36,8 @@ const FILE_STATUS_OPTIONS: { value: FileStatus; label: string }[] = [
   { value: "ACTIVO", label: "Activo" }, { value: "PENDIENTE", label: "Pendiente" }, { value: "INACTIVO", label: "Inactivo" }
 ];
 
-export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, searchQuery = "", onOpenDocument }) => {
+export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", onOpenDocument }) => {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"TODOS" | FileStatus>("TODOS");
@@ -75,7 +76,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
 
   const handleVer = (doc: Document) => {
     if (onOpenDocument) { onOpenDocument(doc.id, doc.type); }
-    else { doc.type === "XLSX" ? onNavigate(ViewState.EXCEL_EDITOR) : onNavigate(ViewState.EDITOR); }
+    else { navigate(`/documento/${doc.id}`); }
   };
 
   const handleEliminar = async (doc: Document) => {
@@ -112,13 +113,13 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ onNavigate, search
       <div className="flex flex-wrap justify-between items-end gap-4">
         <div className="flex flex-col gap-2">
           <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
-            <button type="button" className="hover:text-primary cursor-pointer" onClick={() => onNavigate(ViewState.DASHBOARD)}>Inicio</button>
+            <Link to="/" className="hover:text-primary">Inicio</Link>
             <span>/</span><span className="text-[#111318] dark:text-white">Documentos</span>
           </nav>
           <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Gestión de Documentos</h1>
           <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Administre y visualice los documentos del despacho con total claridad.</p>
         </div>
-        <button type="button" onClick={() => onNavigate(ViewState.EDITOR)} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
+        <button type="button" onClick={() => navigate('/documento/nuevo')} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
           <span className="material-symbols-outlined">add_circle</span> Nuevo Documento
         </button>
       </div>

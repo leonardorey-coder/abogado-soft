@@ -1,17 +1,16 @@
 import React, { useState } from "react";
-import { ViewState } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { signInWithSupabase, signInWithGoogle } from "../lib/supabaseAuth";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
 
-interface LoginPageProps {
-  onNavigate: (view: ViewState) => void;
-}
+
 
 const inputClass =
   "block w-full h-16 pl-12 pr-4 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-lg focus:ring-0 focus:border-primary transition-all placeholder:text-slate-400";
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
+export const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +33,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       return;
     }
     setAuth(result.user, result.session);
-    onNavigate(ViewState.DASHBOARD);
+    navigate('/');
   };
 
   const handleGoogleLogin = async () => {
@@ -54,7 +53,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       <AuthHeader
         message="¿No tiene cuenta?"
         buttonLabel="Registrarse"
-        onButtonClick={() => onNavigate(ViewState.REGISTER)}
+        onButtonClick={() => navigate('/registro')}
       />
 
       <main className="flex w-full flex-1">
@@ -225,13 +224,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
               </form>
 
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex flex-col items-center gap-4">
-                <button
-                  type="button"
+                <Link
+                  to="/registro"
                   className="text-primary dark:text-primary/90 font-semibold text-lg hover:underline transition-all"
-                  onClick={() => onNavigate(ViewState.REGISTER)}
                 >
                   ¿No tiene cuenta? Regístrese aquí
-                </button>
+                </Link>
                 <button
                   type="button"
                   className="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-slate-700 dark:hover:text-slate-200 transition-all"

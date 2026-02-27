@@ -1,17 +1,16 @@
 import React, { useState } from "react";
-import { ViewState } from "../types";
+import { useNavigate } from "react-router-dom";
 import { registerWithSupabase, signInWithGoogle } from "../lib/supabaseAuth";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
 
-interface RegisterPageProps {
-  onNavigate: (view: ViewState) => void;
-}
+
 
 const inputClass =
   "flex w-full rounded-lg text-gray-900 dark:text-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 h-16 pl-12 pr-4 text-xl placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all";
 
-export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
+export const RegisterPage: React.FC = () => {
+  const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,7 +49,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
       return;
     }
     setAuth(result.user, result.session);
-    onNavigate(ViewState.DASHBOARD);
+    navigate('/');
   };
 
   return (
@@ -58,7 +57,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
       <AuthHeader
         message="¿Ya tiene una cuenta?"
         buttonLabel="Iniciar sesión"
-        onButtonClick={() => onNavigate(ViewState.LOGIN)}
+        onButtonClick={() => navigate('/login')}
       />
 
       <main className="flex w-full flex-1">

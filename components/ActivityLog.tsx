@@ -1,12 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { ViewState } from "../types";
+import { Link } from "react-router-dom";
 import { activityApi, ApiActivityLog } from "../lib/api";
 
 type PeriodFilter = "today" | "week" | "month" | "custom";
 
-interface ActivityLogProps {
-  onNavigate: (view: ViewState) => void;
-}
 
 function toYMD(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -50,7 +47,7 @@ function getDateRange(period: PeriodFilter, customFrom: string, customTo: string
   return {};
 }
 
-export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
+export const ActivityLog: React.FC = () => {
   const [activities, setActivities] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -113,7 +110,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ onNavigate }) => {
           <div className="flex flex-wrap justify-between items-end gap-4">
             <div className="flex flex-col gap-2">
               <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
-                <button type="button" className="hover:text-primary cursor-pointer" onClick={() => onNavigate(ViewState.DASHBOARD)}>Inicio</button>
+                <Link to="/" className="hover:text-primary">Inicio</Link>
                 <span>/</span><span className="text-[#111318] dark:text-white">Bitácora</span>
               </nav>
               <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Bitácora de Actividad</h1>

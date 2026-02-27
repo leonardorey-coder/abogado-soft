@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ViewState } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { conveniosApi, ApiConvenio } from "../lib/api";
 
-interface AgreementsListProps {
-  onNavigate: (view: ViewState) => void;
-}
+
 
 type EstadoConvenio = "ACTIVO" | "PENDIENTE" | "EXPIRADO";
 type FilterEstado = "TODOS" | EstadoConvenio;
@@ -27,7 +25,8 @@ function formatFecha(iso: string): string {
   return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export const AgreementsList: React.FC<AgreementsListProps> = ({ onNavigate }) => {
+export const AgreementsList: React.FC = () => {
+  const navigate = useNavigate();
   const [convenios, setConvenios] = useState<ApiConvenio[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -68,7 +67,7 @@ export const AgreementsList: React.FC<AgreementsListProps> = ({ onNavigate }) =>
       <div className="flex flex-wrap justify-between items-end gap-4">
         <div className="flex flex-col gap-2">
           <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
-            <button type="button" className="hover:text-primary cursor-pointer" onClick={() => onNavigate(ViewState.DASHBOARD)}>Inicio</button>
+            <Link to="/" className="hover:text-primary">Inicio</Link>
             <span>/</span><span className="text-[#111318] dark:text-white">Convenios</span>
           </nav>
           <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Gestión de Convenios</h1>
@@ -152,7 +151,7 @@ export const AgreementsList: React.FC<AgreementsListProps> = ({ onNavigate }) =>
                     </span>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button type="button" onClick={() => onNavigate(ViewState.EDITOR)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
+                    <button type="button" onClick={() => navigate(`/documento/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
                       <span className="material-symbols-outlined text-lg">visibility</span>Ver
                     </button>
                   </td>

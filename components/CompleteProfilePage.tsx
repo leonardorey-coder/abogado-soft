@@ -1,13 +1,9 @@
 import React, { useState } from "react";
-import { ViewState } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_LABELS } from "../lib/constants";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseAuth";
 
-interface CompleteProfilePageProps {
-  onNavigate: (view: ViewState) => void;
-}
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -24,9 +20,7 @@ async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
-export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
-  onNavigate,
-}) => {
+export const CompleteProfilePage: React.FC = () => {
   const { user, setAuth, refreshUser } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
@@ -117,7 +111,7 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
       // 3. Refrescar datos del usuario (ahora tendrá grupo → needsProfileSetup = false)
       await refreshUser();
 
-      // El useEffect en App.tsx detectará que needsProfileSetup=false y redirigirá al dashboard
+      // ProtectedRoute detectará que needsProfileSetup=false y redirigirá al dashboard automáticamente
     } catch (err: any) {
       setError(err.message ?? "Error de conexión. Intente de nuevo.");
     } finally {
@@ -159,25 +153,22 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
           {/* Progreso */}
           <div className="flex items-center gap-3 mb-8">
             <div
-              className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${
-                step >= 1
+              className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${step >= 1
                   ? "bg-primary text-white"
                   : "bg-gray-200 dark:bg-gray-700 text-gray-500"
-              }`}
+                }`}
             >
               1
             </div>
             <div
-              className={`flex-1 h-1 rounded-full transition-colors ${
-                step >= 2 ? "bg-primary" : "bg-gray-200 dark:bg-gray-700"
-              }`}
+              className={`flex-1 h-1 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-gray-200 dark:bg-gray-700"
+                }`}
             />
             <div
-              className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${
-                step >= 2
+              className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${step >= 2
                   ? "bg-primary text-white"
                   : "bg-gray-200 dark:bg-gray-700 text-gray-500"
-              }`}
+                }`}
             >
               2
             </div>
@@ -210,18 +201,16 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
                       key={r.value}
                       type="button"
                       onClick={() => setSelectedRole(r.value)}
-                      className={`w-full flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all ${
-                        selectedRole === r.value
+                      className={`w-full flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all ${selectedRole === r.value
                           ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                           : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                      }`}
+                        }`}
                     >
                       <div
-                        className={`p-3 rounded-lg ${
-                          selectedRole === r.value
+                        className={`p-3 rounded-lg ${selectedRole === r.value
                             ? "bg-primary text-white"
                             : "bg-gray-100 dark:bg-gray-800 text-gray-500"
-                        }`}
+                          }`}
                       >
                         <span className="material-symbols-outlined text-2xl">
                           {r.icon}
@@ -236,11 +225,10 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
                         </p>
                       </div>
                       <div
-                        className={`mt-1 size-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          selectedRole === r.value
+                        className={`mt-1 size-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedRole === r.value
                             ? "border-primary bg-primary"
                             : "border-gray-300 dark:border-gray-600"
-                        }`}
+                          }`}
                       >
                         {selectedRole === r.value && (
                           <span className="material-symbols-outlined text-white text-sm">
@@ -276,11 +264,10 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
                         setGroupOption("join");
                         setError(null);
                       }}
-                      className={`flex-1 py-3 text-sm font-bold transition-colors ${
-                        groupOption === "join"
+                      className={`flex-1 py-3 text-sm font-bold transition-colors ${groupOption === "join"
                           ? "bg-primary text-white"
                           : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-base align-middle mr-1">
                         group_add
@@ -293,11 +280,10 @@ export const CompleteProfilePage: React.FC<CompleteProfilePageProps> = ({
                         setGroupOption("create");
                         setError(null);
                       }}
-                      className={`flex-1 py-3 text-sm font-bold transition-colors ${
-                        groupOption === "create"
+                      className={`flex-1 py-3 text-sm font-bold transition-colors ${groupOption === "create"
                           ? "bg-primary text-white"
                           : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-base align-middle mr-1">
                         add_circle

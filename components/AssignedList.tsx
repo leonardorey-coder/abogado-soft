@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ViewState, FileStatus } from "../types";
+import { FileStatus } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { assignmentsApi, ApiDocumentAssignment } from "../lib/api";
 
-interface AssignedListProps {
-  onNavigate: (view: ViewState) => void;
-}
+
 
 const getFileStatusColor = (status: string) => {
   switch (status) {
@@ -46,7 +45,8 @@ function formatTimeAgo(iso: string) {
   return `Hace ${Math.floor(days / 7)}w`;
 }
 
-export const AssignedList: React.FC<AssignedListProps> = ({ onNavigate }) => {
+export const AssignedList: React.FC = () => {
+  const navigate = useNavigate();
   const [assignments, setAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterAssigned>("TODOS");
@@ -71,9 +71,8 @@ export const AssignedList: React.FC<AssignedListProps> = ({ onNavigate }) => {
   const filtered = filter === "TODOS" ? assignments : assignments.filter(a => a.status === filter);
 
   const handleDocumentClick = (a: ApiDocumentAssignment) => {
-    const type = a.document?.type?.toUpperCase() || "";
-    if (type === "XLSX" || type === "XLS") onNavigate(ViewState.EXCEL_EDITOR);
-    else onNavigate(ViewState.EDITOR);
+    const docId = a.document?.id;
+    if (docId) navigate(`/documento/${docId}`);
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
@@ -85,7 +84,7 @@ export const AssignedList: React.FC<AssignedListProps> = ({ onNavigate }) => {
     <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
       <div className="flex flex-col gap-2">
         <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">
-          <button type="button" className="hover:text-primary cursor-pointer" onClick={() => onNavigate(ViewState.DASHBOARD)}>Inicio</button>
+          <Link to="/" className="hover:text-primary">Inicio</Link>
           <span>/</span><span className="text-[#111318] dark:text-white">Asignados</span>
         </nav>
         <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Documentos asignados</h1>

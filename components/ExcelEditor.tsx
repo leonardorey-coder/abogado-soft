@@ -1,12 +1,13 @@
 import React from "react";
-import { ViewState, Document } from "../types";
+import { Document } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 
 interface ExcelEditorProps {
-  onNavigate: (view: ViewState) => void;
   documentFromTrash?: Document | null;
 }
 
-export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate, documentFromTrash }) => {
+export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) => {
+  const navigate = useNavigate();
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white flex-1 flex flex-col">
       {documentFromTrash && (
@@ -17,7 +18,7 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate, documentFr
           </p>
           <button
             type="button"
-            onClick={() => onNavigate(ViewState.TRASH)}
+            onClick={() => navigate('/papelera')}
             className="shrink-0 px-4 py-2 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-sm font-bold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors"
           >
             Ir a Papelera
@@ -30,7 +31,7 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ onNavigate, documentFr
           <nav className="flex flex-wrap gap-2 items-center">
             <a
               className="text-[#616f89] text-sm font-medium hover:text-primary transition-colors cursor-pointer"
-              onClick={() => onNavigate(ViewState.DASHBOARD)}
+              onClick={() => navigate('/')}
             >
               Archivos
             </a>

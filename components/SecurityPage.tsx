@@ -1,11 +1,6 @@
 import React from "react";
-import { ViewState } from "../types";
 
-interface SecurityPageProps {
-  onNavigate: (view: ViewState) => void;
-}
-
-export const SecurityPage: React.FC<SecurityPageProps> = ({ onNavigate }) => {
+export const SecurityPage: React.FC = () => {
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#111318] dark:text-white flex-1 font-display">
       <div className="max-w-[1200px] mx-auto flex flex-col gap-8 px-6 py-10">

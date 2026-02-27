@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ViewState } from "../types";
+import { useNavigate, Link } from "react-router-dom";
 import { documentsApi, ApiDocument } from "../lib/api";
 
 const getFileIcon = (type: string) => {
@@ -20,11 +20,11 @@ function formatDate(iso: string): string {
 }
 
 interface TrashPageProps {
-  onNavigate: (view: ViewState) => void;
   onRefreshDocuments?: () => void;
 }
 
-export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocuments }) => {
+export const TrashPage: React.FC<TrashPageProps> = ({ onRefreshDocuments }) => {
+  const navigate = useNavigate();
   const [deletedDocuments, setDeletedDocuments] = useState<ApiDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -71,9 +71,7 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
   };
 
   const handleOpenDocument = (doc: ApiDocument) => {
-    const t = doc.type?.toUpperCase();
-    if (t === "XLSX" || t === "XLS") onNavigate(ViewState.EXCEL_EDITOR);
-    else onNavigate(ViewState.EDITOR);
+    navigate(`/documento/${doc.id}`);
   };
 
   return (
@@ -108,13 +106,12 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
           <p className="text-slate-500 dark:text-slate-500 text-sm mt-1 text-center">
             Los documentos que elimines aparecerán aquí
           </p>
-          <button
-            type="button"
-            onClick={() => onNavigate(ViewState.DASHBOARD)}
-            className="mt-6 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors"
+          <Link
+            to="/"
+            className="mt-6 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors inline-block"
           >
             Volver al inicio
-          </button>
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -127,11 +124,10 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
                 tabIndex={0}
                 onClick={() => handleOpenDocument(doc)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenDocument(doc); } }}
-                className={`min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 transition-all cursor-pointer flex flex-col ${
-                  restoringId === doc.id
+                className={`min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 transition-all cursor-pointer flex flex-col ${restoringId === doc.id
                     ? "border-green-400 dark:border-green-500 bg-green-50 dark:bg-green-900/20 scale-95 opacity-0"
                     : "border-slate-100 dark:border-slate-700 hover:border-primary"
-                }`}
+                  }`}
                 style={{ transition: 'all 0.5s ease-in-out' }}
               >
                 <header className="flex items-start justify-between gap-3 mb-4">
@@ -158,11 +154,10 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
                     type="button"
                     disabled={restoringId === doc.id}
                     onClick={(e) => { e.stopPropagation(); handleRestore(doc); }}
-                    className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
-                      restoringId === doc.id
+                    className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${restoringId === doc.id
                         ? "bg-green-500 text-white cursor-wait"
                         : "bg-primary text-white hover:bg-primary/90"
-                    }`}
+                      }`}
                   >
                     <span className={`material-symbols-outlined text-lg ${restoringId === doc.id ? "animate-spin" : ""}`}>
                       {restoringId === doc.id ? "sync" : "restore"}
@@ -187,11 +182,10 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onNavigate, onRefreshDocum
       {/* Toast de restauración */}
       {toast && (
         <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border transition-all duration-500 ${
-            toast.visible
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border transition-all duration-500 ${toast.visible
               ? "opacity-100 translate-y-0"
               : "opacity-0 translate-y-4"
-          } bg-green-50 dark:bg-green-900/80 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200`}
+            } bg-green-50 dark:bg-green-900/80 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200`}
         >
           <span className="material-symbols-outlined text-2xl text-green-600 dark:text-green-400">check_circle</span>
           <span className="font-bold text-sm">{toast.message}</span>

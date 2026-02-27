@@ -5,7 +5,8 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { ViewState, Document } from '../types';
+import { Document } from '../types';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getDocumentFileUrl, downloadDocument } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
@@ -20,8 +21,6 @@ type EditorTab = 'EDITOR' | 'HISTORY' | 'COMMENTS' | 'DETAILS';
 type SyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
 
 interface DocumentEditorProps {
-  onNavigate: (view: ViewState) => void;
-  documentId: string | null;
   documentFromTrash?: Document | null;
 }
 
@@ -63,8 +62,7 @@ function getTypeIcon(type: string): string {
 }
 
 function getShareUrl(documentId: string): string {
-  const base = window.location.origin + window.location.pathname;
-  return `${base}#/document/${documentId}`;
+  return `${window.location.origin}/documento/${documentId}`;
 }
 
 // ─── Active Users Component ──────────────────────────────────────────────────
@@ -221,7 +219,9 @@ SuperDocEditor.displayName = 'SuperDocEditor';
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, documentId, documentFromTrash }) => {
+export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTrash }) => {
+  const { id: documentId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState<EditorTab>('EDITOR');
   const [doc, setDoc] = useState<ApiDocument | null>(null);
@@ -437,7 +437,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
           <span className="material-symbols-outlined text-6xl text-red-400 mb-4 block">error</span>
           <h2 className="text-2xl font-bold text-[#0e0e1b] dark:text-white mb-2">Error al cargar documento</h2>
           <p className="text-gray-500 mb-6">{error ?? 'Documento no encontrado'}</p>
-          <button onClick={() => onNavigate(ViewState.DASHBOARD)} className="px-6 py-3 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
+          <button onClick={() => navigate('/')} className="px-6 py-3 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
             Volver al Inicio
           </button>
         </div>
@@ -839,7 +839,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
           <p className="text-sm font-medium flex-1">
             Este documento está en la papelera. Para devolverlo a la lista principal, restáuralo desde la página Papelera.
           </p>
-          <button type="button" onClick={() => onNavigate(ViewState.TRASH)} className="shrink-0 px-4 py-2 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-sm font-bold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors">
+          <button type="button" onClick={() => navigate('/papelera')} className="shrink-0 px-4 py-2 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-sm font-bold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors">
             Ir a Papelera
           </button>
         </div>
@@ -848,7 +848,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ onNavigate, docu
       <div className="flex grow min-h-0 overflow-hidden relative">
         {/* Left Sidebar */}
         <aside className="w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
-          <button type="button" onClick={() => onNavigate(ViewState.DASHBOARD)} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
+          <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
             <span className="material-symbols-outlined text-xl">arrow_back</span>
             Atrás
           </button>

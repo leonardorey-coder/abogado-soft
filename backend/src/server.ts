@@ -16,6 +16,9 @@ import { activityRouter } from './routes/activity.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { driveRouter } from './routes/drive.routes.js';
+// NOTE: collaborationRouter usa modelos de Prisma (CollaborationSession, etc.) que aún
+// no están en el schema. Se activa cuando se migren esos modelos.
+// import { collaborationRouter } from './routes/collaboration.routes.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
@@ -48,6 +51,7 @@ app.use('/api/activity', activityRouter);
 app.use('/api/backups', backupsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/drive', driveRouter);
+// app.use('/api/collaboration', collaborationRouter); // Pendiente: migrar modelos Prisma
 
 // ─── Error handler (siempre al final) ────────────────────────────────────────
 app.use(errorHandler);

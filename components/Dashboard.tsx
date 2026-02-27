@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { ViewState, Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
+import { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
+import { useNavigate, Link } from "react-router-dom";
+import { useDocuments } from "../lib/useDocuments";
 import { getDocumentFileUrl } from '../lib/api';
 import { supabase } from '../lib/supabaseAuth';
 import { ShareModal } from "./ShareModal";
@@ -11,15 +13,9 @@ import { SuperDoc } from "superdoc";
 import "superdoc/style.css";
 
 interface DashboardProps {
-  documents: Document[];
-  onDeleteDocument: (doc: Document) => void;
-  onStatusChange: (id: string, status: FileStatus) => Promise<void>;
-  onNavigate: (view: ViewState) => void;
   onOpenUploadModal?: (files?: File[]) => void;
   isUploadModalOpen?: boolean;
   searchQuery?: string;
-  loading?: boolean;
-  onRefresh?: () => Promise<void>;
   onOpenDocument?: (docId: string, docType?: string) => void;
 }
 
@@ -87,17 +83,19 @@ const matchesSearch = (doc: Document, q: string) => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  documents,
-  onDeleteDocument,
-  onStatusChange,
-  onNavigate,
   onOpenUploadModal,
   isUploadModalOpen = false,
   searchQuery = "",
-  loading = false,
-  onRefresh,
   onOpenDocument,
 }) => {
+  const navigate = useNavigate();
+  const {
+    documents,
+    loading,
+    refresh: onRefresh,
+    deleteDocument: handleDeleteDoc,
+    updateStatus: onStatusChange,
+  } = useDocuments();
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
   const { user } = useAuth();
@@ -300,7 +298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (confirmDeleteDocId === doc.id) {
       setMenuOpenDocId(null);
       setConfirmDeleteDocId(null);
-      onDeleteDocument(doc);
+      handleDeleteDoc(doc.id);
     } else {
       setConfirmDeleteDocId(doc.id);
     }
@@ -318,9 +316,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (onOpenDocument) {
       onOpenDocument(doc.id, doc.type);
     } else if (doc.type === 'XLSX') {
-      onNavigate(ViewState.EXCEL_EDITOR);
+      navigate(`/documento/${doc.id}`);
     } else {
-      onNavigate(ViewState.EDITOR);
+      navigate(`/documento/${doc.id}`);
     }
   };
 
@@ -369,8 +367,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Card de Despacho (Equipo) Reposicionada */}
           {user?.groupMemberships && user.groupMemberships.length > 0 && (
-            <button
-              onClick={() => onNavigate(ViewState.TEAM)}
+            <Link
+              to="/equipo"
               className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-sm p-4 flex flex-row items-center gap-4 shrink-0 transition-all hover:border-primary/40 hover:shadow-md cursor-pointer group text-left max-w-sm w-full lg:w-auto outline-none focus-visible:border-primary"
               title="Ver opciones de equipo"
             >
@@ -392,7 +390,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               >
                 <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
               </div>
-            </button>
+            </Link>
           )}
         </div>
 
