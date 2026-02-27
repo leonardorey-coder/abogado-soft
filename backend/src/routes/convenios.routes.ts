@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
+import * as Diff from 'diff';
 
 export const conveniosRouter = Router();
 conveniosRouter.use(authenticate);
@@ -79,6 +80,23 @@ conveniosRouter.get(
             include: {
               document: { select: { id: true, name: true, type: true, fileStatus: true } },
             },
+          },
+          versions: {
+            orderBy: { version: 'desc' },
+            take: 10,
+            include: { creator: { select: { id: true, name: true } } },
+          },
+          comments: {
+            where: { isDeleted: false, parentId: null },
+            include: {
+              user: { select: { id: true, name: true, avatarUrl: true } },
+              replies: {
+                where: { isDeleted: false },
+                include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+                orderBy: { createdAt: 'asc' },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
           },
         },
       });
@@ -229,6 +247,129 @@ conveniosRouter.delete(
         },
       });
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/convenios/:id/versions ───────────────────────────────────────
+const createVersionSchema = z.object({
+  changeNote: z.string().optional(),
+});
+
+conveniosRouter.post(
+  '/:id/versions',
+  validateParams(uuidParam),
+  validate(createVersionSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const conv = await prisma.convenio.findUniqueOrThrow({
+        where: { id: req.params.id },
+      });
+
+      const newVersionNum = conv.version + 1;
+
+      const [version] = await prisma.$transaction([
+        prisma.convenioVersion.create({
+          data: {
+            convenioId: conv.id,
+            version: newVersionNum,
+            createdBy: req.user!.id,
+            snapshotData: conv as any,
+            changeNote: req.body.changeNote,
+          },
+        }),
+        prisma.convenio.update({
+          where: { id: conv.id },
+          data: { version: newVersionNum },
+        }),
+      ]);
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'CONVENIO_VERSION_CREATED' as any,
+          entityType: 'convenio',
+          entityId: conv.id,
+          entityName: conv.numero,
+          description: `Nueva versión (v${newVersionNum}) del convenio: ${conv.numero}`,
+          metadata: { version: newVersionNum, changeNote: req.body.changeNote },
+        },
+      });
+
+      res.status(201).json(version);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/convenios/:id/comments ───────────────────────────────────────
+const createCommentSchema = z.object({
+  content: z.string().min(1),
+  parentId: z.string().uuid().optional(),
+});
+
+conveniosRouter.post(
+  '/:id/comments',
+  validateParams(uuidParam),
+  validate(createCommentSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const comment = await prisma.convenioComment.create({
+        data: {
+          convenioId: req.params.id,
+          userId: req.user!.id,
+          content: req.body.content,
+          parentId: req.body.parentId,
+        },
+        include: {
+          user: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'CONVENIO_COMMENT_ADDED' as any,
+          entityType: 'convenio',
+          entityId: req.params.id,
+          description: `Comentario agregado al convenio`,
+        },
+      });
+
+      res.status(201).json(comment);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/convenios/:id/diff ─────────────────────────────────────────────
+conveniosRouter.get(
+  '/:id/diff',
+  validateParams(uuidParam),
+  validateQuery(z.object({ v1: z.string(), v2: z.string() })),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const v1Num = parseInt(req.query.v1 as string, 10);
+      const v2Num = parseInt(req.query.v2 as string, 10);
+
+      const [ver1, ver2] = await Promise.all([
+        prisma.convenioVersion.findUnique({
+          where: { convenioId_version: { convenioId: req.params.id, version: v1Num } },
+        }),
+        prisma.convenioVersion.findUnique({
+          where: { convenioId_version: { convenioId: req.params.id, version: v2Num } },
+        }),
+      ]);
+
+      const text1 = ver1 ? JSON.stringify(ver1.snapshotData, null, 2) : '';
+      const text2 = ver2 ? JSON.stringify(ver2.snapshotData, null, 2) : '';
+
+      const diffs = Diff.diffLines(text1, text2);
+      res.json(diffs);
     } catch (error) {
       next(error);
     }

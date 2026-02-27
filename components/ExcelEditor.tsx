@@ -1,13 +1,57 @@
 import React from "react";
 import { Document } from "../types";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { documentsApi, ApiDocument } from "../lib/api";
+import { formatTimeAgo } from "../lib/formatters";
 
 interface ExcelEditorProps {
   documentFromTrash?: Document | null;
 }
 
 export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) => {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [doc, setDoc] = useState<ApiDocument | null>(null);
+  const [loading, setLoading] = useState(!documentFromTrash);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (documentFromTrash) {
+      setDoc(documentFromTrash as unknown as ApiDocument);
+      return;
+    }
+    const fetchDoc = async () => {
+      if (!id) return;
+      try {
+        setLoading(true);
+        const data = await documentsApi.get(id);
+        setDoc(data);
+      } catch (err: any) {
+        setError(err.message || 'Error al cargar el documento Excel.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDoc();
+  }, [id, documentFromTrash]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[50vh] bg-background-light dark:bg-background-dark">
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error || !doc) {
+    return (
+      <div className="p-8 text-center text-red-600 font-bold dark:text-red-400 bg-background-light dark:bg-background-dark flex-1">
+        {error || "Documento no encontrado."}
+      </div>
+    );
+  }
+
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-[#111318] dark:text-white flex-1 flex flex-col">
       {documentFromTrash && (
@@ -39,13 +83,13 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
             <span className="text-primary text-sm font-medium">Convenios</span>
             <span className="text-[#616f89] text-sm font-medium">/</span>
             <span className="text-[#111318] dark:text-white text-sm font-medium">
-              Convenio Universidad - Edición
+              {doc.name} - Edición Excel
             </span>
           </nav>
           <div className="flex flex-wrap justify-between items-end gap-4">
             <div className="flex flex-col gap-1">
               <h1 className="text-[#111318] dark:text-white text-3xl font-black leading-tight tracking-tight">
-                Convenio Universidad_2024.xlsx
+                {doc.name}
               </h1>
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <span className="material-symbols-outlined text-sm">
@@ -381,83 +425,31 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* History Item 1 */}
-              <div className="relative pl-6 pb-2 border-l-2 border-primary/20">
-                <div className="absolute -left-1.5 top-0 size-3 rounded-full bg-primary border-2 border-white dark:border-gray-800"></div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111318] dark:text-white">
-                      Juan Pérez
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Hace 2 min
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Modificó el{" "}
-                    <span className="font-medium text-primary">Estado</span> en
-                    la fila 3 a "Borrador".
-                  </p>
+              {(!doc.versions || doc.versions.length === 0) ? (
+                <div className="text-sm text-[#616f89] dark:text-[#a0aec0] text-center py-4">
+                  No hay historial de versiones.
                 </div>
-              </div>
-              {/* History Item 2 */}
-              <div className="relative pl-6 pb-2 border-l-2 border-primary/20">
-                <div className="absolute -left-1.5 top-0 size-3 rounded-full bg-gray-300 border-2 border-white dark:border-gray-800"></div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111318] dark:text-white">
-                      María García
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Hace 45 min
-                    </span>
+              ) : (
+                doc.versions.map((version, idx) => (
+                  <div key={version.id} className="relative pl-6 pb-2 border-l-2 border-primary/20">
+                    <div className={`absolute -left-1.5 top-0 size-3 rounded-full border-2 border-white dark:border-gray-800 ${idx === 0 ? 'bg-primary' : 'bg-gray-300'}`}></div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#111318] dark:text-white">
+                          {version.creator?.name || 'Sistema'}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {formatTimeAgo(version.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-mono">
+                        v{version.version}
+                        {version.changeNote && <span className="ml-2 font-sans font-medium text-primary bg-primary/5 px-1 rounded block mt-1">{version.changeNote}</span>}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Actualizó{" "}
-                    <span className="font-medium text-primary">
-                      Observaciones
-                    </span>{" "}
-                    en fila 1.
-                  </p>
-                </div>
-              </div>
-              {/* History Item 3 */}
-              <div className="relative pl-6 pb-2 border-l-2 border-primary/20">
-                <div className="absolute -left-1.5 top-0 size-3 rounded-full bg-gray-300 border-2 border-white dark:border-gray-800"></div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111318] dark:text-white">
-                      Sistema Abogadosoft
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Hoy, 09:15 AM
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Documento{" "}
-                    <span className="font-medium text-primary">Vinculado</span>{" "}
-                    al Expediente EXP-2024-001.
-                  </p>
-                </div>
-              </div>
-              {/* History Item 4 */}
-              <div className="relative pl-6 pb-2 border-l-2 border-primary/20">
-                <div className="absolute -left-1.5 top-0 size-3 rounded-full bg-gray-300 border-2 border-white dark:border-gray-800"></div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111318] dark:text-white">
-                      Juan Pérez
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Hoy, 08:30 AM
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Creó el archivo a partir de la plantilla{" "}
-                    <span className="font-medium">Universidad Base</span>.
-                  </p>
-                </div>
-              </div>
+                ))
+              )}
             </div>
             <div className="p-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700">
               <button className="w-full py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#111318] dark:text-white text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors">

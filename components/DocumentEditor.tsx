@@ -11,6 +11,9 @@ import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getD
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
+import { HistoryTab } from './HistoryTab';
+import { CommentsTab } from './CommentsTab';
+import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -25,32 +28,6 @@ interface DocumentEditorProps {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatFileSize(bytes: number | string): string {
-  const b = typeof bytes === 'string' ? parseInt(bytes, 10) : bytes;
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatTimeAgo(iso: string): string {
-  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return 'hace un momento';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `hace ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `hace ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `hace ${days} día${days > 1 ? 's' : ''}`;
-}
 
 function getTypeIcon(type: string): string {
   switch (type?.toUpperCase()) {
@@ -335,17 +312,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     setSelectedVersions([]);
   };
 
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !documentId) return;
-    setSubmittingComment(true);
+  const handleAddComment = async (content: string) => {
+    if (!documentId) return;
     try {
-      await documentsApi.addComment(documentId, { content: newComment.trim() });
-      setNewComment('');
+      await documentsApi.addComment(documentId, { content });
       await fetchDocument();
     } catch (err) {
       console.error('Error agregando comentario:', err);
-    } finally {
-      setSubmittingComment(false);
+      throw err;
     }
   };
 
@@ -577,136 +551,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     );
   };
 
-  const renderHistoryView = () => (
-    <div className="flex-1 overflow-y-auto p-8 md:p-12">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-3xl font-black text-[#0e0e1b] dark:text-white mb-2">Historial de Auditoría</h2>
-        <p className="text-gray-500 mb-8">Registro completo de cambios y accesos al documento.</p>
+  const renderHistoryView = () => <HistoryTab versions={versions as any} />;
 
-        {versions.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <span className="material-symbols-outlined text-6xl mb-4 block">history</span>
-            <p className="text-lg">Aún no hay versiones registradas.</p>
-          </div>
-        ) : (
-          <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-3 space-y-8">
-            {versions.map((v, idx) => (
-              <div key={v.id} className="relative pl-8">
-                <div className={`absolute -left-[9px] top-0 size-4 rounded-full border-2 border-white dark:border-background-dark ${idx === 0 ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                  <div>
-                    <span className={`text-sm font-bold px-2 py-0.5 rounded ${idx === 0 ? 'bg-primary/10 text-primary' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>v{v.version}</span>
-                    <span className="text-sm text-gray-400 ml-2">{formatTime(v.createdAt)} - {formatDate(v.createdAt)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="size-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">
-                      {(v.creator?.name ?? '?').charAt(0)}
-                    </div>
-                    <span className="text-sm font-medium dark:text-gray-300">{v.creator?.name ?? 'Sistema'}</span>
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <p className="text-[#0e0e1b] dark:text-white font-medium mb-1">
-                    {v.changeNote ?? (idx === 0 ? 'Versión actual' : 'Actualización del documento')}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Tamaño: {formatFileSize(v.size)} — {formatTimeAgo(v.createdAt)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderCommentsView = () => (
-    <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-gray-50 dark:bg-[#0a0a14]">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-3xl font-black text-[#0e0e1b] dark:text-white mb-1">Comentarios</h2>
-            <p className="text-gray-500">Discusión activa sobre el documento.</p>
-          </div>
-        </div>
-
-        {/* New comment form */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-8">
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Escribe un comentario…"
-            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-sm text-[#0e0e1b] dark:text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            rows={3}
-          />
-          <div className="flex justify-end mt-3">
-            <button
-              onClick={handleAddComment}
-              disabled={!newComment.trim() || submittingComment}
-              className="px-6 py-2 bg-primary text-white rounded-lg font-bold text-sm shadow hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {submittingComment && (
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-              )}
-              Comentar
-            </button>
-          </div>
-        </div>
-
-        {comments.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <span className="material-symbols-outlined text-6xl mb-4 block">chat_bubble</span>
-            <p className="text-lg">Aún no hay comentarios.</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {comments.map((comment) => (
-              <div key={comment.id} className={`bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border ${comment.isResolved ? 'border-gray-200 dark:border-gray-700 opacity-75' : 'border-blue-100 dark:border-blue-900/30 ring-1 ring-blue-500/10'}`}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    {comment.user.avatarUrl ? (
-                      <img src={comment.user.avatarUrl} alt={comment.user.name} className="size-10 rounded-full" />
-                    ) : (
-                      <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                        {comment.user.name.charAt(0)}
-                      </div>
-                    )}
-                    <div>
-                      <h4 className="font-bold text-[#0e0e1b] dark:text-white">{comment.user.name}</h4>
-                      <p className="text-xs text-gray-500">{formatDate(comment.createdAt)} · {formatTimeAgo(comment.createdAt)}</p>
-                    </div>
-                  </div>
-                  {comment.isResolved ? (
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                      <span className="material-symbols-outlined text-sm">check</span> Resuelto
-                    </span>
-                  ) : (
-                    <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold">Pendiente</span>
-                  )}
-                </div>
-                <p className="text-gray-800 dark:text-gray-200 mb-4 ml-13">{comment.content}</p>
-
-                {/* Replies */}
-                {comment.replies && comment.replies.map(reply => (
-                  <div key={reply.id} className="ml-8 mt-3 pl-4 border-l-2 border-gray-100 dark:border-gray-700">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-sm dark:text-white">{reply.user.name}</span>
-                      <span className="text-xs text-gray-400">{formatDate(reply.createdAt)}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{reply.content}</p>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const renderCommentsView = () => <CommentsTab comments={comments as any} onAddComment={handleAddComment} />;
 
   const renderDetailsView = () => (
     <div className="flex-1 overflow-y-auto p-8 md:p-12">

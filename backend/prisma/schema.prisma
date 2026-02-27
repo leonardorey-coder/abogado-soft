@@ -146,6 +146,9 @@ enum ActivityType {
   CONVENIO_CREATED
   CONVENIO_UPDATED
   CONVENIO_DELETED
+  CONVENIO_VERSION_CREATED
+  CONVENIO_COMMENT_ADDED
+  CONVENIO_COMMENT_DELETED
   GROUP_CREATED
   GROUP_UPDATED
   GROUP_DELETED
@@ -203,6 +206,8 @@ model User {
   assignmentsSent        DocumentAssignment[] @relation("AssignedBy")
   documentVersions       DocumentVersion[]
   documentComments       DocumentComment[]
+  convenioVersions       ConvenioVersion[]
+  convenioComments       ConvenioComment[]
   activityLogs           ActivityLog[]
   conveniosResponsable   Convenio[]
   convenioDocumentsAdded ConvenioDocument[]
@@ -483,17 +488,68 @@ model Convenio {
   estado        ConvenioStatus @default(pendiente)
   notas         String?
   monto         Decimal?       @db.Decimal(14, 2)
+  version       Int            @default(1)
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   responsable User?              @relation(fields: [responsableId], references: [id], onDelete: SetNull)
   documents   ConvenioDocument[]
+  versions    ConvenioVersion[]
+  comments    ConvenioComment[]
 
   @@index([estado])
   @@index([fechaFin])
   @@index([responsableId])
   @@index([institucion])
   @@map("convenios")
+}
+
+// ─────────────────────────────────────────────
+// 12.1 VERSIONES DE CONVENIOS
+// ─────────────────────────────────────────────
+
+model ConvenioVersion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  convenioId   String   @map("convenio_id") @db.Uuid
+  version      Int
+  snapshotData Json     @map("snapshot_data") @db.JsonB
+  changeNote   String?  @map("change_note")
+  createdBy    String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  convenio Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([convenioId, version], map: "uq_convenio_version")
+  @@index([convenioId])
+  @@index([createdBy])
+  @@map("convenio_versions")
+}
+
+// ─────────────────────────────────────────────
+// 12.2 COMENTARIOS EN CONVENIOS
+// ─────────────────────────────────────────────
+
+model ConvenioComment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  convenioId String   @map("convenio_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  parentId   String?  @map("parent_id") @db.Uuid
+  content    String
+  isResolved Boolean  @default(false) @map("is_resolved")
+  isDeleted  Boolean  @default(false) @map("is_deleted")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  convenio Convenio          @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   ConvenioComment?  @relation("ConvenioCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  ConvenioComment[] @relation("ConvenioCommentThread")
+
+  @@index([convenioId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("convenio_comments")
 }
 
 // ─────────────────────────────────────────────

@@ -12,6 +12,9 @@ import mammoth from 'mammoth';
 import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
+import * as Diff from 'diff';
+import * as pdfParseModule from 'pdf-parse';
+const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 
 // ─── BigInt → Number serialization helper ────────────────────────────────────
 function serializeBigInt(obj: any): any {
@@ -664,6 +667,55 @@ documentsRouter.post(
       });
 
       res.status(201).json(comment);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/diff ─────────────────────────────────────────────
+documentsRouter.get(
+  '/:id/diff',
+  validateParams(uuidParam),
+  validateQuery(z.object({ v1: z.string(), v2: z.string() })),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const v1Num = parseInt(req.query.v1 as string, 10);
+      const v2Num = parseInt(req.query.v2 as string, 10);
+
+      const [ver1, ver2] = await Promise.all([
+        prisma.documentVersion.findUnique({
+          where: { documentId_version: { documentId: paramId(req), version: v1Num } },
+        }),
+        prisma.documentVersion.findUnique({
+          where: { documentId_version: { documentId: paramId(req), version: v2Num } },
+        }),
+      ]);
+
+      const extractText = async (ver: any) => {
+        if (!ver || !ver.localPath || !fs.existsSync(ver.localPath)) return '';
+        const ext = path.extname(ver.localPath).toLowerCase();
+
+        if (ext === '.txt' || ext === '.rtf') {
+          return fs.readFileSync(ver.localPath, 'utf-8');
+        }
+        if (ext === '.docx' || ext === '.doc') {
+          const result = await mammoth.extractRawText({ path: ver.localPath });
+          return result.value || '';
+        }
+        if (ext === '.pdf') {
+          const dataBuffer = fs.readFileSync(ver.localPath);
+          const data = await pdfParse(dataBuffer);
+          return data.text || '';
+        }
+        return '';
+      };
+
+      const [text1, text2] = await Promise.all([extractText(ver1), extractText(ver2)]);
+
+      const diffs = Diff.diffLines(text1, text2);
+
+      res.json(diffs);
     } catch (error) {
       next(error);
     }

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { conveniosApi, ApiConvenio, documentsApi, ApiDocument } from "../lib/api";
+import { HistoryTab } from "./HistoryTab";
+import { CommentsTab } from "./CommentsTab";
+
+type ConvenioTab = 'DETAILS' | 'HISTORY' | 'COMMENTS';
 
 const getEstadoBadge = (estado: string) => {
     switch (estado) {
@@ -33,6 +37,9 @@ export const ConvenioDetails: React.FC = () => {
     const [availableDocs, setAvailableDocs] = useState<ApiDocument[]>([]);
     const [selectedDocId, setSelectedDocId] = useState<string>("");
     const [linkingDoc, setLinkingDoc] = useState(false);
+
+    // Tab state
+    const [activeTab, setActiveTab] = useState<ConvenioTab>('DETAILS');
 
     const fetchConvenio = async () => {
         if (!id) return;
@@ -102,6 +109,17 @@ export const ConvenioDetails: React.FC = () => {
         }
     };
 
+    const handleAddComment = async (content: string) => {
+        if (!id) return;
+        try {
+            await conveniosApi.addComment(id, { content });
+            await fetchConvenio();
+        } catch (err: any) {
+            console.error('Error agregando comentario:', err);
+            throw err; // propagated to CommentsTab
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-[50vh]">
@@ -159,131 +177,166 @@ export const ConvenioDetails: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Detalles Generales */}
-                <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm">
-                        <h2 className="text-xl font-bold text-[#111318] dark:text-white mb-6 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">info</span>
-                            Información General
-                        </h2>
-                        <div className="space-y-4">
-                            <div>
-                                <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Monto Estimado</dt>
-                                <dd className="text-lg font-black text-[#111318] dark:text-white">
-                                    {convenio.monto ? `$${Number(convenio.monto).toLocaleString("es-MX", { minimumFractionDigits: 2 })}` : "N/A"}
-                                </dd>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Fecha Inicio</dt>
-                                    <dd className="text-base font-medium text-[#111318] dark:text-white">
-                                        {new Date(convenio.fechaInicio).toLocaleDateString("es-ES")}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Fecha Fin</dt>
-                                    <dd className="text-base font-medium text-[#111318] dark:text-white">
-                                        {new Date(convenio.fechaFin).toLocaleDateString("es-ES")}
-                                    </dd>
-                                </div>
-                            </div>
-                            <div className="pt-2">
-                                <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Descripción</dt>
-                                <dd className="text-sm text-[#111318] dark:text-white leading-relaxed">
-                                    {convenio.descripcion || <span className="italic text-gray-400">Sin descripción</span>}
-                                </dd>
-                            </div>
-                            <div className="pt-2">
-                                <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Notas</dt>
-                                <dd className="text-sm text-[#111318] dark:text-white bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-[#dbdfe6] dark:border-[#2d3748]">
-                                    {convenio.notas || <span className="italic text-gray-400">Ninguna nota adicional</span>}
-                                </dd>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Anexos Documentales */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm overflow-hidden">
-                        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                            <h2 className="text-xl font-bold text-[#111318] dark:text-white flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary">folder_open</span>
-                                Documentos Anexos
-                                <span className="bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-[#a0aec0] px-2 py-0.5 rounded-full text-xs font-black">
-                                    {convenio.documents?.length || 0}
-                                </span>
-                            </h2>
-                            <button
-                                onClick={handleOpenAddDoc}
-                                className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors text-sm"
-                            >
-                                <span className="material-symbols-outlined text-[18px]">add</span> Vincular Documento
-                            </button>
-                        </div>
-
-                        <div className="border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl overflow-hidden">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-[#f6f6f8] dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
-                                    <tr>
-                                        <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider">Documento</th>
-                                        <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider text-center">Tipo</th>
-                                        <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider text-right">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-                                    {!convenio.documents || convenio.documents.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={3} className="px-6 py-10 text-center text-[#616f89] dark:text-[#a0aec0]">
-                                                <span className="material-symbols-outlined text-3xl mb-2 block opacity-50">description</span>
-                                                No hay documentos vinculados a este convenio.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        convenio.documents.map((cd: any) => {
-                                            const doc = cd.document;
-                                            return (
-                                                <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="material-symbols-outlined text-[#616f89]">{getTypeIcon(doc.type)}</span>
-                                                            <span className="font-bold text-[#111318] dark:text-white truncate max-w-[200px] sm:max-w-xs">{doc.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className="text-xs font-bold bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-[#a0aec0] px-2 py-1 rounded">
-                                                            {doc.type}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <button
-                                                                onClick={() => navigate(`/documento/${doc.id}`)}
-                                                                title="Ver Documento"
-                                                                className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                                                            >
-                                                                <span className="material-symbols-outlined text-[20px]">visibility</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleUnlinkDoc(doc.id)}
-                                                                title="Desvincular Documento"
-                                                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                                                            >
-                                                                <span className="material-symbols-outlined text-[20px]">link_off</span>
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            {/* Tab Navigation */}
+            <div className="flex border-b border-[#dbdfe6] dark:border-[#2d3748] mb-8 overflow-x-auto">
+                <button
+                    onClick={() => setActiveTab('DETAILS')}
+                    className={`pb-4 px-6 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'DETAILS' ? 'border-primary text-primary' : 'border-transparent text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">info</span>
+                    Detalles Generales
+                </button>
+                <button
+                    onClick={() => setActiveTab('HISTORY')}
+                    className={`pb-4 px-6 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'HISTORY' ? 'border-primary text-primary' : 'border-transparent text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">history</span>
+                    Historial de Cambios
+                </button>
+                <button
+                    onClick={() => setActiveTab('COMMENTS')}
+                    className={`pb-4 px-6 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'COMMENTS' ? 'border-primary text-primary' : 'border-transparent text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">chat_bubble</span>
+                    Comentarios
+                </button>
             </div>
+
+            {activeTab === 'DETAILS' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Detalles Generales */}
+                    <div className="lg:col-span-1 space-y-6">
+                        <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm">
+                            <h2 className="text-xl font-bold text-[#111318] dark:text-white mb-6 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">info</span>
+                                Información General
+                            </h2>
+                            <div className="space-y-4">
+                                <div>
+                                    <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Monto Estimado</dt>
+                                    <dd className="text-lg font-black text-[#111318] dark:text-white">
+                                        {convenio.monto ? `$${Number(convenio.monto).toLocaleString("es-MX", { minimumFractionDigits: 2 })}` : "N/A"}
+                                    </dd>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Fecha Inicio</dt>
+                                        <dd className="text-base font-medium text-[#111318] dark:text-white">
+                                            {new Date(convenio.fechaInicio).toLocaleDateString("es-ES")}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Fecha Fin</dt>
+                                        <dd className="text-base font-medium text-[#111318] dark:text-white">
+                                            {new Date(convenio.fechaFin).toLocaleDateString("es-ES")}
+                                        </dd>
+                                    </div>
+                                </div>
+                                <div className="pt-2">
+                                    <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Descripción</dt>
+                                    <dd className="text-sm text-[#111318] dark:text-white leading-relaxed">
+                                        {convenio.descripcion || <span className="italic text-gray-400">Sin descripción</span>}
+                                    </dd>
+                                </div>
+                                <div className="pt-2">
+                                    <dt className="text-sm font-bold text-[#616f89] dark:text-[#a0aec0] mb-1">Notas</dt>
+                                    <dd className="text-sm text-[#111318] dark:text-white bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-[#dbdfe6] dark:border-[#2d3748]">
+                                        {convenio.notas || <span className="italic text-gray-400">Ninguna nota adicional</span>}
+                                    </dd>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Anexos Documentales */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm overflow-hidden">
+                            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                                <h2 className="text-xl font-bold text-[#111318] dark:text-white flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-primary">folder_open</span>
+                                    Documentos Anexos
+                                    <span className="bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-[#a0aec0] px-2 py-0.5 rounded-full text-xs font-black">
+                                        {convenio.documents?.length || 0}
+                                    </span>
+                                </h2>
+                                <button
+                                    onClick={handleOpenAddDoc}
+                                    className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors text-sm"
+                                >
+                                    <span className="material-symbols-outlined text-[18px]">add</span> Vincular Documento
+                                </button>
+                            </div>
+
+                            <div className="border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl overflow-hidden">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-[#f6f6f8] dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
+                                        <tr>
+                                            <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider">Documento</th>
+                                            <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider text-center">Tipo</th>
+                                            <th className="px-4 py-3 text-xs font-extrabold text-[#111318] dark:text-white uppercase tracking-wider text-right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+                                        {!convenio.documents || convenio.documents.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={3} className="px-6 py-10 text-center text-[#616f89] dark:text-[#a0aec0]">
+                                                    <span className="material-symbols-outlined text-3xl mb-2 block opacity-50">description</span>
+                                                    No hay documentos vinculados a este convenio.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            convenio.documents.map((cd: any) => {
+                                                const doc = cd.document;
+                                                return (
+                                                    <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="material-symbols-outlined text-[#616f89]">{getTypeIcon(doc.type)}</span>
+                                                                <span className="font-bold text-[#111318] dark:text-white truncate max-w-[200px] sm:max-w-xs">{doc.name}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className="text-xs font-bold bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-[#a0aec0] px-2 py-1 rounded">
+                                                                {doc.type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <button
+                                                                    onClick={() => navigate(`/documento/${doc.id}`)}
+                                                                    title="Ver Documento"
+                                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[20px]">visibility</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleUnlinkDoc(doc.id)}
+                                                                    title="Desvincular Documento"
+                                                                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[20px]">link_off</span>
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'HISTORY' && (
+                <HistoryTab versions={convenio.versions as any || []} />
+            )}
+
+            {activeTab === 'COMMENTS' && (
+                <CommentsTab comments={convenio.comments as any || []} onAddComment={handleAddComment} />
+            )}
 
             {/* Modal Vincular Documento */}
             {showAddDocModal && (

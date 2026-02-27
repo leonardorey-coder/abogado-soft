@@ -25,14 +25,15 @@ interface VersionDiffViewerProps {
     versionB: VersionInfo;
     diff: DiffLine[];
     onClose: () => void;
+    entityType?: 'documents' | 'convenios';
 }
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
-async function fetchRevisionDiff(documentId: string, v1: number, v2: number): Promise<DiffLine[]> {
+async function fetchRevisionDiff(documentId: string, v1: number, v2: number, entityType: 'documents' | 'convenios' = 'documents'): Promise<DiffLine[]> {
     const token = (window as any).__supabaseSession?.access_token ?? "";
-    const res = await fetch(`${API_URL}/documents/${documentId}/diff?v1=${v1}&v2=${v2}`, {
+    const res = await fetch(`${API_URL}/${entityType}/${documentId}/diff?v1=${v1}&v2=${v2}`, {
         headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error("No se pudo obtener el diff");
@@ -47,6 +48,7 @@ export default function VersionDiffViewer({
     versionB,
     diff: initialDiff,
     onClose,
+    entityType = 'documents'
 }: VersionDiffViewerProps) {
     const [diff, setDiff] = useState<DiffLine[]>(initialDiff);
     const [loading, setLoading] = useState(!initialDiff.length);
@@ -58,10 +60,10 @@ export default function VersionDiffViewer({
     useEffect(() => {
         if (initialDiff.length) return;
         setLoading(true);
-        fetchRevisionDiff(documentId, versionA.version, versionB.version)
+        fetchRevisionDiff(documentId, versionA.version, versionB.version, entityType)
             .then((d) => { setDiff(d); setLoading(false); })
             .catch((e) => { setError(e.message); setLoading(false); });
-    }, [documentId, versionA.version, versionB.version]);
+    }, [documentId, versionA.version, versionB.version, entityType]);
 
     // Índices de chunks (bloques de cambios)
     const chunks = diff.reduce<number[]>((acc, line, idx) => {

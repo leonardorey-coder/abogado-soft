@@ -254,6 +254,24 @@ export interface ApiDocumentAssignment {
   document?: { id: string; name: string; type: string };
 }
 
+export interface ApiConvenioVersion {
+  id: string;
+  version: number;
+  size: number;
+  changeNote: string | null;
+  createdAt: string;
+  creator?: { id: string; name: string } | null;
+}
+
+export interface ApiConvenioComment {
+  id: string;
+  content: string;
+  isResolved: boolean;
+  createdAt: string;
+  user: { id: string; name: string; avatarUrl: string | null };
+  replies?: ApiConvenioComment[];
+}
+
 export interface ApiConvenio {
   id: string;
   numero: string;
@@ -270,6 +288,8 @@ export interface ApiConvenio {
   updatedAt: string;
   responsable?: { id: string; name: string; email: string } | null;
   documents?: { document: { id: string; name: string; type: string; fileStatus: string } }[];
+  versions?: ApiConvenioVersion[];
+  comments?: ApiConvenioComment[];
   _count?: { documents: number };
 }
 
@@ -535,6 +555,12 @@ export const conveniosApi = {
 
   unlinkDocument: (id: string, documentId: string) =>
     apiFetch(`/convenios/${id}/documents/${documentId}`, { method: 'DELETE' }),
+
+  addComment: (id: string, data: { content: string; parentId?: string }) =>
+    apiFetch<ApiConvenioComment>(`/convenios/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // ─── CASOS / EXPEDIENTES ────────────────────────────────────────────────
