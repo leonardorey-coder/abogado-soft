@@ -584,6 +584,10 @@ export const assignmentsApi = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+
+  delete: (id: string) => apiFetch<{ message: string }>(`/assignments/${id}`, {
+    method: 'DELETE',
+  }),
 };
 
 // ─── ACTIVIDAD ──────────────────────────────────────────────────────────

@@ -115,6 +115,9 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     // Asignaciones
     { name: "Asignaciones: Recibidas", group: "Asignaciones", path: "/assignments?limit=1" },
     { name: "Asignaciones: Enviadas", group: "Asignaciones", path: "/assignments/sent?limit=1" },
+    { name: "Asignaciones: Crear (Prueba)", group: "Asignaciones", path: "/assignments", method: "POST", expectedStatus: [400] },
+    { name: "Asignaciones: Editar ID (Prueba)", group: "Asignaciones", path: "/assignments/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404, 400] },
+    { name: "Asignaciones: Eliminar ID (Prueba)", group: "Asignaciones", path: "/assignments/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
     // Actividad
     { name: "Actividad: Listar", group: "Actividad", path: "/activity?limit=1" },
     { name: "Actividad: Estadísticas", group: "Actividad", path: "/activity/stats" },

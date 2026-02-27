@@ -3,14 +3,13 @@ import { FileStatus } from "../types";
 import { useNavigate, Link } from "react-router-dom";
 import { assignmentsApi, ApiDocumentAssignment } from "../lib/api";
 
-
-
 const getFileStatusColor = (status: string) => {
   switch (status) {
-    case "PENDING": case "PENDIENTE": return "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800";
-    case "ACCEPTED": case "ACTIVO": return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
-    case "COMPLETED": return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
-    case "REJECTED": case "INACTIVO": return "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/50 dark:text-slate-400 dark:border-slate-600";
+    case "PENDING": case "pendiente": return "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800";
+    case "ACCEPTED": case "visto": return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
+    case "COMPLETED": case "completado": return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
+    case "REJECTED": case "rechazado": return "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+    case "revisado": return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800";
     default: return "bg-gray-100 text-gray-600";
   }
 };
@@ -25,10 +24,19 @@ const getFileIcon = (type: string) => {
 };
 
 const statusLabel = (s: string) => {
-  switch (s) { case "PENDING": return "Pendiente"; case "ACCEPTED": return "Aceptado"; case "COMPLETED": return "Completado"; case "REJECTED": return "Rechazado"; default: return s; }
+  const S = s.toUpperCase();
+  switch (S) {
+    case "PENDING": case "PENDIENTE": return "Pendiente";
+    case "ACCEPTED": case "VISTO": return "Visto";
+    case "COMPLETED": case "COMPLETADO": return "Completado";
+    case "REJECTED": case "RECHAZADO": return "Rechazado";
+    case "REVISADO": return "Revisado";
+    default: return s;
+  }
 };
 
-type FilterAssigned = "TODOS" | "PENDING" | "ACCEPTED" | "COMPLETED";
+type FilterAssigned = "TODOS" | "pendiente" | "visto" | "revisado" | "completado" | "rechazado";
+type TabAssigned = "RECIBIDOS" | "ENVIADOS";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
@@ -50,25 +58,35 @@ export const AssignedList: React.FC = () => {
   const [assignments, setAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterAssigned>("TODOS");
+  const [tab, setTab] = useState<TabAssigned>("RECIBIDOS");
 
   const fetchAssignments = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await assignmentsApi.listReceived({ limit: 50, status: filter !== "TODOS" ? filter : undefined });
-      setAssignments(res.data);
-    } catch (err) { console.error("Error cargando asignaciones:", err); } finally { setLoading(false); }
-  }, [filter]);
+      if (tab === "RECIBIDOS") {
+        const res = await assignmentsApi.listReceived({ limit: 50, status: filter !== "TODOS" ? filter : undefined });
+        setAssignments(res.data);
+      } else {
+        const res = await assignmentsApi.listSent({ limit: 50 });
+        setAssignments(res.data);
+      }
+    } catch (err) {
+      console.error("Error cargando asignaciones:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, tab]);
 
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
 
   const counts = {
     todos: assignments.length,
-    pendientes: assignments.filter(a => a.status === "PENDING").length,
-    revisados: assignments.filter(a => a.status === "ACCEPTED" || a.status === "COMPLETED").length,
-    activos: assignments.filter(a => a.status === "ACCEPTED").length,
+    pendientes: assignments.filter(a => a.status === "pendiente").length,
+    revisados: assignments.filter(a => ["visto", "revisado", "completado"].includes(a.status)).length,
+    activos: assignments.filter(a => ["visto", "revisado"].includes(a.status)).length,
   };
 
-  const filtered = filter === "TODOS" ? assignments : assignments.filter(a => a.status === filter);
+  const filtered = filter === "TODOS" || tab === "RECIBIDOS" ? assignments : assignments.filter(a => a.status === filter);
 
   const handleDocumentClick = (a: ApiDocumentAssignment) => {
     const docId = a.document?.id;
@@ -80,6 +98,17 @@ export const AssignedList: React.FC = () => {
     catch (err) { console.error("Error actualizando estado:", err); }
   };
 
+  const handleRevoke = async (id: string) => {
+    if (!confirm("¿Estás seguro de que deseas revocar y eliminar esta asignación?")) return;
+    try {
+      await assignmentsApi.delete(id);
+      fetchAssignments();
+    } catch (err) {
+      console.error("Error al revocar:", err);
+      alert("Error al revocar asignación");
+    }
+  };
+
   return (
     <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
       <div className="flex flex-col gap-2">
@@ -87,8 +116,8 @@ export const AssignedList: React.FC = () => {
           <Link to="/" className="hover:text-primary">Inicio</Link>
           <span>/</span><span className="text-[#111318] dark:text-white">Asignados</span>
         </nav>
-        <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Documentos asignados</h1>
-        <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Documentos compartidos y asignados a usted.</p>
+        <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Documentos Asignados</h1>
+        <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Documentos compartidos y asignaciones activas.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -106,22 +135,37 @@ export const AssignedList: React.FC = () => {
         </div>
         <div className="bg-white dark:bg-[#1a212f] p-6 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
           <div className="flex items-center justify-between mb-2"><p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Documentos asignados</p><span className="material-symbols-outlined text-primary">description</span></div>
-          <div className="flex items-baseline gap-2"><p className="text-3xl font-bold dark:text-white">{counts.todos}</p><p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total en lista</p></div>
+          <div className="flex items-baseline gap-2"><p className="text-3xl font-bold dark:text-white">{counts.todos}</p><p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">Total en vista actual</p></div>
         </div>
       </div>
 
-      <div className="pt-4">
+      <div className="pt-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <h3 className="text-2xl font-bold flex items-center gap-2 dark:text-white">
-          <span className="material-symbols-outlined text-primary">history</span>Asignados recientes
+          <span className="material-symbols-outlined text-primary">history</span>Listado de Asignaciones
         </h3>
+
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          <button
+            onClick={() => { setTab("RECIBIDOS"); setFilter("TODOS"); }}
+            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-all ${tab === "RECIBIDOS" ? "bg-white dark:bg-slate-700 shadow-sm text-primary" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+          >
+            Mis Asignaciones
+          </button>
+          <button
+            onClick={() => { setTab("ENVIADOS"); setFilter("TODOS"); }}
+            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-all ${tab === "ENVIADOS" ? "bg-white dark:bg-slate-700 shadow-sm text-primary" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+          >
+            Enviados (Auditoría)
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4 flex-wrap overflow-x-auto pb-2">
         {([
           { key: "TODOS" as FilterAssigned, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
-          { key: "PENDING" as FilterAssigned, label: "Pendientes", count: counts.pendientes, icon: "pending", color: "text-orange-600" },
-          { key: "ACCEPTED" as FilterAssigned, label: "Aceptados", count: counts.revisados, icon: "visibility", color: "text-blue-600" },
-          { key: "COMPLETED" as FilterAssigned, label: "Completados", count: assignments.filter(a => a.status === "COMPLETED").length, icon: "verified", color: "text-green-600" },
+          { key: "pendiente" as FilterAssigned, label: "Pendientes", count: counts.pendientes, icon: "pending", color: "text-orange-600" },
+          { key: "visto" as FilterAssigned, label: "En progreso", count: counts.activos, icon: "visibility", color: "text-blue-600" },
+          { key: "completado" as FilterAssigned, label: "Completados", count: assignments.filter(a => a.status === "completado").length, icon: "verified", color: "text-green-600" },
         ]).map(pill => (
           <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary"}`}>
             <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "text-white" : pill.color}`}>{pill.icon}</span>
@@ -144,14 +188,14 @@ export const AssignedList: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-slate-400 block mb-2">folder_off</span>
-          <p className="text-slate-600 dark:text-slate-400 font-medium">No hay documentos asignados.</p>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">No hay documentos asignados en esta categoría.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list" aria-label="Lista de documentos asignados">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list">
           {filtered.map((a) => {
             const docType = a.document?.type || "docx";
             const { icon, color } = getFileIcon(docType);
-            const isPending = a.status === "PENDING";
+            const isPending = a.status === "pendiente";
 
             return (
               <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className="min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-primary transition-all cursor-pointer group shadow-sm relative flex flex-col h-full">
@@ -165,8 +209,8 @@ export const AssignedList: React.FC = () => {
                   {(a.document?.name || "Documento").split("_").map((part, i) => i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>)}
                 </h3>
                 <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-1">
-                  <span className="material-symbols-outlined text-lg shrink-0">person</span>
-                  <span>De: {a.assigner?.name || "Desconocido"}</span>
+                  <span className="material-symbols-outlined text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
+                  <span>{tab === "RECIBIDOS" ? `De: ${a.assigner?.name || "Desconocido"}` : `Para: ${a.assignee?.name || "Desconocido"}`}</span>
                 </p>
                 <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
                   <span className="material-symbols-outlined text-lg shrink-0">calendar_today</span>
@@ -179,13 +223,19 @@ export const AssignedList: React.FC = () => {
                   </div>
                 )}
                 {a.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mb-3 italic">"{a.notes}"</p>}
+
                 <footer className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
                   <button type="button" onClick={(e) => { e.stopPropagation(); handleDocumentClick(a); }} className="flex-1 min-h-[44px] py-3 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
                     <span className="material-symbols-outlined text-lg">visibility</span>Ver
                   </button>
-                  {isPending && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "ACCEPTED"); }} className="min-h-[44px] py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                  {tab === "RECIBIDOS" && isPending && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "visto"); }} className="min-h-[44px] py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined text-lg">check</span>
+                    </button>
+                  )}
+                  {tab === "ENVIADOS" && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleRevoke(a.id); }} className="min-h-[44px] py-3 px-4 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                      <span className="material-symbols-outlined text-lg">block</span>
                     </button>
                   )}
                 </footer>
@@ -204,3 +254,4 @@ export const AssignedList: React.FC = () => {
     </main>
   );
 };
+

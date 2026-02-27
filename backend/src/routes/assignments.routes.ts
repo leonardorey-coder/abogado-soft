@@ -164,3 +164,35 @@ assignmentsRouter.patch(
     }
   },
 );
+
+// ─── DELETE /api/assignments/:id ────────────────────────────────────────────
+assignmentsRouter.delete(
+  '/:id',
+  validateParams(uuidParam),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const assignmentId = req.params.id;
+
+      const assignment = await prisma.documentAssignment.findUnique({
+        where: { id: assignmentId }
+      });
+
+      if (!assignment) {
+        return res.status(404).json({ error: 'Asignación no encontrada' });
+      }
+
+      if (assignment.assignedBy !== req.user!.id && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'No tienes permisos para eliminar esta asignación' });
+      }
+
+      await prisma.documentAssignment.delete({
+        where: { id: assignmentId }
+      });
+
+      res.json({ message: 'Asignación eliminada correctamente' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
