@@ -121,6 +121,7 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     // Actividad
     { name: "Actividad: Listar", group: "Actividad", path: "/activity?limit=1" },
     { name: "Actividad: Estadísticas", group: "Actividad", path: "/activity/stats" },
+    { name: "Actividad: Exportar", group: "Actividad", path: "/activity/export" },
     // Grupos
     { name: "Grupos: Listar", group: "Grupos", path: "/groups" },
     // Usuarios

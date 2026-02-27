@@ -690,6 +690,41 @@ export const activityApi = {
     return apiFetch<PaginatedResponse<ApiActivityLog>>(`/activity${qs ? `?${qs}` : ''}`);
   },
 
+  export: async (params?: {
+    userId?: string;
+    activity?: string;
+    entityType?: string;
+    from?: string;
+    to?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.userId) query.set('userId', params.userId);
+    if (params?.activity) query.set('activity', params.activity);
+    if (params?.entityType) query.set('entityType', params.entityType);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+
+    const token = await supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+    const qs = query.toString();
+    const url = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'}/activity/export${qs ? `?${qs}` : ''}`;
+
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!res.ok) throw new Error('Error al exportar la bitácora');
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'bitacora.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
+
   stats: () => apiFetch<{
     today: number;
     thisWeek: number;

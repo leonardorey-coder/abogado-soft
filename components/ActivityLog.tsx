@@ -4,6 +4,50 @@ import { activityApi, ApiActivityLog } from "../lib/api";
 
 type PeriodFilter = "today" | "week" | "month" | "custom";
 
+const ACTIVITY_TYPES_ES: Record<string, string> = {
+  "LOGIN": "Inicio de Sesión",
+  "LOGOUT": "Cierre de Sesión",
+  "DOCUMENT_CREATED": "Documento Creado",
+  "DOCUMENT_UPDATED": "Documento Actualizado",
+  "DOCUMENT_DELETED": "Documento Eliminado a Papelera",
+  "DOCUMENT_RESTORED": "Documento Restaurado",
+  "DOCUMENT_SHARED": "Documento Compartido",
+  "DOCUMENT_ASSIGNED": "Documento Asignado",
+  "DOCUMENT_DOWNLOADED": "Documento Descargado",
+  "DOCUMENT_EXTRACTED": "Contenido Extraído de Documento",
+  "DOCUMENT_PERMISSION_CHANGED": "Permisos de Documento Modificados",
+  "DOCUMENT_VERSION_CREATED": "Nueva Versión de Documento",
+  "DOCUMENT_COMMENT_ADDED": "Comentario Agregado",
+  "DOCUMENT_COMMENT_DELETED": "Comentario Eliminado",
+  "CONVENIO_CREATED": "Convenio Creado",
+  "CONVENIO_UPDATED": "Convenio Actualizado",
+  "CONVENIO_DELETED": "Convenio Eliminado",
+  "GROUP_CREATED": "Grupo de Trabajo Creado",
+  "GROUP_UPDATED": "Grupo de Trabajo Actualizado",
+  "GROUP_DELETED": "Grupo de Trabajo Eliminado",
+  "GROUP_MEMBER_ADDED": "Miembro Agregado a Grupo",
+  "GROUP_MEMBER_REMOVED": "Miembro Eliminado de Grupo",
+  "ADMIN_ACCESS_GRANTED": "Acceso de Admin Concedido",
+  "ADMIN_ACCESS_DENIED": "Acceso de Admin Denegado",
+  "BACKUP_CREATED": "Copia de Seguridad Creada",
+  "BACKUP_RESTORED": "Copia de Seguridad Restaurada",
+  "USER_REGISTERED": "Usuario Registrado",
+  "USER_UPDATED": "Usuario Actualizado",
+  "PASSWORD_CHANGED": "Contraseña Cambiada",
+  "SETTINGS_CHANGED": "Configuración Modificada",
+  "COLLABORATION_STARTED": "Colaboración Iniciada",
+  "COLLABORATION_ENDED": "Colaboración Finalizada",
+  "DOCUMENT_LOCKED": "Documento Bloqueado (Edición)",
+  "DOCUMENT_UNLOCKED": "Documento Desbloqueado",
+  "CASE_CREATED": "Expediente Creado",
+  "CASE_UPDATED": "Expediente Actualizado",
+  "CASE_DOCUMENT_LINKED": "Documento Vinculado a Expediente",
+  "CASE_DOCUMENT_UNLINKED": "Documento Desvinculado de Expediente",
+};
+
+function getSpanishActivityName(activity: string): string {
+  return ACTIVITY_TYPES_ES[activity] || activity;
+}
 
 function toYMD(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -58,14 +102,17 @@ export const ActivityLog: React.FC = () => {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [openDropdown, setOpenDropdown] = useState<"lawyer" | "action" | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const lawyerRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef<HTMLDivElement>(null);
+
+  const filterParams = { userId: lawyerFilter || undefined, activity: actionTypeFilter || undefined };
 
   const fetchActivities = useCallback(async (pageNum: number, append = false) => {
     try {
       setLoading(true);
       const range = getDateRange(period, customFrom, customTo);
-      const res = await activityApi.list({ page: pageNum, limit: 20, userId: lawyerFilter || undefined, activity: actionTypeFilter || undefined, ...range });
+      const res = await activityApi.list({ page: pageNum, limit: 20, ...filterParams, ...range });
       if (append) setActivities(prev => [...prev, ...res.data]);
       else setActivities(res.data);
       setHasMore(res.pagination.page < res.pagination.totalPages);
@@ -80,8 +127,21 @@ export const ActivityLog: React.FC = () => {
     fetchActivities(next, true);
   };
 
+  const handleExport = async () => {
+    try {
+      setIsExporting(true);
+      const range = getDateRange(period, customFrom, customTo);
+      await activityApi.export({ ...filterParams, ...range });
+    } catch (err) {
+      console.error("Error exportando reporte:", err);
+      alert("No se pudo exportar el reporte.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const lawyers = Array.from(new Set(activities.filter(a => a.user).map(a => a.user!.name))).sort();
-  const actionTypes = Array.from(new Set(activities.map(a => a.activity))).sort();
+  const rawActionTypes = Array.from(new Set(activities.map(a => a.activity))).sort();
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -120,8 +180,17 @@ export const ActivityLog: React.FC = () => {
               <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-gray-800 text-[#111318] dark:text-white text-sm font-bold border border-[#dbdfe6] dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                 <span className="material-symbols-outlined text-lg">share</span><span className="truncate">Compartir</span>
               </button>
-              <button className="flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors">
-                <span className="material-symbols-outlined text-lg">download</span><span className="truncate">Exportar Reporte</span>
+              <button
+                onClick={handleExport}
+                disabled={isExporting}
+                className={`flex min-w-[84px] cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 text-white text-sm font-bold shadow-md transition-colors ${isExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-blue-700'}`}
+              >
+                {isExporting ? (
+                  <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                ) : (
+                  <span className="material-symbols-outlined text-lg">download</span>
+                )}
+                <span className="truncate">{isExporting ? 'Exportando...' : 'Exportar Reporte'}</span>
               </button>
             </div>
           </div>
@@ -148,13 +217,13 @@ export const ActivityLog: React.FC = () => {
                     <div className="text-primary"><span className="material-symbols-outlined">category</span></div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs text-[#616f89] dark:text-gray-400">Filtrar por</span>
-                      <h2 className="text-[#111318] dark:text-white text-sm font-bold leading-tight truncate">{actionTypeFilter ?? "Tipo de acción"}</h2>
+                      <h2 className="text-[#111318] dark:text-white text-sm font-bold leading-tight truncate">{actionTypeFilter ? getSpanishActivityName(actionTypeFilter) : "Tipo de acción"}</h2>
                     </div>
                     <span className={`material-symbols-outlined ml-auto text-gray-400 transition-transform ${openDropdown === "action" ? "rotate-180" : ""}`}>expand_more</span>
                     {openDropdown === "action" && (
                       <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-[#dbdfe6] dark:border-gray-700 rounded-lg shadow-lg py-1 max-h-48 overflow-auto">
-                        <button type="button" className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700" onClick={(e) => { e.stopPropagation(); setActionTypeFilter(null); setOpenDropdown(null); }}>Todos</button>
-                        {actionTypes.map(type => (<button key={type} type="button" className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700" onClick={(e) => { e.stopPropagation(); setActionTypeFilter(type); setOpenDropdown(null); }}>{type}</button>))}
+                        <button type="button" className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700" onClick={(e) => { e.stopPropagation(); setActionTypeFilter(null); setOpenDropdown(null); }}>Todas las acciones</button>
+                        {rawActionTypes.map(type => (<button key={type} type="button" className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700" onClick={(e) => { e.stopPropagation(); setActionTypeFilter(type); setOpenDropdown(null); }}>{getSpanishActivityName(type)}</button>))}
                       </div>
                     )}
                   </div>
@@ -225,7 +294,7 @@ export const ActivityLog: React.FC = () => {
                             {entry.entityType && (
                               <div className="flex items-center gap-2 mt-2">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-gray-400">{entry.entityType}</span>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-primary">{entry.activity}</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-primary">{getSpanishActivityName(entry.activity)}</span>
                               </div>
                             )}
                           </div>
