@@ -34,6 +34,7 @@
     "@tiptap/html": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "diff": "^8.0.3",
@@ -53,6 +54,7 @@
     "zod": "^3.25.17"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/bun": "^1.2.10",
     "@types/cors": "^2.8.17",

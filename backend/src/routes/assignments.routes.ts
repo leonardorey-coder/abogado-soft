@@ -146,6 +146,18 @@ assignmentsRouter.patch(
   validate(updateAssignmentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const existing = await prisma.documentAssignment.findUnique({
+        where: { id: req.params.id }
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Asignación no encontrada' });
+      }
+
+      if (existing.assignedTo !== req.user!.id && existing.assignedBy !== req.user!.id && req.user!.role !== 'admin') {
+        return res.status(403).json({ error: 'No tienes permisos para modificar esta asignación' });
+      }
+
       const data = req.body;
       const updateData: any = { ...data };
 
@@ -159,7 +171,10 @@ assignmentsRouter.patch(
       });
 
       res.json(assignment);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'P2025') {
+        return res.status(404).json({ error: 'Asignación no encontrada o ya fue eliminada' });
+      }
       next(error);
     }
   },
@@ -190,7 +205,10 @@ assignmentsRouter.delete(
       });
 
       res.json({ message: 'Asignación eliminada correctamente' });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'P2025') {
+        return res.status(404).json({ error: 'Asignación no encontrada o ya fue eliminada' });
+      }
       next(error);
     }
   }

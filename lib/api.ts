@@ -118,6 +118,41 @@ export async function downloadDocument(documentId: string, fileName?: string): P
   URL.revokeObjectURL(blobUrl);
 }
 
+/** Descarga un respaldo con autenticación */
+export async function downloadBackup(id: string, fileName?: string): Promise<void> {
+  const token = await getAccessToken();
+  const url = `${API_URL}/backups/${id}/download`;
+
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Error de servidor' }));
+    throw new ApiError(res.status, body.error ?? 'Error al descargar el respaldo');
+  }
+
+  const contentDisposition = res.headers.get('Content-Disposition');
+  let downloadName = fileName ?? 'respaldo.zip';
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match?.[1]) {
+      downloadName = match[1].replace(/['"]/g, '');
+    }
+  }
+
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -280,6 +315,21 @@ export interface ApiNotification {
   isRead: boolean;
   readAt: string | null;
   createdAt: string;
+}
+
+export interface ApiBackup {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  documentsCount: number;
+  size: string | null;
+  filePath: string | null;
+  errorMessage: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdBy: string;
+  creator?: { id: string; name: string };
 }
 
 export interface ApiGroup {
@@ -693,14 +743,18 @@ export const backupsApi = {
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     const qs = query.toString();
-    return apiFetch<PaginatedResponse<unknown>>(`/backups${qs ? `?${qs}` : ''}`);
+    return apiFetch<PaginatedResponse<ApiBackup>>(`/backups${qs ? `?${qs}` : ''}`);
   },
 
   create: (data: { name: string; type?: string }) =>
-    apiFetch('/backups', {
+    apiFetch<ApiBackup>('/backups', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  get: (id: string) => apiFetch(`/backups/${id}`),
+  get: (id: string) => apiFetch<ApiBackup>(`/backups/${id}`),
+
+  delete: (id: string) => apiFetch<{ message: string }>(`/backups/${id}`, {
+    method: 'DELETE',
+  }),
 };

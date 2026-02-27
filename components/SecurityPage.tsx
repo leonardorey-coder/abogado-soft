@@ -1,10 +1,71 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { backupsApi, downloadBackup, ApiBackup } from "../lib/api";
 
 export const SecurityPage: React.FC = () => {
+  const [backups, setBackups] = useState<ApiBackup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    fetchBackups();
+  }, []);
+
+  const fetchBackups = async () => {
+    try {
+      setLoading(true);
+      const res = await backupsApi.list({ limit: 50 });
+      setBackups(res.data);
+    } catch (err) {
+      console.error("Error fetching backups:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateBackup = async () => {
+    try {
+      setGenerating(true);
+      await backupsApi.create({ name: 'Manual Backup', type: 'full' });
+      alert("Respaldo iniciado correctamente. Dependiendo del tamaño, puede tardar unos segundos o minutos.");
+      fetchBackups();
+    } catch (err) {
+      console.error("Error generating backup:", err);
+      alert("Error al intentar generar el respaldo.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDownloadLatest = async () => {
+    const latestCompleted = backups.find(b => b.status === "completed" && b.filePath);
+    if (!latestCompleted) {
+      alert("No hay respaldos completados recientes para descargar.");
+      return;
+    }
+    try {
+      await downloadBackup(latestCompleted.id, `backup_${new Date(latestCompleted.completedAt!).toISOString().split('T')[0]}.zip`);
+    } catch (err) {
+      console.error("Error downloading:", err);
+      alert("Error al descargar el archivo físico.");
+    }
+  };
+
+  // Build the 7 days week status
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const daysOfWeek = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    daysOfWeek.push(d);
+  }
+
+  const daysNames = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
+
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#111318] dark:text-white flex-1 font-display">
       <div className="max-w-[1200px] mx-auto flex flex-col gap-8 px-6 py-10">
-        {/* Main Content Area */}
         <main className="flex-1 flex flex-col gap-8">
           {/* Hero Section */}
           <section className="bg-white dark:bg-gray-900 p-8 rounded-xl shadow-sm border border-[#f0f2f4] dark:border-gray-800 overflow-hidden relative">
@@ -24,7 +85,20 @@ export const SecurityPage: React.FC = () => {
                 resguardada las 24 horas.
               </p>
               <div className="flex flex-wrap gap-4 mt-4">
-                <button className="bg-primary text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-primary/20">
+                <button
+                  onClick={handleGenerateBackup}
+                  disabled={generating}
+                  className="bg-primary/10 text-primary px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/20 transition-all"
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {generating ? 'sync' : 'backup'}
+                  </span>{" "}
+                  {generating ? 'Generando...' : 'Generar Respaldo'}
+                </button>
+                <button
+                  onClick={handleDownloadLatest}
+                  className="bg-primary text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-primary/20"
+                >
                   <span className="material-symbols-outlined text-xl">
                     download
                   </span>{" "}
@@ -38,82 +112,41 @@ export const SecurityPage: React.FC = () => {
               </span>
             </div>
           </section>
+
           {/* Backup Summary Section */}
           <section className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-[#f0f2f4] dark:border-gray-800 p-6">
             <h2 className="text-[#111318] dark:text-white text-xl font-bold px-2 pb-6">
               Resumen de respaldos (Últimos 7 días)
             </h2>
             <div className="grid grid-cols-4 md:grid-cols-7 gap-4 px-2">
-              {/* Day Items */}
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Lun
-                </span>
-                <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Mar
-                </span>
-                <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Mie
-                </span>
-                <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Jue
-                </span>
-                <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Vie
-                </span>
-                <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest text-primary font-bold">
-                  Sab
-                </span>
-                <div className="size-12 rounded-full bg-primary flex items-center justify-center text-white ring-4 ring-primary/20">
-                  <span className="material-symbols-outlined font-bold">
-                    check_circle
-                  </span>
-                </div>
-                <span className="text-[10px] text-primary font-bold">HOY</span>
-              </div>
-              <div className="flex flex-col items-center gap-3 opacity-30">
-                <span className="text-xs font-medium text-[#616f89] uppercase tracking-widest">
-                  Dom
-                </span>
-                <div className="size-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                  <span className="material-symbols-outlined">schedule</span>
-                </div>
-              </div>
+              {daysOfWeek.map((day, idx) => {
+                const isToday = idx === 6;
+                const dateKey = day.toISOString().split('T')[0];
+
+                // Find if there's any completed backup that started on this day
+                const hasBackup = backups.some(b => {
+                  if (b.status !== 'completed' || !b.startedAt) return false;
+                  return b.startedAt.split('T')[0] === dateKey;
+                });
+
+                return (
+                  <div key={idx} className={`flex flex-col items-center gap-3 ${!hasBackup && !isToday ? 'opacity-30' : ''}`}>
+                    <span className={`text-xs font-medium uppercase tracking-widest ${isToday ? 'text-primary font-bold' : 'text-[#616f89]'}`}>
+                      {daysNames[day.getDay()]}
+                    </span>
+                    <div className={`size-12 rounded-full flex items-center justify-center ${hasBackup
+                        ? (isToday ? 'bg-primary text-white ring-4 ring-primary/20' : 'bg-primary/10 text-primary')
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined font-bold">
+                        {hasBackup ? 'check_circle' : 'schedule'}
+                      </span>
+                    </div>
+                    {isToday && <span className="text-[10px] text-primary font-bold">HOY</span>}
+                  </div>
+                );
+              })}
             </div>
           </section>
           {/* "How it works" 3 Simple Steps */}

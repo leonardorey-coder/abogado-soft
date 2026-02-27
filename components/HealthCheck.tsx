@@ -129,6 +129,10 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     { name: "Notificaciones: Listar", group: "Notificaciones", path: "/notifications?limit=1" },
     // Backups
     { name: "Backups: Listar", group: "Backups", path: "/backups?limit=1" },
+    { name: "Backups: Crear (Prueba)", group: "Backups", path: "/backups", method: "POST", expectedStatus: [400] },
+    { name: "Backups: Obtener ID (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Backups: Descargar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000/download", expectedStatus: [404] },
+    { name: "Backups: Eliminar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
 ];
 
 export const HealthCheck: React.FC = () => {

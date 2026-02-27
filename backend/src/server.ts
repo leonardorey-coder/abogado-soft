@@ -16,9 +16,7 @@ import { activityRouter } from './routes/activity.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { driveRouter } from './routes/drive.routes.js';
-// NOTE: collaborationRouter usa modelos de Prisma (CollaborationSession, etc.) que aún
-// no están en el schema. Se activa cuando se migren esos modelos.
-// import { collaborationRouter } from './routes/collaboration.routes.js';
+// ─── Rutas ───────────────────────────────────────────────────────────────────
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
@@ -34,7 +32,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     runtime: 'bun',
-    version: Bun.version,
+    version: process.versions.bun || 'unknown',
     timestamp: new Date().toISOString(),
   });
 });
@@ -51,7 +49,6 @@ app.use('/api/activity', activityRouter);
 app.use('/api/backups', backupsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/drive', driveRouter);
-// app.use('/api/collaboration', collaborationRouter); // Pendiente: migrar modelos Prisma
 
 // ─── Error handler (siempre al final) ────────────────────────────────────────
 app.use(errorHandler);
@@ -59,7 +56,7 @@ app.use(errorHandler);
 // ─── Iniciar servidor ────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 AbogadoSoft API corriendo en http://localhost:${PORT}`);
-  console.log(`⚡ Runtime: Bun ${Bun.version}`);
+  console.log(`⚡ Runtime: Bun ${process.versions.bun || 'unknown'}`);
   console.log(`📦 Entorno: ${process.env.NODE_ENV ?? 'development'}`);
 });
 

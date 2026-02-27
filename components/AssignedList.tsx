@@ -94,18 +94,33 @@ export const AssignedList: React.FC = () => {
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
-    try { await assignmentsApi.updateStatus(id, status); fetchAssignments(); }
-    catch (err) { console.error("Error actualizando estado:", err); }
+    try {
+      await assignmentsApi.updateStatus(id, status);
+    } catch (err: any) {
+      console.error("Error actualizando estado:", err);
+      if (err?.response?.status === 404) {
+        alert("La asignación ya no existe o fue eliminada.");
+      } else {
+        alert("Error al actualizar estado.");
+      }
+    } finally {
+      fetchAssignments();
+    }
   };
 
   const handleRevoke = async (id: string) => {
     if (!confirm("¿Estás seguro de que deseas revocar y eliminar esta asignación?")) return;
     try {
       await assignmentsApi.delete(id);
-      fetchAssignments();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al revocar:", err);
-      alert("Error al revocar asignación");
+      if (err?.response?.status === 404) {
+        alert("La asignación no se encontró o ya fue revocada previamente.");
+      } else {
+        alert("Error al revocar asignación");
+      }
+    } finally {
+      fetchAssignments();
     }
   };
 
