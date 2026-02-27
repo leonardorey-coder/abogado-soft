@@ -13,6 +13,8 @@ const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ defau
 const DocumentsList = lazy(() => import("./components/DocumentsList").then(m => ({ default: m.DocumentsList })));
 const AssignedList = lazy(() => import("./components/AssignedList").then(m => ({ default: m.AssignedList })));
 const AgreementsList = lazy(() => import("./components/AgreementsList").then(m => ({ default: m.AgreementsList })));
+const ConvenioForm = lazy(() => import("./components/ConvenioForm").then(m => ({ default: m.ConvenioForm })));
+const ConvenioDetails = lazy(() => import("./components/ConvenioDetails").then(m => ({ default: m.ConvenioDetails })));
 const TeamPage = lazy(() => import("./components/TeamPage").then(m => ({ default: m.TeamPage })));
 const DocumentEditor = lazy(() => import("./components/DocumentEditor").then(m => ({ default: m.DocumentEditor })));
 const ExcelEditor = lazy(() => import("./components/ExcelEditor").then(m => ({ default: m.ExcelEditor })));
@@ -54,6 +56,9 @@ export default function App() {
                 <Route path="/documentos" element={<DocumentsList />} />
                 <Route path="/asignados" element={<AssignedList />} />
                 <Route path="/convenios" element={<AgreementsList />} />
+                <Route path="/convenio/nuevo" element={<ConvenioForm />} />
+                <Route path="/convenio/:id" element={<ConvenioDetails />} />
+                <Route path="/convenio/:id/editar" element={<ConvenioForm />} />
                 <Route path="/equipo" element={<TeamPage />} />
                 <Route path="/documento/:id" element={<DocumentEditor />} />
                 <Route path="/documento/:id/excel" element={<ExcelEditor />} />

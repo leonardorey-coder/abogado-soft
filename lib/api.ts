@@ -234,6 +234,7 @@ export interface ApiConvenio {
   createdAt: string;
   updatedAt: string;
   responsable?: { id: string; name: string; email: string } | null;
+  documents?: { document: { id: string; name: string; type: string; fileStatus: string } }[];
   _count?: { documents: number };
 }
 
@@ -481,6 +482,9 @@ export const conveniosApi = {
       method: 'POST',
       body: JSON.stringify({ documentId }),
     }),
+
+  unlinkDocument: (id: string, documentId: string) =>
+    apiFetch(`/convenios/${id}/documents/${documentId}`, { method: 'DELETE' }),
 };
 
 // ─── CASOS / EXPEDIENTES ────────────────────────────────────────────────

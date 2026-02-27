@@ -73,7 +73,7 @@ export const AgreementsList: React.FC = () => {
           <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Gestión de Convenios</h1>
           <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Administre y visualice los acuerdos legales de la universidad con total claridad.</p>
         </div>
-        <button type="button" className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
+        <button type="button" onClick={() => navigate("/convenio/nuevo")} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
           <span className="material-symbols-outlined">add_circle</span>Nuevo Convenio
         </button>
       </div>
@@ -151,7 +151,7 @@ export const AgreementsList: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button type="button" onClick={() => navigate(`/documento/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
+                    <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
                       <span className="material-symbols-outlined text-lg">visibility</span>Ver
                     </button>
                   </td>

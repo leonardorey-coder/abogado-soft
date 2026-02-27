@@ -213,3 +213,24 @@ conveniosRouter.post(
     }
   },
 );
+
+// ─── DELETE /api/convenios/:id/documents/:documentId ────────────────────────
+conveniosRouter.delete(
+  '/:id/documents/:documentId',
+  validateParams(z.object({ id: z.string().uuid(), documentId: z.string().uuid() })),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await prisma.convenioDocument.delete({
+        where: {
+          convenioId_documentId: {
+            convenioId: req.params.id,
+            documentId: req.params.documentId,
+          }
+        },
+      });
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);

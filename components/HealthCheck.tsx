@@ -34,7 +34,8 @@ async function checkEndpoint(
     group: string,
     path: string,
     token: string | null,
-    method: string = "GET"
+    method: string = "GET",
+    expectedStatus?: number[]
 ): Promise<CheckResult> {
     const endpoint = `${method} ${path}`;
     const start = performance.now();
@@ -51,14 +52,19 @@ async function checkEndpoint(
         const ms = Math.round(performance.now() - start);
         const httpStatus = res.status;
 
-        if (res.ok) {
-            let detail = `${httpStatus} OK`;
+        const isOk = expectedStatus ? expectedStatus.includes(httpStatus) : res.ok;
+
+        if (isOk) {
+            let detail = `${httpStatus} ${res.statusText || 'OK'}`;
             try {
                 const json = await res.json();
                 if (json.data && Array.isArray(json.data)) {
                     detail += ` — ${json.data.length} items`;
                 } else if (json.pagination) {
                     detail += ` — total: ${json.pagination.total}`;
+                } // Si era esperado 400/404, mostramos el json.error
+                else if (json.error || json.message) {
+                    detail += ` — ${json.error || json.message}`;
                 }
             } catch {
                 detail += " (no JSON)";
@@ -89,7 +95,7 @@ async function checkEndpoint(
     }
 }
 
-const CHECKS = [
+const CHECKS: { name: string, group: string, path: string, method?: string, expectedStatus?: number[] }[] = [
     // Auth
     { name: "Backend: Health", group: "Backend", path: "/health" },
     { name: "Auth: Me", group: "Auth", path: "/auth/me" },
@@ -98,6 +104,12 @@ const CHECKS = [
     { name: "Documentos: Papelera", group: "Documentos", path: "/documents/trash" },
     // Convenios
     { name: "Convenios: Listar", group: "Convenios", path: "/convenios?limit=1" },
+    { name: "Convenios: Crear (Prueba)", group: "Convenios", path: "/convenios", method: "POST", expectedStatus: [400] }, // Esperamos Bad Request por falta de payload
+    { name: "Convenios: Obtener ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Convenios: Editar ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", method: "PUT", expectedStatus: [404, 400] },
+    { name: "Convenios: Eliminar ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
+    { name: "Convenios: Vincular Doc (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/documents", method: "POST", expectedStatus: [400, 404] },
+    { name: "Convenios: Desvincular Doc (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/documents/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
     // Casos
     { name: "Casos: Listar", group: "Casos", path: "/cases?limit=1" },
     // Asignaciones
@@ -200,14 +212,14 @@ export const HealthCheck: React.FC = () => {
         const initialResults: CheckResult[] = CHECKS.map((c) => ({
             name: c.name,
             group: c.group,
-            endpoint: `GET ${c.path}`,
+            endpoint: `${c.method || "GET"} ${c.path}`,
             status: "pending" as const,
             ms: 0,
         }));
         setResults(initialResults);
 
         const promises = CHECKS.map(async (c, i) => {
-            const result = await checkEndpoint(c.name, c.group, c.path, token);
+            const result = await checkEndpoint(c.name, c.group, c.path, token, c.method, c.expectedStatus);
             setResults((prev) => {
                 const copy = [...prev];
                 copy[i] = result;
