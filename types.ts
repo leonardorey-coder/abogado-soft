@@ -52,6 +52,10 @@ export interface Document {
   documentPermissions?: DocumentPermissionEntry[];
   currentUserPermission?: DocumentPermissionLevel;
   lastEditor?: string;
+  // Google Drive sync fields
+  syncStatus?: 'pending' | 'syncing' | 'completed' | 'failed';
+  driveFileId?: string | null;
+  lastSyncAt?: string | null;
 }
 
 export interface DocumentVersion {

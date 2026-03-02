@@ -96,44 +96,104 @@ async function checkEndpoint(
 }
 
 const CHECKS: { name: string, group: string, path: string, method?: string, expectedStatus?: number[] }[] = [
-    // Auth
+    // ─── Backend ────────────────────────────────────────────────────────
     { name: "Backend: Health", group: "Backend", path: "/health" },
+
+    // ─── Auth (auth.routes.ts) ──────────────────────────────────────────
     { name: "Auth: Me", group: "Auth", path: "/auth/me" },
-    // Documentos
+    { name: "Auth: Editar Perfil (Prueba)", group: "Auth", path: "/auth/me", method: "PATCH", expectedStatus: [200, 400] },
+    { name: "Auth: Registrar (Prueba)", group: "Auth", path: "/auth/register", method: "POST", expectedStatus: [400] },
+    { name: "Auth: Sync (Prueba)", group: "Auth", path: "/auth/sync", method: "POST", expectedStatus: [400] },
+    { name: "Auth: Logout", group: "Auth", path: "/auth/logout", method: "POST" },
+
+    // ─── Documentos (documents.routes.ts) ────────────────────────────────
     { name: "Documentos: Listar", group: "Documentos", path: "/documents?limit=1" },
     { name: "Documentos: Papelera", group: "Documentos", path: "/documents/trash" },
-    // Convenios
+    { name: "Documentos: Obtener ID (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Documentos: Subir (Prueba)", group: "Documentos", path: "/documents/upload", method: "POST", expectedStatus: [400] },
+    { name: "Documentos: Editar (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404] },
+    { name: "Documentos: Eliminar (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
+    { name: "Documentos: Eliminar Permanente (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/permanent", method: "DELETE", expectedStatus: [404] },
+    { name: "Documentos: Restaurar (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/restore", method: "POST", expectedStatus: [404] },
+    { name: "Documentos: Archivo (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/file", expectedStatus: [404] },
+    { name: "Documentos: Descargar (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/download", expectedStatus: [404] },
+    { name: "Documentos: Contenido (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/content", expectedStatus: [404] },
+    { name: "Documentos: Versiones (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/versions", expectedStatus: [404] },
+    { name: "Documentos: Crear Versión (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/versions", method: "POST", expectedStatus: [404, 400] },
+    { name: "Documentos: Comentarios (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/comments", expectedStatus: [404] },
+    { name: "Documentos: Crear Comentario (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/comments", method: "POST", expectedStatus: [404, 400] },
+    { name: "Documentos: Permisos (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/permissions", expectedStatus: [404] },
+    { name: "Documentos: Guardar (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/save", method: "POST", expectedStatus: [404, 400] },
+    { name: "Documentos: Diff (Prueba)", group: "Documentos", path: "/documents/00000000-0000-0000-0000-000000000000/diff?v1=1&v2=2", expectedStatus: [200, 404, 500] },
+
+    // ─── Convenios (convenios.routes.ts) ─────────────────────────────────
     { name: "Convenios: Listar", group: "Convenios", path: "/convenios?limit=1" },
-    { name: "Convenios: Crear (Prueba)", group: "Convenios", path: "/convenios", method: "POST", expectedStatus: [400] }, // Esperamos Bad Request por falta de payload
+    { name: "Convenios: Crear (Prueba)", group: "Convenios", path: "/convenios", method: "POST", expectedStatus: [400] },
     { name: "Convenios: Obtener ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
-    { name: "Convenios: Editar ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", method: "PUT", expectedStatus: [404, 400] },
+    { name: "Convenios: Editar ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404, 400] },
     { name: "Convenios: Eliminar ID (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
     { name: "Convenios: Vincular Doc (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/documents", method: "POST", expectedStatus: [400, 404] },
     { name: "Convenios: Desvincular Doc (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/documents/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
-    // Casos
+    { name: "Convenios: Crear Versión (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/versions", method: "POST", expectedStatus: [404, 400] },
+    { name: "Convenios: Crear Comentario (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/comments", method: "POST", expectedStatus: [404, 400] },
+    { name: "Convenios: Diff (Prueba)", group: "Convenios", path: "/convenios/00000000-0000-0000-0000-000000000000/diff?v1=1&v2=2", expectedStatus: [200, 404, 500] },
+
+    // ─── Casos (cases.routes.ts) ─────────────────────────────────────────
     { name: "Casos: Listar", group: "Casos", path: "/cases?limit=1" },
-    // Asignaciones
+    { name: "Casos: Obtener ID (Prueba)", group: "Casos", path: "/cases/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Casos: Crear (Prueba)", group: "Casos", path: "/cases", method: "POST", expectedStatus: [400, 403] },
+    { name: "Casos: Editar (Prueba)", group: "Casos", path: "/cases/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404, 403, 400] },
+    { name: "Casos: Vincular Doc (Prueba)", group: "Casos", path: "/cases/00000000-0000-0000-0000-000000000000/documents", method: "POST", expectedStatus: [400, 404] },
+    { name: "Casos: Desvincular Doc (Prueba)", group: "Casos", path: "/cases/00000000-0000-0000-0000-000000000000/documents/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
+
+    // ─── Asignaciones (assignments.routes.ts) ────────────────────────────
     { name: "Asignaciones: Recibidas", group: "Asignaciones", path: "/assignments?limit=1" },
     { name: "Asignaciones: Enviadas", group: "Asignaciones", path: "/assignments/sent?limit=1" },
     { name: "Asignaciones: Crear (Prueba)", group: "Asignaciones", path: "/assignments", method: "POST", expectedStatus: [400] },
     { name: "Asignaciones: Editar ID (Prueba)", group: "Asignaciones", path: "/assignments/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404, 400] },
     { name: "Asignaciones: Eliminar ID (Prueba)", group: "Asignaciones", path: "/assignments/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
-    // Actividad
+
+    // ─── Actividad (activity.routes.ts) ──────────────────────────────────
     { name: "Actividad: Listar", group: "Actividad", path: "/activity?limit=1" },
     { name: "Actividad: Estadísticas", group: "Actividad", path: "/activity/stats" },
     { name: "Actividad: Exportar", group: "Actividad", path: "/activity/export" },
-    // Grupos
+
+    // ─── Grupos (groups.routes.ts) ───────────────────────────────────────
     { name: "Grupos: Listar", group: "Grupos", path: "/groups" },
-    // Usuarios
+    { name: "Grupos: Obtener ID (Prueba)", group: "Grupos", path: "/groups/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Grupos: Crear (Prueba)", group: "Grupos", path: "/groups", method: "POST", expectedStatus: [400] },
+    { name: "Grupos: Agregar Miembro (Prueba)", group: "Grupos", path: "/groups/00000000-0000-0000-0000-000000000000/members", method: "POST", expectedStatus: [400, 404] },
+    { name: "Grupos: Eliminar Miembro (Prueba)", group: "Grupos", path: "/groups/00000000-0000-0000-0000-000000000000/members/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [200, 404] },
+    { name: "Grupos: Unirse (Prueba)", group: "Grupos", path: "/groups/join", method: "POST", expectedStatus: [400, 404] },
+
+    // ─── Usuarios (users.routes.ts) ──────────────────────────────────────
     { name: "Usuarios: Listar", group: "Usuarios", path: "/users?limit=1" },
-    // Notificaciones
+    { name: "Usuarios: Obtener ID (Prueba)", group: "Usuarios", path: "/users/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
+    { name: "Usuarios: Crear (Prueba)", group: "Usuarios", path: "/users", method: "POST", expectedStatus: [400, 403] },
+    { name: "Usuarios: Editar (Prueba)", group: "Usuarios", path: "/users/00000000-0000-0000-0000-000000000000", method: "PATCH", expectedStatus: [404, 400] },
+    { name: "Usuarios: Cambiar Rol (Prueba)", group: "Usuarios", path: "/users/00000000-0000-0000-0000-000000000000/role", method: "PATCH", expectedStatus: [404, 400, 403] },
+    { name: "Usuarios: Cambiar Estado (Prueba)", group: "Usuarios", path: "/users/00000000-0000-0000-0000-000000000000/status", method: "PATCH", expectedStatus: [404, 400, 403] },
+    { name: "Usuarios: Eliminar (Prueba)", group: "Usuarios", path: "/users/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404, 403] },
+
+    // ─── Notificaciones (notifications.routes.ts) ────────────────────────
     { name: "Notificaciones: Listar", group: "Notificaciones", path: "/notifications?limit=1" },
-    // Backups
+    { name: "Notificaciones: Marcar Leída (Prueba)", group: "Notificaciones", path: "/notifications/00000000-0000-0000-0000-000000000000/read", method: "PATCH", expectedStatus: [404, 500] },
+    { name: "Notificaciones: Marcar Todas Leídas", group: "Notificaciones", path: "/notifications/read-all", method: "POST" },
+
+    // ─── Backups (backups.routes.ts) ─────────────────────────────────────
     { name: "Backups: Listar", group: "Backups", path: "/backups?limit=1" },
     { name: "Backups: Crear (Prueba)", group: "Backups", path: "/backups", method: "POST", expectedStatus: [400] },
     { name: "Backups: Obtener ID (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000", expectedStatus: [404] },
     { name: "Backups: Descargar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000/download", expectedStatus: [404] },
     { name: "Backups: Eliminar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
+
+    // ─── Google Drive (drive.routes.ts) ──────────────────────────────────
+    { name: "Drive: Estado", group: "Google Drive", path: "/drive/status" },
+    { name: "Drive: Sync Doc (Prueba)", group: "Google Drive", path: "/drive/sync/00000000-0000-0000-0000-000000000000", method: "POST", expectedStatus: [404, 400, 500] },
+    { name: "Drive: Pull Doc (Prueba)", group: "Google Drive", path: "/drive/sync/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
+    { name: "Drive: Revisiones (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
+    { name: "Drive: Descargar Revisión (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000/test", expectedStatus: [404] },
+    { name: "Drive: URL de Auth", group: "Google Drive", path: "/drive/auth/url" },
 ];
 
 export const HealthCheck: React.FC = () => {

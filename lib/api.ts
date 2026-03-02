@@ -196,6 +196,10 @@ export interface ApiDocument {
   mimeType: string | null;
   createdAt: string;
   updatedAt: string;
+  // Google Drive sync
+  syncStatus?: string;
+  driveFileId?: string | null;
+  lastSyncAt?: string | null;
   owner?: { id: string; name: string; email: string; avatarUrl: string | null } | null;
   group?: { id: string; name: string } | null;
   case_?: {
@@ -492,6 +496,20 @@ export const documentsApi = {
   /** Extrae el contenido HTML de un documento (DOCX, TXT) para el editor */
   getContent: (id: string) =>
     apiFetch<{ html: string; messages?: any[] }>(`/documents/${id}/content`),
+
+  /** Guarda el archivo del editor: lo sube al servidor, crea versión y auto-sync Drive */
+  saveVersion: (id: string, fileBlob: Blob, changeNote?: string) => {
+    const formData = new FormData();
+    formData.append('file', fileBlob);
+    if (changeNote) formData.append('changeNote', changeNote);
+    return apiFetchUpload<{
+      ok: boolean;
+      version: number;
+      size: number;
+      localPath: string;
+      syncResult: { ok: boolean; driveFileId?: string; error?: string } | null;
+    }>(`/documents/${id}/save`, formData);
+  },
 };
 
 // ─── CONVENIOS ──────────────────────────────────────────────────────────
@@ -818,4 +836,56 @@ export const backupsApi = {
   delete: (id: string) => apiFetch<{ message: string }>(`/backups/${id}`, {
     method: 'DELETE',
   }),
+};
+
+// ─── GOOGLE DRIVE ───────────────────────────────────────────────────────
+
+export const driveApi = {
+  /** Verifica si Google Drive está conectado y configurado */
+  getStatus: () =>
+    apiFetch<{ connected: boolean }>('/drive/status'),
+
+  /** Sincroniza un documento al Drive (subida o actualización) */
+  syncDocument: (documentId: string, changeNote?: string) =>
+    apiFetch<{
+      ok: boolean;
+      driveFileId: string;
+      driveRevisionId: string | null;
+      version: number;
+      lastSyncAt: string;
+    }>(`/drive/sync/${documentId}`, {
+      method: 'POST',
+      body: JSON.stringify({ changeNote }),
+    }),
+
+  /** Descarga versión de Drive y actualiza el archivo local */
+  pullDocument: (documentId: string) =>
+    apiFetch<{ ok: boolean; localPath: string; lastSyncAt: string }>(
+      `/drive/sync/${documentId}`,
+    ),
+
+  /** Lista revisiones de un documento en Drive */
+  getRevisions: (documentId: string) =>
+    apiFetch<{ revisions: any[]; versions: any[] }>(
+      `/drive/revisions/${documentId}`,
+    ),
+
+  /** Descarga una revisión específica de Drive */
+  downloadRevision: async (documentId: string, revisionId: string, fileName?: string) => {
+    const token = await getAccessToken();
+    const url = `${API_URL}/drive/revisions/${documentId}/${revisionId}`;
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, 'Error al descargar revisión');
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName ?? 'revision';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
 };

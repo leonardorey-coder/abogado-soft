@@ -163,7 +163,8 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
               <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%]">Tipo</th>
               <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[23%]">Última modificación</th>
               <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-right">Acciones</th>
+              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[8%] text-center">Sync</th>
+              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%] text-right">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
@@ -188,6 +189,17 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}>
                     {doc.fileStatus}
                   </span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  {(doc as any).syncStatus === 'completed' ? (
+                    <span className="material-symbols-outlined text-green-500 text-lg" title="Sincronizado con Drive">cloud_done</span>
+                  ) : (doc as any).syncStatus === 'syncing' ? (
+                    <span className="material-symbols-outlined text-amber-500 text-lg animate-pulse" title="Sincronizando…">cloud_sync</span>
+                  ) : (doc as any).syncStatus === 'failed' ? (
+                    <span className="material-symbols-outlined text-red-500 text-lg" title="Error de sincronización">cloud_off</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-lg" title="Sin sincronizar">cloud_upload</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative inline-block text-left">

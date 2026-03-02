@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('node:path');
 
 const isDev = !app.isPackaged;
@@ -13,6 +13,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -27,6 +28,15 @@ function createWindow() {
     mainWindow.loadFile(indexPath);
   }
 }
+
+// ─── IPC: Diálogo nativo para seleccionar carpeta ───────────────────────
+ipcMain.handle('dialog:selectFolder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Seleccionar carpeta de guardado local',
+  });
+  return canceled ? null : filePaths[0];
+});
 
 app.whenReady().then(() => {
   createWindow();

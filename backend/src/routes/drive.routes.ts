@@ -40,6 +40,120 @@ function getMimeType(docType: string): string {
     return map[docType.toLowerCase()] ?? 'application/octet-stream';
 }
 
+// ─── Sync helper reutilizable ────────────────────────────────────────────────
+// Usado tanto por la ruta POST /api/drive/sync/:id como por
+// POST /api/documents/:id/save para sincronizar a Drive automáticamente.
+
+export async function syncDocumentToDrive(
+    documentId: string,
+    userId: string,
+    changeNote?: string,
+): Promise<{ ok: boolean; driveFileId: string; driveRevisionId: string | null; version: number }> {
+    const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: documentId },
+        select: {
+            id: true, name: true, type: true,
+            localPath: true, driveFileId: true, version: true,
+        },
+    });
+
+    if (!doc.localPath) {
+        throw new Error('El documento no tiene archivo local para sincronizar.');
+    }
+
+    const filePath = path.isAbsolute(doc.localPath)
+        ? doc.localPath
+        : path.join(UPLOADS_DIR, doc.localPath);
+
+    if (!fs.existsSync(filePath)) {
+        throw new Error('Archivo local no encontrado en el servidor.');
+    }
+
+    const content = fs.readFileSync(filePath);
+    const mimeType = getMimeType(doc.type);
+
+    // Marcar como syncing
+    await prisma.document.update({
+        where: { id: documentId },
+        data: { syncStatus: 'syncing' },
+    });
+
+    let driveFileId = doc.driveFileId;
+    let driveRevisionId: string | null = null;
+
+    try {
+        if (driveFileId) {
+            const result = await updateFile(driveFileId, mimeType, content);
+            driveRevisionId = result.driveRevisionId;
+        } else {
+            const result = await uploadFile(`${doc.name}.${doc.type}`, mimeType, content);
+            driveFileId = result.driveFileId;
+            driveRevisionId = result.driveRevisionId;
+        }
+
+        const newVersion = doc.version + 1;
+
+        await prisma.$transaction([
+            prisma.document.update({
+                where: { id: documentId },
+                data: {
+                    driveFileId,
+                    driveRevisionId,
+                    lastSyncAt: new Date(),
+                    syncStatus: 'completed',
+                    version: newVersion,
+                },
+            }),
+            prisma.documentVersion.create({
+                data: {
+                    documentId,
+                    version: newVersion,
+                    cloudUrl: driveFileId,
+                    driveRevisionId,
+                    changeNote: changeNote ?? null,
+                    createdBy: userId,
+                } as any,
+            }),
+            prisma.documentSyncLog.create({
+                data: {
+                    documentId,
+                    userId,
+                    operation: 'update',
+                    status: 'completed',
+                    driveRevisionId,
+                },
+            }),
+            prisma.activityLog.create({
+                data: {
+                    userId,
+                    activity: 'DOCUMENT_UPDATED',
+                    entityType: 'document',
+                    entityId: documentId,
+                    entityName: doc.name,
+                    description: `Documento sincronizado con Google Drive (versión ${newVersion})`,
+                },
+            }),
+        ]);
+
+        return { ok: true, driveFileId: driveFileId!, driveRevisionId, version: newVersion };
+    } catch (error) {
+        await prisma.document.update({
+            where: { id: documentId },
+            data: { syncStatus: 'failed' },
+        }).catch(() => { });
+        await prisma.documentSyncLog.create({
+            data: {
+                documentId,
+                userId,
+                operation: 'update',
+                status: 'failed',
+                errorMessage: (error as Error).message,
+            },
+        }).catch(() => { });
+        throw error;
+    }
+}
+
 // ─── GET /api/drive/status ───────────────────────────────────────────────────
 // Verifica si las credenciales de Google Drive están configuradas y válidas.
 
@@ -55,6 +169,7 @@ driveRouter.get('/status', async (_req: Request, res: Response, next: NextFuncti
 // ─── POST /api/drive/sync/:documentId ───────────────────────────────────────
 // Sube el archivo local del documento a Google Drive.
 // Si ya tiene driveFileId, actualiza; si no, crea nuevo.
+// Ahora delega en syncDocumentToDrive() para DRY.
 
 driveRouter.post(
     '/sync/:documentId',
@@ -62,127 +177,17 @@ driveRouter.post(
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
-            const doc = await prisma.document.findUniqueOrThrow({
-                where: { id: documentId },
-                select: {
-                    id: true,
-                    name: true,
-                    type: true,
-                    localPath: true,
-                    driveFileId: true,
-                    syncStatus: true,
-                },
-            });
-
-            if (!doc.localPath) {
-                res.status(400).json({ error: 'El documento no tiene archivo local para sincronizar.' });
+            const result = await syncDocumentToDrive(
+                Array.isArray(documentId) ? documentId[0] : documentId,
+                req.user!.id,
+                req.body.changeNote,
+            );
+            res.json({ ...result, lastSyncAt: new Date().toISOString() });
+        } catch (error: any) {
+            if (error.message?.includes('no tiene archivo local') || error.message?.includes('no encontrado')) {
+                res.status(400).json({ error: error.message });
                 return;
             }
-
-            const filePath = path.isAbsolute(doc.localPath)
-                ? doc.localPath
-                : path.join(UPLOADS_DIR, doc.localPath);
-
-            if (!fs.existsSync(filePath)) {
-                res.status(404).json({ error: 'Archivo local no encontrado en el servidor.' });
-                return;
-            }
-
-            const content = fs.readFileSync(filePath);
-            const mimeType = getMimeType(doc.type);
-
-            // Marcar como syncing
-            await prisma.document.update({
-                where: { id: documentId },
-                data: { syncStatus: 'syncing' },
-            });
-
-            let driveFileId = doc.driveFileId;
-            let driveRevisionId: string | null = null;
-
-            if (driveFileId) {
-                // Actualizar archivo existente
-                const result = await updateFile(driveFileId, mimeType, content);
-                driveRevisionId = result.driveRevisionId;
-            } else {
-                // Subir nuevo archivo
-                const result = await uploadFile(`${doc.name}.${doc.type}`, mimeType, content);
-                driveFileId = result.driveFileId;
-                driveRevisionId = result.driveRevisionId;
-            }
-
-            // Registrar nueva versión automáticamente
-            const currentDoc = await prisma.document.findUnique({
-                where: { id: documentId },
-                select: { version: true },
-            });
-
-            const newVersion = (currentDoc?.version ?? 0) + 1;
-
-            await prisma.$transaction([
-                prisma.document.update({
-                    where: { id: documentId },
-                    data: {
-                        driveFileId,
-                        driveRevisionId,
-                        lastSyncAt: new Date(),
-                        syncStatus: 'completed',
-                        version: newVersion,
-                    },
-                }),
-                prisma.documentVersion.create({
-                    data: {
-                        documentId,
-                        version: newVersion,
-                        cloudUrl: driveFileId,
-                        driveRevisionId,
-                        changeNote: req.body.changeNote ?? null,
-                        createdBy: req.user!.id,
-                    } as any,
-                }),
-                prisma.documentSyncLog.create({
-                    data: {
-                        documentId,
-                        userId: req.user!.id,
-                        operation: 'update',
-                        status: 'completed',
-                        driveRevisionId,
-                    },
-                }),
-                prisma.activityLog.create({
-                    data: {
-                        userId: req.user!.id,
-                        activity: 'DOCUMENT_UPDATED',
-                        entityType: 'document',
-                        entityId: documentId,
-                        entityName: doc.name,
-                        description: `Documento sincronizado con Google Drive (versión ${newVersion})`,
-                    },
-                }),
-            ]);
-
-            res.json({
-                ok: true,
-                driveFileId,
-                driveRevisionId,
-                version: newVersion,
-                lastSyncAt: new Date().toISOString(),
-            });
-        } catch (error) {
-            // Marcar como fallido si ocurrió un error
-            await prisma.document.update({
-                where: { id: documentId },
-                data: { syncStatus: 'failed' },
-            }).catch(() => { });
-            await prisma.documentSyncLog.create({
-                data: {
-                    documentId,
-                    userId: req.user?.id,
-                    operation: 'update',
-                    status: 'failed',
-                    errorMessage: (error as Error).message,
-                },
-            }).catch(() => { });
             next(error);
         }
     },

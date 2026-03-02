@@ -15,6 +15,8 @@ import { validate, validateParams, validateQuery, uuidParam, paginationQuery } f
 import * as Diff from 'diff';
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { syncDocumentToDrive } from './drive.routes.js';
+import { verifyCredentials } from '../lib/googleDrive.js';
 
 // ─── BigInt → Number serialization helper ────────────────────────────────────
 function serializeBigInt(obj: any): any {
@@ -716,6 +718,97 @@ documentsRouter.get(
       const diffs = Diff.diffLines(text1, text2);
 
       res.json(diffs);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/:id/save ────────────────────────────────────────────
+// Endpoint unificado: recibe el archivo del editor, lo guarda localmente,
+// crea nueva versión en DB y auto-sync a Google Drive si está configurado.
+
+documentsRouter.post(
+  '/:id/save',
+  validateParams(uuidParam),
+  uploadMiddleware.single('file'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const changeNote = req.body.changeNote ?? null;
+
+      // 1. Verificar que el documento existe
+      const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: docId },
+        select: {
+          id: true, name: true, type: true, localPath: true,
+          version: true, driveFileId: true, ownerId: true,
+        },
+      });
+
+      // 2. Guardar archivo subido (overwrite del archivo local existente)
+      if (!req.file) {
+        res.status(400).json({ error: 'No se recibió ningún archivo.' });
+        return;
+      }
+
+      const uploadedPath = req.file.filename; // nombre relativo en uploads/
+      const newVersion = doc.version + 1;
+      const fileSize = req.file.size;
+
+      // 3. Crear versión y actualizar documento en transacción
+      const [updatedDoc] = await prisma.$transaction([
+        prisma.document.update({
+          where: { id: docId },
+          data: {
+            localPath: uploadedPath,
+            size: BigInt(fileSize),
+            version: newVersion,
+            updatedAt: new Date(),
+          },
+        }),
+        prisma.documentVersion.create({
+          data: {
+            documentId: docId,
+            version: newVersion,
+            localPath: path.join(process.cwd(), 'uploads', uploadedPath),
+            size: BigInt(fileSize),
+            changeNote,
+            createdBy: req.user!.id,
+          } as any,
+        }),
+        prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_VERSION_CREATED',
+            entityType: 'document',
+            entityId: docId,
+            entityName: doc.name,
+            description: `Nueva versión ${newVersion} guardada${changeNote ? `: ${changeNote}` : ''}`,
+          },
+        }),
+      ]);
+
+      // 4. Auto-sync a Google Drive (si las credenciales están configuradas)
+      let syncResult = null;
+      try {
+        const driveReady = await verifyCredentials();
+        if (driveReady) {
+          syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote);
+        }
+      } catch (syncError) {
+        // No fallamos el guardado por un error de sync
+        console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
+        syncResult = { ok: false, error: (syncError as Error).message };
+      }
+
+      res.json(serializeBigInt({
+        ok: true,
+        version: newVersion,
+        size: fileSize,
+        localPath: uploadedPath,
+        syncResult,
+      }));
     } catch (error) {
       next(error);
     }
