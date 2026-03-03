@@ -34,3 +34,4 @@ supabase/.temp/
 
 # Uploaded files
 backend/uploads/
+.vercel
