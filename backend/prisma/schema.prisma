@@ -219,6 +219,8 @@ model User {
   sessions               UserSession[]
   notifications          Notification[]
   documentSyncLogs       DocumentSyncLog[]
+  accessPinsCreated      DocumentAccessPin[]  @relation("PinCreator")
+  accessPinsRedeemed     DocumentAccessPin[]  @relation("PinRedeemer")
 
   @@index([email])
   @@index([role])
@@ -323,6 +325,7 @@ model Document {
   convenioDocuments ConvenioDocument[]
   caseDocuments     CaseDocument[]
   documentSyncLogs  DocumentSyncLog[]
+  accessPins        DocumentAccessPin[]
 
   @@index([ownerId])
   @@index([groupId])
@@ -786,4 +789,28 @@ model DocumentSyncLog {
   @@index([status])
   @@index([createdAt(sort: Desc)])
   @@map("document_sync_log")
+}
+
+// ─────────────────────────────────────────────
+// PIN DE ACCESO DE UN SOLO USO
+// ─────────────────────────────────────────────
+
+model DocumentAccessPin {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String    @map("document_id") @db.Uuid
+  pin        String    @db.VarChar(6)
+  createdBy  String    @map("created_by") @db.Uuid
+  usedBy     String?   @map("used_by") @db.Uuid
+  usedAt     DateTime? @map("used_at") @db.Timestamptz()
+  isUsed     Boolean   @default(false) @map("is_used")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  creator  User     @relation("PinCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  redeemer User?    @relation("PinRedeemer", fields: [usedBy], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([pin])
+  @@map("document_access_pins")
 }
