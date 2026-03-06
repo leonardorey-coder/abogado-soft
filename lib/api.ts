@@ -77,6 +77,11 @@ export function getDocumentFileUrl(documentId: string): string {
   return `${API_URL}/documents/${documentId}/file`;
 }
 
+/** Construye la URL para servir/previsualizar el archivo de una versión específica */
+export function getDocumentVersionFileUrl(documentId: string, versionId: string): string {
+  return `${API_URL}/documents/${documentId}/versions/${versionId}/file`;
+}
+
 /** Construye la URL para descargar el archivo de un documento */
 export function getDocumentDownloadUrl(documentId: string): string {
   return `${API_URL}/documents/${documentId}/download`;
@@ -497,11 +502,25 @@ export const documentsApi = {
   getContent: (id: string) =>
     apiFetch<{ html: string; messages?: any[] }>(`/documents/${id}/content`),
 
-  /** Guarda el archivo del editor: lo sube al servidor, crea versión y auto-sync Drive */
-  saveVersion: (id: string, fileBlob: Blob, changeNote?: string) => {
+  /** Consulta el diff entre dos versiones */
+  getDiff: (id: string, v1: number, v2: number) =>
+    apiFetch<{ html: string }>(`/documents/${id}/diff?v1=${v1}&v2=${v2}`),
+
+  /** Guarda el archivo del editor. createVersion=true crea nueva versión en el historial */
+  saveVersion: (id: string, fileBlob: Blob, fileName: string, changeNote?: string, createVersion = false) => {
     const formData = new FormData();
-    formData.append('file', fileBlob);
+
+    // Forzar el mimetype correcto de docx si el nombre termina en .docx o si superdoc devuelve application/zip
+    const isDocx = fileName.toLowerCase().endsWith('.docx');
+    const mimeType = isDocx
+      ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      : (fileBlob.type || 'application/octet-stream');
+
+    const fileToUpload = new File([fileBlob], fileName, { type: mimeType });
+
+    formData.append('file', fileToUpload);
     if (changeNote) formData.append('changeNote', changeNote);
+    formData.append('createVersion', String(createVersion));
     return apiFetchUpload<{
       ok: boolean;
       version: number;
@@ -510,6 +529,66 @@ export const documentsApi = {
       syncResult: { ok: boolean; driveFileId?: string; error?: string } | null;
     }>(`/documents/${id}/save`, formData);
   },
+};
+
+// ─── PERMISOS DE DOCUMENTOS ─────────────────────────────────────────────
+
+export interface SetPermissionPayload {
+  userId?: string;
+  groupId?: string;
+  permissionLevel: 'none' | 'download' | 'read' | 'write' | 'admin';
+  expiresAt?: string | null;
+}
+
+export const permissionsApi = {
+  /** Lista todos los permisos de un documento + permiso efectivo del usuario actual */
+  list: (documentId: string) =>
+    apiFetch<{ permissions: ApiDocumentPermission[]; effectivePermission: string }>(
+      `/documents/${documentId}/permissions`,
+    ),
+
+  /** Reemplaza todos los permisos del documento (batch upsert) */
+  save: (documentId: string, permissions: SetPermissionPayload[]) =>
+    apiFetch<{ permissions: ApiDocumentPermission[] }>(
+      `/documents/${documentId}/permissions`,
+      { method: 'PUT', body: JSON.stringify({ permissions }) },
+    ),
+
+  /** Crea o actualiza un permiso individual */
+  add: (documentId: string, data: SetPermissionPayload) =>
+    apiFetch<ApiDocumentPermission>(`/documents/${documentId}/permissions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Elimina un permiso específico */
+  remove: (documentId: string, permId: string) =>
+    apiFetch<{ message: string }>(
+      `/documents/${documentId}/permissions/${permId}`,
+      { method: 'DELETE' },
+    ),
+
+  /** Obtiene el permiso efectivo del usuario actual sobre un documento */
+  getEffective: (documentId: string) =>
+    apiFetch<{ permission: string }>(`/documents/${documentId}/effective-permission`),
+};
+
+// ─── ACCESS PINS ────────────────────────────────────────────────────────────
+
+export const accessPinApi = {
+  /** Genera un PIN de acceso de un solo uso (solo admin) */
+  generate: (documentId: string) =>
+    apiFetch<{ pin: string; expiresAt: string; documentName: string }>(
+      `/documents/${documentId}/access-pin`,
+      { method: 'POST' },
+    ),
+
+  /** Canjea un PIN para obtener acceso completo al documento */
+  redeem: (documentId: string, pin: string) =>
+    apiFetch<{ message: string; permission: string }>(
+      `/documents/${documentId}/redeem-pin`,
+      { method: 'POST', body: JSON.stringify({ pin }) },
+    ),
 };
 
 // ─── CONVENIOS ──────────────────────────────────────────────────────────
@@ -655,10 +734,11 @@ export const assignmentsApi = {
     return apiFetch<PaginatedResponse<ApiDocumentAssignment>>(`/assignments${qs ? `?${qs}` : ''}`);
   },
 
-  listSent: (params?: { page?: number; limit?: number }) => {
+  listSent: (params?: { page?: number; limit?: number; status?: string }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.status) query.set('status', params.status);
     const qs = query.toString();
     return apiFetch<PaginatedResponse<ApiDocumentAssignment>>(`/assignments/sent${qs ? `?${qs}` : ''}`);
   },
@@ -693,6 +773,7 @@ export const activityApi = {
     userId?: string;
     activity?: string;
     entityType?: string;
+    category?: string;
     from?: string;
     to?: string;
   }) => {
@@ -702,6 +783,7 @@ export const activityApi = {
     if (params?.userId) query.set('userId', params.userId);
     if (params?.activity) query.set('activity', params.activity);
     if (params?.entityType) query.set('entityType', params.entityType);
+    if (params?.category) query.set('category', params.category);
     if (params?.from) query.set('from', params.from);
     if (params?.to) query.set('to', params.to);
     const qs = query.toString();
@@ -712,6 +794,7 @@ export const activityApi = {
     userId?: string;
     activity?: string;
     entityType?: string;
+    category?: string;
     from?: string;
     to?: string;
   }) => {
@@ -719,6 +802,7 @@ export const activityApi = {
     if (params?.userId) query.set('userId', params.userId);
     if (params?.activity) query.set('activity', params.activity);
     if (params?.entityType) query.set('entityType', params.entityType);
+    if (params?.category) query.set('category', params.category);
     if (params?.from) query.set('from', params.from);
     if (params?.to) query.set('to', params.to);
 
@@ -744,9 +828,9 @@ export const activityApi = {
   },
 
   stats: () => apiFetch<{
-    today: number;
-    thisWeek: number;
-    topActivities: Array<{ activity: string; _count: { id: number } }>;
+    todayCount: number;
+    weekCount: number;
+    byType: Array<{ activity: string; _count: number }>;
   }>('/activity/stats'),
 };
 

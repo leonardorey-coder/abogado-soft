@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Document } from "../types";
-import { usersApi, assignmentsApi, ApiUser } from "../lib/api";
 
 interface ShareModalProps {
   document: Document;
@@ -9,45 +8,6 @@ interface ShareModalProps {
 
 export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [assignedUserId, setAssignedUserId] = useState<string>("");
-  const [assignedTo, setAssignedTo] = useState<{ id: string; name: string } | null>(null);
-
-  const [users, setUsers] = useState<ApiUser[]>([]);
-  const [notes, setNotes] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [toast, setToast] = useState<{ message: string; visible: boolean; type: "success" | "error" } | null>(null);
-
-  useEffect(() => {
-    usersApi.list({ limit: 100 }).then(res => setUsers(res.data)).catch(err => console.error("Error loading users:", err));
-  }, []);
-
-  const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ message, visible: true, type });
-    setTimeout(() => setToast(prev => prev ? { ...prev, visible: false } : null), 2500);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleAssign = async () => {
-    if (!assignedUserId) return;
-    try {
-      setIsAssigning(true);
-      await assignmentsApi.create({
-        documentId: document.id,
-        assignedTo: assignedUserId,
-        notes: notes.trim() || undefined,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined
-      });
-      const u = users.find((x) => x.id === assignedUserId);
-      if (u) setAssignedTo({ id: u.id, name: u.name });
-      showToast("Documento asignado correctamente", "success");
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || "Error al asignar documento", "error");
-    } finally {
-      setIsAssigning(false);
-    }
-  };
 
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/doc/${document.id}` : "";
 
@@ -119,68 +79,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">Asignar a usuario de la app</label>
-            {assignedTo ? (
-              <p className="min-h-[48px] flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-medium">
-                <span className="material-symbols-outlined text-green-600 dark:text-green-400">check_circle</span>
-                Asignado a {assignedTo.name}
-              </p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <div className="flex gap-2 items-stretch">
-                  <select
-                    value={assignedUserId}
-                    onChange={(e) => setAssignedUserId(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Seleccionar usuario</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.email})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {assignedUserId && (
-                  <div className="mt-2 flex flex-col gap-3 p-4 bg-slate-50 dark:bg-[#101622] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nota (opcional)</label>
-                      <textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        className={`${inputClass} min-h-[80px] py-2 resize-none`}
-                        placeholder="Instrucciones para la revisión..."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fecha de vencimiento (opcional)</label>
-                      <input
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className={`${inputClass} py-2`}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isAssigning}
-                      onClick={handleAssign}
-                      className={`mt-2 ${buttonActionClass} bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {isAssigning ? (
-                        <span className="material-symbols-outlined text-lg animate-spin">sync</span>
-                      ) : (
-                        <span className="material-symbols-outlined text-lg">person_add</span>
-                      )}
-                      {isAssigning ? "Asignando..." : "Asignar"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div>
             <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">Compartir con el sistema</label>
             <button
               type="button"
@@ -204,21 +102,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
         </div>
       </div>
 
-      {/* Toast Overlay para feedback */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border transition-all duration-500 ${toast.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-            } ${toast.type === 'success'
-              ? "bg-green-50 dark:bg-green-900/80 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200"
-              : "bg-red-50 dark:bg-red-900/80 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200"
-            }`}
-        >
-          <span className="material-symbols-outlined text-2xl">
-            {toast.type === 'success' ? 'check_circle' : 'error'}
-          </span>
-          <span className="font-bold text-sm">{toast.message}</span>
-        </div>
-      )}
     </div>
   );
 };

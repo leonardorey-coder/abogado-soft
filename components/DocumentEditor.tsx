@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Document } from '../types';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getDocumentFileUrl, downloadDocument } from '../lib/api';
+import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
@@ -85,6 +85,7 @@ interface SuperDocEditorProps {
   documentName: string;
   userName: string;
   userEmail: string;
+  initialMode?: 'editing' | 'viewing' | 'suggesting';
   onReady?: (editor: SuperDoc) => void;
   onUpdate?: () => void;
   onActiveUsersChange?: (users: ActiveUser[]) => void;
@@ -97,7 +98,7 @@ interface SuperDocEditorRef {
 }
 
 const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
-  ({ documentId, documentBlob, documentName, userName, userEmail, onReady, onUpdate, onActiveUsersChange }, ref) => {
+  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', onReady, onUpdate, onActiveUsersChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
     const [isReady, setIsReady] = useState(false);
@@ -130,7 +131,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
             selector: containerRef.current!,
             document: documentBlob,
             user: { name: userName, email: userEmail },
-            documentMode: 'editing',
+            documentMode: initialMode,
             viewOptions: { layout: 'print' },
             colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#6366f1', '#f59e0b'],
             onReady: ({ superdoc }: { superdoc: SuperDoc }) => {
@@ -233,6 +234,22 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // Active users for real-time collaboration
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
 
+  // Saving state
+  const [isSaving, setIsSaving] = useState(false);
+
+  // New version
+  const [newVersionName, setNewVersionName] = useState('');
+  const [isEditingVersionName, setIsEditingVersionName] = useState(false);
+
+  // Diff data
+  const [diffHtml, setDiffHtml] = useState<string | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState(false);
+
+  // Effective permission level
+  const [effectivePermission, setEffectivePermission] = useState<string>('admin');
+  const canEdit = effectivePermission === 'write' || effectivePermission === 'admin';
+  const canAdmin = effectivePermission === 'admin';
+
   // ─── Fetch document ──────────────────────────────────────────────────
   const fetchDocument = useCallback(async () => {
     if (!documentId) {
@@ -241,7 +258,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       return;
     }
     try {
-      setLoading(true);
+      // Solo mostrar loading en la carga inicial, no en refreshes
+      setLoading(prev => {
+        if (!doc) return true;
+        return prev;
+      });
       setError(null);
       const data = await documentsApi.get(documentId);
       setDoc(data);
@@ -256,17 +277,40 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     fetchDocument();
   }, [fetchDocument]);
 
-  // ─── Load document blob for SuperDoc ─────────────────────────────────
+  // ─── Fetch effective permission ─────────────────────────────────────
   useEffect(() => {
-    if (!doc || !doc.localPath) return;
+    if (!documentId) return;
+    permissionsApi.getEffective(documentId)
+      .then(res => {
+        setEffectivePermission(res.permission);
+        // If user can't edit, force viewing mode
+        if (res.permission !== 'write' && res.permission !== 'admin') {
+          setEditorMode('viewing');
+        }
+      })
+      .catch(err => {
+        console.warn('Could not fetch effective permission, defaulting to read-only:', err.message);
+        setEffectivePermission('read');
+        setEditorMode('viewing');
+      });
+  }, [documentId]);
 
-    const isDocx = doc.type?.toLowerCase() === 'docx' || doc.type?.toLowerCase() === 'doc';
+  // ─── Load document blob for SuperDoc ─────────────────────────────────
+  const docId = doc?.id;
+  const docLocalPath = doc?.localPath;
+  const docType = doc?.type;
+
+  useEffect(() => {
+    if (!docId || !docLocalPath) return;
+
+    // Load active or historic version blob depending on what is selected
+    const isDocx = docType?.toLowerCase() === 'docx' || docType?.toLowerCase() === 'doc';
     if (!isDocx) return;
 
     const loadBlob = async () => {
       try {
         setLoadingBlob(true);
-        const fileUrl = getDocumentFileUrl(doc.id);
+        const fileUrl = getDocumentFileUrl(docId);
 
         // Get auth token
         const { supabase } = await import('../lib/supabaseAuth');
@@ -290,9 +334,63 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     };
 
     loadBlob();
-  }, [doc]);
+  }, [docId, docLocalPath, docType]);
 
-  // ─── Handlers ────────────────────────────────────────────────────────
+  // ─── Save Handlers ───────────────────────────────────────────────────
+
+  const handleSaveDocument = useCallback(async (customChangeNote?: string, isAutoSave = false, createVersion = false) => {
+    if (!editorRef.current || !doc || !documentId) return;
+    if (isAutoSave && (!hasChanges || isSaving)) return;
+
+    try {
+      setIsSaving(true);
+      const blob = await editorRef.current.export({
+        isFinalDoc: false,
+        triggerDownload: false
+      });
+      if (!blob || blob.size === 0) {
+        throw new Error('No se pudo obtener el documento del editor. Intenta editar algo primero.');
+      }
+
+      // Usar el nombre original del documento para el archivo
+      const fileName = doc.name.endsWith('.docx') ? doc.name : `${doc.name}.docx`;
+
+      const res = await documentsApi.saveVersion(documentId, blob, fileName, customChangeNote, createVersion);
+      if (res.ok) {
+        setHasChanges(false);
+
+        if (createVersion) {
+          // Solo para nuevas versiones: actualizar metadatos sin recargar el editor
+          try {
+            const freshDoc = await documentsApi.get(documentId);
+            setDoc(freshDoc);
+          } catch { /* ignorar error en refresh */ }
+        } else {
+          // Guardado normal: actualizar localmente sin ningún fetch
+          setDoc(prev => prev ? { ...prev, updatedAt: new Date().toISOString(), size: String(res.size) } : prev);
+        }
+      } else {
+        throw new Error(res.syncResult?.error || 'Error al guardar');
+      }
+    } catch (err: any) {
+      console.error('Error saving document:', err);
+      if (!isAutoSave) {
+        alert(`Error al guardar: ${err.message}`);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [doc, documentId, hasChanges, isSaving]);
+
+  // Handle auto-save every 1 minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (hasChanges && !isSaving) {
+        handleSaveDocument(undefined, true);
+      }
+    }, 60000); // 1 minute
+    return () => clearInterval(interval);
+  }, [hasChanges, isSaving, handleSaveDocument]);
 
   const toggleVersionSelection = (id: string) => {
     if (selectedVersions.includes(id)) {
@@ -302,14 +400,61 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
   };
 
-  const handleCompare = () => {
-    if (selectedVersions.length === 2) setShowDiff(true);
+  const handleLoadVersion = async (versionId: string) => {
+    if (!documentId) return;
+    if (versionId === 'current') {
+      await fetchDocument();
+      return;
+    }
+
+    try {
+      setLoadingBlob(true);
+      const { getDocumentVersionFileUrl } = await import('../lib/api');
+      const url = getDocumentVersionFileUrl(documentId, versionId);
+
+      const { supabase } = await import('../lib/supabaseAuth');
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token;
+
+      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error('No se pudo cargar la versión');
+      const blob = await res.blob();
+      setDocumentBlob(blob);
+    } catch (err: any) {
+      console.error('Error loading historic version:', err);
+      // Fallback a alert
+    } finally {
+      setLoadingBlob(false);
+    }
+  };
+
+  const handleCompare = async () => {
+    if (selectedVersions.length !== 2 || !doc || !documentId) return;
+
+    setShowDiff(true);
+    setLoadingDiff(true);
+    try {
+      const getVNum = (id: string) => id === 'current' ? doc.version : versions.find(v => v.id === id)?.version;
+      const vNumA = getVNum(selectedVersions[0]); // newer (v2) usually
+      const vNumB = getVNum(selectedVersions[1]); // older (v1) usually
+
+      if (vNumA && vNumB) {
+        // vNumB = older version, vNumA = newer version
+        const res = await documentsApi.getDiff(documentId, vNumB, vNumA);
+        setDiffHtml(res.html);
+      }
+    } catch (error) {
+      console.error('Error fetching HTML diff for comparison:', error);
+    } finally {
+      setLoadingDiff(false);
+    }
   };
 
   const exitCompare = () => {
     setShowDiff(false);
     setIsCompareMode(false);
     setSelectedVersions([]);
+    setDiffHtml(null);
   };
 
   const handleAddComment = async (content: string) => {
@@ -339,31 +484,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
   };
 
-  const handleExportDocument = async () => {
-    if (!editorRef.current || !doc) return;
-    try {
-      const blob = await editorRef.current.export({ isFinalDoc: true });
 
-      if (!blob) {
-        console.error('Export returned no blob');
-        return;
-      }
-
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.name.endsWith('.docx') ? doc.name : `${doc.name}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setHasChanges(false);
-    } catch (err) {
-      console.error('Error exporting document:', err);
-    }
-  };
 
   const handleModeChange = (mode: 'editing' | 'viewing' | 'suggesting') => {
     setEditorMode(mode);
@@ -429,25 +550,28 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   const renderEditorContent = () => {
     if (showDiff) {
-      const v1 = versions.find(v => v.id === selectedVersions[0]);
-      const v2 = versions.find(v => v.id === selectedVersions[1]);
+      const v1 = selectedVersions[0] === 'current' ? doc : versions.find(v => v.id === selectedVersions[0]);
+      const v2 = selectedVersions[1] === 'current' ? doc : versions.find(v => v.id === selectedVersions[1]);
+
       return (
-        <div className="w-full max-w-[1200px] flex gap-4">
-          <div className="flex-1">
-            <div className="mb-2 text-center font-bold text-red-600 bg-red-50 py-2 rounded">
-              Versión {v1?.version ?? '?'} — {v1 ? formatDate(v1.createdAt) : ''}
-            </div>
-            <div className="bg-white dark:bg-gray-100 p-10 rounded-sm shadow-md min-h-[400px] text-lg text-gray-800">
-              <p className="text-gray-500 italic">Vista previa de comparación.<br />Nota de cambio: {v1?.changeNote ?? 'Sin nota'}</p>
-            </div>
-          </div>
-          <div className="flex-1">
-            <div className="mb-2 text-center font-bold text-green-600 bg-green-50 py-2 rounded">
-              Versión {v2?.version ?? '?'} — {v2 ? formatDate(v2.createdAt) : ''}
-            </div>
-            <div className="bg-white dark:bg-gray-100 p-10 rounded-sm shadow-md min-h-[400px] text-lg text-gray-800">
-              <p className="text-gray-500 italic">Vista previa de comparación.<br />Nota de cambio: {v2?.changeNote ?? 'Sin nota'}</p>
-            </div>
+        <div className="w-full h-full flex flex-col p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-[#0a0a10]">
+          {/* Contenedor que simula una hoja A4 de documento */}
+          <div className="mx-auto w-full max-w-[850px] min-h-[1100px] bg-white dark:bg-[#121212] px-16 py-24 sm:px-20 shadow-md border border-gray-200 dark:border-white/10 mb-16 text-base text-gray-900 dark:text-gray-100 leading-relaxed text-justify">
+            {loadingDiff ? (
+              <div className="flex flex-col items-center justify-center pt-32">
+                <div className="animate-spin size-12 border-4 border-primary border-t-transparent rounded-full mb-4" />
+                <p className="text-gray-500 font-medium">Renderizando diferencias del documento...</p>
+              </div>
+            ) : diffHtml ? (
+              <div
+                className="diff-html-container font-sans"
+                dangerouslySetInnerHTML={{ __html: diffHtml }}
+              />
+            ) : (
+              <div className="text-center pt-32 text-gray-500 font-sans">
+                No se encontraron diferencias textuales o el documento no pudo ser procesado.
+              </div>
+            )}
           </div>
         </div>
       );
@@ -456,45 +580,48 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     // ── SuperDoc Editor for DOCX files ──
     return (
       <div className="w-full flex flex-col min-h-[800px]">
-        {/* File info banner */}
-        {doc.localPath && (
-          <div className="flex items-center gap-3 px-5 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 rounded-t-lg">
-            <span className="material-symbols-outlined text-primary text-lg">attach_file</span>
-            <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">
-              <strong>{doc.name}</strong> ({doc.type.toUpperCase()} — {formatFileSize(doc.size)})
-            </span>
-            {hasChanges && (
-              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
-                Cambios sin guardar
+        {/* Mode selector for DOCX */}
+        {canUseSuperdoc && (
+          <div className="flex items-center gap-1 px-4 py-2 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+            <span className="text-xs text-gray-500 mr-3 font-medium">Modo:</span>
+            {canEdit ? (
+              <div className="relative isolate flex p-1 bg-gray-200/60 dark:bg-gray-800/80 rounded-xl">
+                {/* Sliding background pill */}
+                <div
+                  className="absolute inset-y-1 left-1 w-28 bg-primary rounded-lg shadow-md transition-transform duration-300 ease-out z-[-1]"
+                  style={{
+                    transform: `translateX(${editorMode === 'editing' ? '0%' : editorMode === 'suggesting' ? '100%' : '200%'
+                      })`
+                  }}
+                />
+
+                {(['editing', 'suggesting', 'viewing'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => handleModeChange(mode)}
+                    className={`flex items-center justify-center gap-1.5 w-28 py-1.5 rounded-lg text-sm font-semibold transition-colors duration-300 ${editorMode === mode
+                      ? 'text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {mode === 'editing' ? 'edit' : mode === 'suggesting' ? 'rate_review' : 'visibility'}
+                    </span>
+                    {mode === 'editing' ? 'Editar' : mode === 'suggesting' ? 'Sugerir' : 'Ver'}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <span className="material-symbols-outlined text-base">visibility</span>
+                Solo lectura
               </span>
             )}
           </div>
         )}
 
-        {/* Mode selector for DOCX */}
-        {canUseSuperdoc && (
-          <div className="flex items-center gap-1 px-4 py-2 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-xs text-gray-500 mr-3 font-medium">Modo:</span>
-            {(['editing', 'suggesting', 'viewing'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => handleModeChange(mode)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${editorMode === mode
-                  ? 'bg-primary text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-              >
-                <span className="material-symbols-outlined text-base">
-                  {mode === 'editing' ? 'edit' : mode === 'suggesting' ? 'rate_review' : 'visibility'}
-                </span>
-                {mode === 'editing' ? 'Editar' : mode === 'suggesting' ? 'Sugerir' : 'Ver'}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Editor area */}
-        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-md overflow-hidden">
+        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-md xl:pr-[300px] lg:pr-[250px]">
           {canUseSuperdoc ? (
             loadingBlob ? (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">
@@ -732,7 +859,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         </aside>
 
         {/* Main Content */}
-        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden ml-64 min-w-0 ${activeTab === 'EDITOR' ? 'mr-80' : ''}`}>
+        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible ml-64 min-w-0 ${activeTab === 'EDITOR' ? 'mr-80' : ''}`}>
           {activeTab === 'EDITOR' && (
             <>
               {/* Toolbar */}
@@ -745,11 +872,25 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                     </button>
                   ) : (
                     <>
-                      {canUseSuperdoc && (
-                        <button onClick={handleExportDocument} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform">
-                          <span className="material-symbols-outlined">save</span>
-                          Exportar DOCX
-                        </button>
+                      {canUseSuperdoc && canEdit && (
+                        <>
+                          <button
+                            onClick={() => handleSaveDocument()}
+                            disabled={isSaving || (!hasChanges && !isSaving)}
+                            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            <span className={`material-symbols-outlined ${isSaving ? 'animate-spin' : ''}`}>
+                              {isSaving ? 'progress_activity' : 'save'}
+                            </span>
+                            {isSaving ? 'Guardando...' : 'Guardar'}
+                          </button>
+                        </>
+                      )}
+                      {canUseSuperdoc && !canEdit && (
+                        <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+                          <span className="material-symbols-outlined text-base">lock</span>
+                          Solo lectura
+                        </span>
                       )}
                       <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
                         <span className="material-symbols-outlined">download</span>
@@ -770,15 +911,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                     )}
 
                     <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-green-500 text-lg">cloud_done</span>
-                      <span>Última actualización: {formatTimeAgo(doc.updatedAt)}</span>
+                      <span className={`material-symbols-outlined ${hasChanges ? 'text-amber-500' : 'text-green-500'} text-lg`}>
+                        {hasChanges ? 'sync_problem' : 'cloud_done'}
+                      </span>
+                      <span>{hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}</span>
                     </div>
                   </div>
                 )}
               </div>
 
               {/* Document area */}
-              <div className="flex-1 overflow-y-auto pt-[7rem] flex flex-col">
+              <div className="flex-1 overflow-y-auto pt-[87px] flex flex-col">
                 {renderEditorContent()}
               </div>
             </>
@@ -816,10 +959,40 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               )}
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Create New Version Card */}
+              {!isCompareMode && hasChanges && (
+                <div className="p-4 rounded-xl border border-primary bg-primary/5 transition-all">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="bg-blue-100 text-blue-700 text-[10px] font-bold uppercase px-2 py-0.5 rounded">Nueva Versión</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input type="text" className="flex-1 text-sm border border-gray-300 rounded px-2 py-2 outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                      placeholder="Nota de cambio (opcional)"
+                      value={newVersionName}
+                      onChange={e => setNewVersionName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          handleSaveDocument(newVersionName || undefined, false, true);
+                          setNewVersionName('');
+                        }
+                      }}
+                    />
+                    <button onClick={() => { handleSaveDocument(newVersionName || undefined, false, true); setNewVersionName(''); }}
+                      className="bg-primary text-white p-2 rounded hover:bg-blue-700 transition-colors"
+                      title="Guardar Versión">
+                      <span className="material-symbols-outlined text-[20px]">check</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Current version card */}
               <div
-                onClick={() => { if (isCompareMode) toggleVersionSelection('current'); }}
-                className={`p-4 rounded-xl border-2 border-primary bg-primary/5 transition-all cursor-pointer ${selectedVersions.includes('current') ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
+                onClick={() => {
+                  if (isCompareMode) toggleVersionSelection('current');
+                  else handleLoadVersion('current');
+                }}
+                className={`p-4 rounded-xl border transition-all cursor-pointer ${selectedVersions.includes('current') ? 'border-primary ring-2 ring-offset-2 ring-primary bg-primary/5' : 'border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5'}`}
               >
                 {isCompareMode && (
                   <div className="absolute top-3 right-3">
@@ -832,7 +1005,43 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                   <span className="bg-primary text-white text-[10px] font-bold uppercase px-2 py-0.5 rounded">Versión Actual</span>
                   <span className="text-xs text-gray-500">{formatTime(doc.updatedAt)}</span>
                 </div>
-                <p className="font-bold text-[#0e0e1b] dark:text-white">v{doc.version} — {formatDate(doc.updatedAt)}</p>
+
+                <div className="flex items-center gap-2 group/edit">
+                  {!isEditingVersionName ? (
+                    <>
+                      <p className="font-bold text-[#0e0e1b] dark:text-white text-lg">
+                        v{doc.version}
+                      </p>
+                      <button onClick={(e) => { e.stopPropagation(); setIsEditingVersionName(true); setNewVersionName(`v${doc.version + 1}`); }} className="text-gray-400 hover:text-primary opacity-0 group-hover/edit:opacity-100 transition-opacity">
+                        <span className="material-symbols-outlined text-[16px]">edit</span>
+                      </button>
+                      <p className="text-[#0e0e1b] dark:text-gray-300 font-medium ml-1 flex-1">— {formatDate(doc.updatedAt)}</p>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-1 w-full" onClick={e => e.stopPropagation()}>
+                      <input autoFocus type="text" className="w-16 text-sm border font-bold border-gray-300 rounded px-1 py-0.5 outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                        value={newVersionName}
+                        onChange={e => setNewVersionName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            handleSaveDocument(newVersionName || undefined);
+                            setIsEditingVersionName(false);
+                            setNewVersionName('');
+                          } else if (e.key === 'Escape') {
+                            setIsEditingVersionName(false);
+                            setNewVersionName('');
+                          }
+                        }}
+                      />
+                      <button onClick={() => { handleSaveDocument(newVersionName || undefined); setIsEditingVersionName(false); setNewVersionName(''); }} className="text-green-500 p-0.5 rounded hover:bg-green-100">
+                        <span className="material-symbols-outlined text-[18px]">check</span>
+                      </button>
+                      <button onClick={() => { setIsEditingVersionName(false); setNewVersionName(''); }} className="text-red-500 p-0.5 rounded hover:bg-red-100">
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Editado por: {doc.owner?.name ?? 'Sistema'}</p>
               </div>
 
@@ -840,7 +1049,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               {versions.map(v => (
                 <div
                   key={v.id}
-                  onClick={() => { if (isCompareMode) toggleVersionSelection(v.id); }}
+                  onClick={() => {
+                    if (isCompareMode) toggleVersionSelection(v.id);
+                    else handleLoadVersion(v.id);
+                  }}
                   className={`p-4 rounded-xl border transition-all cursor-pointer group relative border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5 ${selectedVersions.includes(v.id) ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
                 >
                   {isCompareMode && (
@@ -878,23 +1090,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               </div>
             )}
 
-            {/* Document info footer */}
-            {!isCompareMode && (
-              <div className="p-4 border-t border-[#e7e7f3] dark:border-white/10">
-                <div className="flex flex-col gap-3 rounded-xl border border-success-green/30 bg-success-green/5 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <p className="text-[#0e0e1b] dark:text-white text-sm font-bold">Documento Activo</p>
-                      <p className="text-success-green text-xs font-medium">{doc.fileStatus}</p>
-                    </div>
-                    <span className="material-symbols-outlined text-success-green">cloud_done</span>
-                  </div>
-                  <p className="text-gray-500 text-[11px] leading-tight">
-                    Tipo: {doc.mimeType ?? doc.type.toUpperCase()} — Creado {formatDate(doc.createdAt)}
-                  </p>
-                </div>
-              </div>
-            )}
           </aside>
         )}
       </div>

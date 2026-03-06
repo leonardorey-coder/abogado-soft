@@ -68,7 +68,18 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
       : undefined,
     documentPermissions: permissions,
     currentUserPermission: undefined, // se calcula por contexto
+    ownerId: doc.ownerId ?? undefined,
     lastEditor: doc.owner?.name ?? 'Juan Pérez', // Default mock if owner not found
+    assignments: doc.assignments?.map(a => ({
+      id: a.id,
+      status: a.status,
+      assignee: {
+        id: a.assignee.id,
+        name: a.assignee.name,
+        email: a.assignee.email,
+        avatarUrl: (a.assignee as any).avatarUrl,
+      }
+    }))
   };
 }
 

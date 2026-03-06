@@ -52,10 +52,12 @@ export interface Document {
   documentPermissions?: DocumentPermissionEntry[];
   currentUserPermission?: DocumentPermissionLevel;
   lastEditor?: string;
+  ownerId?: string;
   // Google Drive sync fields
   syncStatus?: 'pending' | 'syncing' | 'completed' | 'failed';
   driveFileId?: string | null;
   lastSyncAt?: string | null;
+  assignments?: { id: string; status: string; assignee: { id: string; name: string; email: string; avatarUrl?: string | null } }[];
 }
 
 export interface DocumentVersion {
