@@ -1,16 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from "../types";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { getDocumentFileUrl } from '../lib/api';
 import { supabase } from '../lib/supabaseAuth';
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
+import { AssignModal } from "./AssignModal";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { SuperDoc } from "superdoc";
 import "superdoc/style.css";
+
+// Tipo del contexto que provee AppLayout vía <Outlet context={...}>
+interface LayoutContext {
+  searchQuery: string;
+  openUploadModal: (files?: File[]) => void;
+  refreshDocuments: () => Promise<void>;
+}
 
 interface DashboardProps {
   onOpenUploadModal?: (files?: File[]) => void;
@@ -57,6 +65,30 @@ const getSharingStatusColor = (status: SharingStatus) => {
   }
 };
 
+const getAssignmentStatusStyle = (status: string) => {
+  switch (status) {
+    case "pendiente": return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800";
+    case "visto": return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
+    case "editado": return "bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800";
+    case "completado": return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
+    case "rechazado": return "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+    case "revisado": return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800";
+    default: return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+};
+
+const getAssignmentStatusIcon = (s: string) => {
+  switch (s) {
+    case "pendiente": return "schedule";
+    case "visto": return "visibility";
+    case "editado": return "edit_note";
+    case "completado": return "check_circle";
+    case "rechazado": return "cancel";
+    case "revisado": return "fact_check";
+    default: return "help";
+  }
+};
+
 const getStatusButtonColor = (status: FileStatus, isSelected: boolean) => {
   if (!isSelected) return 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600';
   switch (status) {
@@ -83,11 +115,16 @@ const matchesSearch = (doc: Document, q: string) => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  onOpenUploadModal,
+  onOpenUploadModal: onOpenUploadModalProp,
   isUploadModalOpen = false,
-  searchQuery = "",
+  searchQuery: searchQueryProp = "",
   onOpenDocument,
 }) => {
+  // Obtener contexto del AppLayout (Outlet context)
+  const layoutContext = useOutletContext<LayoutContext | undefined>();
+  const onOpenUploadModal = onOpenUploadModalProp ?? layoutContext?.openUploadModal;
+  const searchQuery = searchQueryProp || layoutContext?.searchQuery || "";
+
   const navigate = useNavigate();
   const {
     documents,
@@ -98,6 +135,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   } = useDocuments();
   const [filter, setFilter] = useState<'TODOS' | 'ACTIVOS' | 'PENDIENTES' | 'VISTO' | 'EDITADO' | 'EXPIRADOS'>('TODOS');
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
+  const [assignDocument, setAssignDocument] = useState<Document | null>(null);
   const { user } = useAuth();
   const currentUserRole = user?.role ?? 'asistente';
   const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
@@ -632,16 +670,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <span className="material-symbols-outlined text-lg">share</span>
                               Compartir
                             </button>
-                            {showAccesoCompleto && doc.currentUserPermission !== "admin" && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(null); handleAccesoCompleto(e, doc); }}
-                                className="w-full px-4 py-2 text-left text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2"
-                              >
-                                <span className="material-symbols-outlined text-lg">lock_open</span>
-                                Acceso completo
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(null); setAssignDocument(doc); }}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-lg">person_add</span>
+                              Asignar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setMenuOpenDocId(null); handleAccesoCompleto(e, doc); }}
+                              className="w-full px-4 py-2 text-left text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-lg">
+                                {currentUserRole === 'admin' ? 'key' : 'lock_open'}
+                              </span>
+                              {currentUserRole === 'admin' ? 'Generar PIN de acceso' : 'Pedir acceso completo'}
+                            </button>
                             <button
                               type="button"
                               role="menuitem"
@@ -767,6 +814,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         {doc.sharingStatus}
                       </span>
                     )}
+                    {doc.assignments && doc.assignments.length > 0 && (
+                      <div className="flex gap-2 items-center flex-wrap">
+                        {doc.assignments.map(a => (
+                          <div key={a.id} className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 p-1 pr-2 rounded-full border border-slate-200 dark:border-slate-700/50">
+                            {a.assignee.avatarUrl ? (
+                              <img src={a.assignee.avatarUrl} alt={a.assignee.name} title={`Asignado a: ${a.assignee.name}`} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div title={`Asignado a: ${a.assignee.name}`} className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                {a.assignee.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase flex items-center gap-0.5 border ${getAssignmentStatusStyle(a.status)}`} title={`Estado: ${a.status}`}>
+                              <span className="material-symbols-outlined text-[10px]" aria-hidden>{getAssignmentStatusIcon(a.status)}</span>
+                              {a.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {(doc.currentUserPermission !== undefined || (doc.documentPermissions?.length ?? 0) > 0) && (
                       <span className="px-2 py-1 rounded-md text-[10px] items-center gap-1 font-black uppercase border flex bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
                         <span className="material-symbols-outlined text-[14px]">shield</span>
@@ -807,28 +873,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </main>
 
       {shareDocument && (
-        <ShareModal document={shareDocument} onClose={() => setShareDocument(null)} />
-      )}
-      {adminAccessDocument && (
-        <AdminAccessModal
-          documentName={adminAccessDocument.name}
-          onClose={() => setAdminAccessDocument(null)}
-          onSuccess={handleAdminAccessSuccess}
+        <ShareModal
+          document={shareDocument}
+          onClose={() => setShareDocument(null)}
         />
       )}
-      {permissionsDocument && (
-        <DocumentPermissionsModal
-          document={permissionsDocument}
-          onClose={() => setPermissionsDocument(null)}
-          onSave={(_permissions) => {
-            // TODO: Llamar API de permisos cuando se implemente
-            setPermissionsDocument(null);
+
+      {assignDocument && (
+        <AssignModal
+          document={assignDocument}
+          onClose={() => {
+            setAssignDocument(null);
+            onRefresh();
           }}
         />
       )}
 
+      {adminAccessDocument && (
+        <AdminAccessModal
+          documentId={adminAccessDocument.id}
+          documentName={adminAccessDocument.name}
+          onClose={() => setAdminAccessDocument(null)}
+          onSuccess={() => {
+            handleAdminAccessSuccess();
+            onRefresh();
+          }}
+        />
+      )}
 
-
+      {permissionsDocument && (
+        <DocumentPermissionsModal
+          document={permissionsDocument}
+          onClose={() => setPermissionsDocument(null)}
+          onSave={() => {
+            setPermissionsDocument(null);
+            onRefresh();
+          }}
+        />
+      )}
     </>
   );
 };

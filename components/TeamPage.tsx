@@ -77,9 +77,11 @@ export const TeamPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [assignments, setAssignments] = useState<any[]>([]);
 
   // CRUD state
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<TeamUser | null>(null);
+  const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [addCollaboratorOpen, setAddCollaboratorOpen] = useState(false);
@@ -102,10 +104,21 @@ export const TeamPage: React.FC = () => {
     Promise.all([
       fetch(`${API_URL}/users?${params}`, { headers: authHeader }).then((r) => r.ok ? r.json() : { data: [] }),
       fetch(`${API_URL}/activity?page=1&limit=8&sortOrder=desc`, { headers: authHeader }).then((r) => r.ok ? r.json() : { data: [] }),
+      fetch(`${API_URL}/assignments?page=1&limit=10&sortOrder=desc`, { headers: authHeader }).then((r) => r.ok ? r.json() : { data: [] }),
+      fetch(`${API_URL}/assignments/sent?page=1&limit=10&sortOrder=desc`, { headers: authHeader }).then((r) => r.ok ? r.json() : { data: [] }),
     ])
-      .then(([usersRes, activityRes]) => {
+      .then(([usersRes, activityRes, receivedRes, sentRes]) => {
         setUsers(usersRes.data ?? []);
         setActivity(activityRes.data ?? []);
+        // Combine received and sent, deduplicate by id
+        const all = [...(receivedRes.data ?? []), ...(sentRes.data ?? [])];
+        const seen = new Set<string>();
+        const unique = all.filter((a: any) => {
+          if (seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        });
+        setAssignments(unique);
       })
       .catch(() => setError("No se pudo cargar el equipo."))
       .finally(() => setLoading(false));
@@ -136,6 +149,30 @@ export const TeamPage: React.FC = () => {
       setCopiedId(key);
       setTimeout(() => setCopiedId(null), 2000);
     });
+  };
+
+  const handleEditUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    const formData = new FormData(e.currentTarget);
+    const updates = {
+      name: formData.get("name") as string,
+      officeName: formData.get("officeName") as string,
+      department: formData.get("department") as string,
+      position: formData.get("position") as string,
+      phone: formData.get("phone") as string,
+    };
+    setActionLoading(`edit-${editingUser.id}`);
+    try {
+      const res = await fetch(`${API_URL}/users/${editingUser.id}`, {
+        method: "PATCH", headers: authHeader, body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Error");
+      setUsers((prev) => prev.map((p) => p.id === editingUser.id ? { ...p, ...updates } : p));
+      showSuccess(`Perfil de ${updates.name} actualizado`);
+      setEditingUser(null);
+    } catch (err: any) { setError(err.message); }
+    finally { setActionLoading(null); }
   };
 
   const handleChangeRole = async (u: TeamUser) => {
@@ -183,7 +220,7 @@ export const TeamPage: React.FC = () => {
   const activeUsers = users.filter((u) => u.isActive);
   const inactiveUsers = users.filter((u) => !u.isActive);
 
-  if (loading) {
+  if (loading && users.length === 0) {
     return (
       <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1">
         <div className="flex items-center justify-center py-20">
@@ -213,18 +250,16 @@ export const TeamPage: React.FC = () => {
               Gestione los usuarios y permisos de su despacho — {activeUsers.length} activos
             </p>
           </div>
-          {isAdmin && (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={openAddCollaborator}
-                className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors"
-              >
-                <span className="material-symbols-outlined text-lg">person_add</span>
-                Agregar Usuario
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={openAddCollaborator}
+              className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md hover:bg-blue-700 transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">person_add</span>
+              Agregar Usuario
+            </button>
+          </div>
         </div>
 
         {/* Success / Error */}
@@ -282,7 +317,7 @@ export const TeamPage: React.FC = () => {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Último acceso</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</th>
-                {isAdmin && <th className="px-5 py-3 text-right text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Acciones</th>}
+                <th className="px-5 py-3 text-right text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -339,42 +374,50 @@ export const TeamPage: React.FC = () => {
                     </span>
                   </td>
 
-                  {/* Acciones (solo admin) */}
-                  {isAdmin && (
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-1">
-                        {/* Cambiar rol */}
-                        <button
-                          title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
-                          disabled={actionLoading === `role-${u.id}`}
-                          onClick={() => handleChangeRole(u)}
-                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[#616f89] dark:text-[#64748b] hover:text-indigo-600 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-base">swap_horiz</span>
-                        </button>
+                  {/* Acciones */}
+                  <td className="px-5 py-4">
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Editar */}
+                      <button
+                        title="Editar"
+                        onClick={() => setEditingUser(u)}
+                        disabled={actionLoading === `edit-${u.id}`}
+                        className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[#616f89] dark:text-[#64748b] hover:text-blue-600 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-base">edit</span>
+                      </button>
 
-                        {/* Activar/Desactivar */}
-                        <button
-                          title={u.isActive ? "Desactivar" : "Activar"}
-                          disabled={actionLoading === `status-${u.id}`}
-                          onClick={() => handleToggleStatus(u)}
-                          className={`p-1.5 rounded-lg transition-colors ${u.isActive ? "hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600" : "hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"} text-[#616f89] dark:text-[#64748b]`}
-                        >
-                          <span className="material-symbols-outlined text-base">{u.isActive ? "person_off" : "person_check"}</span>
-                        </button>
+                      {/* Cambiar rol */}
+                      <button
+                        title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
+                        disabled={actionLoading === `role-${u.id}`}
+                        onClick={() => handleChangeRole(u)}
+                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[#616f89] dark:text-[#64748b] hover:text-indigo-600 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-base">swap_horiz</span>
+                      </button>
 
-                        {/* Eliminar */}
-                        <button
-                          title="Eliminar"
-                          disabled={actionLoading === `delete-${u.id}`}
-                          onClick={() => setConfirmDeleteUser(u)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[#616f89] dark:text-[#64748b] hover:text-red-600 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-base">person_remove</span>
-                        </button>
-                      </div>
-                    </td>
-                  )}
+                      {/* Activar/Desactivar */}
+                      <button
+                        title={u.isActive ? "Desactivar" : "Activar"}
+                        disabled={actionLoading === `status-${u.id}`}
+                        onClick={() => handleToggleStatus(u)}
+                        className={`p-1.5 rounded-lg transition-colors ${u.isActive ? "hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600" : "hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"} text-[#616f89] dark:text-[#64748b]`}
+                      >
+                        <span className="material-symbols-outlined text-base">{u.isActive ? "person_off" : "person_check"}</span>
+                      </button>
+
+                      {/* Eliminar */}
+                      <button
+                        title="Eliminar"
+                        disabled={actionLoading === `delete-${u.id}`}
+                        onClick={() => setConfirmDeleteUser(u)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[#616f89] dark:text-[#64748b] hover:text-red-600 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-base">person_remove</span>
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -414,11 +457,11 @@ export const TeamPage: React.FC = () => {
 
           <div className="flex gap-4 flex-wrap overflow-x-auto pb-2">
             {[
-              { label: 'Todos', count: 0, icon: 'check_circle', colorClass: 'bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
-              { label: 'Pendientes', count: 0, icon: 'pending', colorClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50' },
-              { label: 'Aceptados', count: 0, icon: 'visibility', colorClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50' },
-              { label: 'Completados', count: 0, icon: 'verified', colorClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50' },
-              { label: 'Rechazados', count: 0, icon: 'cancel', colorClass: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50' },
+              { label: 'Todos', count: assignments.length, icon: 'check_circle', colorClass: 'bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
+              { label: 'Pendientes', count: assignments.filter(a => a.status === 'pendiente').length, icon: 'pending', colorClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50' },
+              { label: 'Aceptados', count: assignments.filter(a => ['visto', 'editado', 'revisado'].includes(a.status)).length, icon: 'visibility', colorClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50' },
+              { label: 'Completados', count: assignments.filter(a => a.status === 'completado').length, icon: 'verified', colorClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50' },
+              { label: 'Rechazados', count: assignments.filter(a => a.status === 'rechazado').length, icon: 'cancel', colorClass: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50' },
               { label: 'Compartidos', count: 0, icon: 'share', colorClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-900/50' }
             ].map((st) => (
               <div
@@ -431,14 +474,51 @@ export const TeamPage: React.FC = () => {
             ))}
           </div>
 
-          <div className="mt-6 bg-[#f8fafb] dark:bg-[#141921] rounded-2xl p-8 text-center border-2 border-dashed border-[#dbdfe6] dark:border-[#2d3748]">
-            <div className="w-16 h-16 bg-white dark:bg-[#1a212f] rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 dark:border-slate-800">
-              <span className="material-symbols-outlined text-[32px] text-slate-300 dark:text-slate-600">inbox</span>
+          {assignments.length === 0 ? (
+            <div className="mt-6 bg-[#f8fafb] dark:bg-[#141921] rounded-2xl p-8 text-center border-2 border-dashed border-[#dbdfe6] dark:border-[#2d3748]">
+              <div className="w-16 h-16 bg-white dark:bg-[#1a212f] rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 dark:border-slate-800">
+                <span className="material-symbols-outlined text-[32px] text-slate-300 dark:text-slate-600">inbox</span>
+              </div>
+              <p className="text-[#616f89] dark:text-[#64748b] text-base font-medium max-w-sm mx-auto">
+                No hay documentos asignados o compartidos que requieran tu atención en este momento.
+              </p>
             </div>
-            <p className="text-[#616f89] dark:text-[#64748b] text-base font-medium max-w-sm mx-auto">
-              No hay documentos asignados o compartidos que requieran tu atención en este momento.
-            </p>
-          </div>
+          ) : (
+            <div className="mt-6 space-y-3">
+              {assignments.map(assign => (
+                <div key={assign.id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] hover:shadow-sm transition-shadow">
+                  <div className="flex items-center gap-4">
+                    <div className="size-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center border border-blue-100 dark:border-blue-800 text-blue-600 dark:text-blue-400">
+                      <span className="material-symbols-outlined text-xl">description</span>
+                    </div>
+                    <div>
+                      <p className="font-bold text-[#111318] dark:text-white">
+                        {assign.document?.name || 'Documento sin nombre'}
+                      </p>
+                      <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">
+                        Asignado por: {assign.assigner?.name || 'Usuario'} • {formatTimeAgo(assign.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${assign.status === 'pendiente' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' :
+                      ['visto', 'editado', 'revisado'].includes(assign.status) ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
+                        assign.status === 'completado' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                      }`}>
+                      {assign.status.toUpperCase()}
+                    </span>
+                    <button
+                      onClick={() => navigate(`/documento/${assign.documentId}`)}
+                      className="text-primary font-semibold text-sm hover:underline"
+                    >
+                      Abrir
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Recent Activity */}
@@ -448,7 +528,7 @@ export const TeamPage: React.FC = () => {
               <span className="material-symbols-outlined text-primary">history</span>
               Actividad Reciente
             </h3>
-            <button type="button" onClick={() => navigate('/bitacora')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
+            <button type="button" onClick={() => navigate('/actividad')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-[#616f89] dark:text-[#a0aec0] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-primary transition-colors w-fit group">
               Ver todo el historial
               <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-0.5">arrow_forward</span>
             </button>
@@ -601,6 +681,50 @@ export const TeamPage: React.FC = () => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => e.target === e.currentTarget && setEditingUser(null)}>
+          <div className="bg-white dark:bg-[#1a212f] w-full max-w-md rounded-2xl shadow-xl border border-[#dbdfe6] dark:border-[#2d3748] overflow-hidden">
+            <div className="p-6 border-b border-[#dbdfe6] dark:border-[#2d3748] flex justify-between items-center">
+              <h3 className="text-xl font-bold text-[#111318] dark:text-white">Editar Usuario</h3>
+              <button onClick={() => setEditingUser(null)} className="text-[#616f89] dark:text-[#a0aec0] hover:text-[#111318] dark:hover:text-white transition-colors">
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+            <form onSubmit={handleEditUserSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">Nombre completo</label>
+                <input required type="text" name="name" defaultValue={editingUser.name} className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">Cargo / Puesto</label>
+                <input type="text" name="position" defaultValue={editingUser.position || ""} className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">Departamento</label>
+                <input type="text" name="department" defaultValue={editingUser.department || ""} className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">Despacho</label>
+                <input type="text" name="officeName" defaultValue={editingUser.officeName || ""} className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">Teléfono</label>
+                <input type="text" name="phone" defaultValue={editingUser.phone || ""} className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white" />
+              </div>
+
+              <div className="pt-4 flex gap-3 justify-end">
+                <button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 border border-[#dbdfe6] dark:border-[#2d3748] rounded-lg text-sm font-medium text-[#616f89] dark:text-[#a0aec0] hover:bg-[#f8fafb] dark:hover:bg-slate-800">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={actionLoading === `edit-${editingUser.id}`} className="px-4 py-2 bg-primary rounded-lg text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
