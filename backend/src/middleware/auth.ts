@@ -55,7 +55,13 @@ async function verifySupabaseToken(accessToken: string): Promise<{ id: string; e
 /**
  * Middleware principal: extrae el JWT del header Authorization,
  * lo verifica con Supabase Auth, y busca al usuario en la BD vía Prisma.
+ * También actualiza lastLogin (throttled a 5 minutos por usuario).
  */
+
+// Throttle map para evitar actualizar lastLogin en cada request
+const lastLoginUpdateMap = new Map<string, number>();
+const LAST_LOGIN_THROTTLE_MS = 5 * 60 * 1000; // 5 minutos
+
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     let token = '';
@@ -96,6 +102,19 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     }
 
     req.user = user;
+
+    // Actualizar lastLogin throttled (cada 5 min por usuario)
+    const now = Date.now();
+    const lastUpdate = lastLoginUpdateMap.get(user.id) ?? 0;
+    if (now - lastUpdate > LAST_LOGIN_THROTTLE_MS) {
+      lastLoginUpdateMap.set(user.id, now);
+      // Fire-and-forget: no bloquear la request
+      prisma.user.update({
+        where: { id: user.id },
+        data: { lastLogin: new Date() },
+      }).catch(() => { }); // silenciar errores
+    }
+
     next();
   } catch (error) {
     next(error);

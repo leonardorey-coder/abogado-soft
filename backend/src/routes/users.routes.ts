@@ -42,13 +42,20 @@ const changeStatusSchema = z.object({
   isActive: z.boolean(),
 });
 
+// ─── Query schema for users list (includes filter fields) ───────────────────
+const usersListQuery = paginationQuery.extend({
+  search: z.string().optional(),
+  role: z.string().optional(),
+  isActive: z.string().optional(),
+});
+
 // ─── GET /api/users ──────────────────────────────────────────────────────────
 // Lista usuarios del despacho con filtros opcionales.
 
 usersRouter.get(
   '/',
   authorize('admin', 'asistente'),
-  validateQuery(paginationQuery),
+  validateQuery(usersListQuery),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { page, limit, sortOrder } = req.query as unknown as {

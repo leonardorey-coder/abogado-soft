@@ -206,12 +206,18 @@ authRouter.patch(
 );
 
 // ─── POST /api/auth/logout ──────────────────────────────────────────────────
-// Registra la acción de logout en la bitácora.
+// Registra la acción de logout en la bitácora y actualiza lastLogin.
 authRouter.post(
   '/logout',
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Actualizar lastLogin al momento del logout
+      await prisma.user.update({
+        where: { id: req.user!.id },
+        data: { lastLogin: new Date() },
+      });
+
       await prisma.activityLog.create({
         data: {
           userId: req.user!.id,
