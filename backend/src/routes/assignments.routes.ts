@@ -15,22 +15,29 @@ const createAssignmentSchema = z.object({
 });
 
 const updateAssignmentSchema = z.object({
-  status: z.enum(['pendiente', 'visto', 'revisado', 'completado', 'rechazado']).optional(),
+  status: z.enum(['pendiente', 'visto', 'editado', 'revisado', 'completado', 'rechazado']).optional(),
   notes: z.string().optional(),
+});
+
+const assignmentsQuerySchema = paginationQuery.extend({
+  status: z.enum(['pendiente', 'visto', 'editado', 'revisado', 'completado', 'rechazado']).optional(),
 });
 
 // ─── GET /api/assignments (mis asignaciones recibidas) ──────────────────────
 assignmentsRouter.get(
   '/',
-  validateQuery(paginationQuery),
+  validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder } = req.query as any;
+      const { page, limit, sortOrder, status } = req.query as any;
       const skip = (page - 1) * limit;
+
+      const where: any = { assignedTo: req.user!.id };
+      if (status) where.status = status;
 
       const [assignments, total] = await Promise.all([
         prisma.documentAssignment.findMany({
-          where: { assignedTo: req.user!.id },
+          where,
           skip,
           take: limit,
           orderBy: { createdAt: sortOrder },
@@ -41,7 +48,7 @@ assignmentsRouter.get(
             assigner: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         }),
-        prisma.documentAssignment.count({ where: { assignedTo: req.user!.id } }),
+        prisma.documentAssignment.count({ where }),
       ]);
 
       res.json({ data: assignments, total, page, limit });
@@ -51,24 +58,28 @@ assignmentsRouter.get(
   },
 );
 
-// ─── GET /api/assignments/sent (asignaciones que yo envié) ──────────────────
+// ─── GET /api/assignments/sent (asignaciones que yo envié) ──────────────
 assignmentsRouter.get(
   '/sent',
-  validateQuery(paginationQuery),
+  validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder } = req.query as any;
+      const { page, limit, sortOrder, status } = req.query as any;
       const skip = (page - 1) * limit;
+
+      const where: any = { assignedBy: req.user!.id };
+      if (status) where.status = status;
 
       const [assignments, total] = await Promise.all([
         prisma.documentAssignment.findMany({
-          where: { assignedBy: req.user!.id },
+          where,
           skip,
           take: limit,
           orderBy: { createdAt: sortOrder },
           include: {
             document: { select: { id: true, name: true, type: true } },
-            assignee: { select: { id: true, name: true, email: true } },
+            assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            assigner: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         }),
         prisma.documentAssignment.count({ where: { assignedBy: req.user!.id } }),
@@ -159,16 +170,53 @@ assignmentsRouter.patch(
       }
 
       const data = req.body;
+
+      // ── Validar transición de estado ──
+      if (data.status) {
+        const validTransitions: Record<string, string[]> = {
+          pendiente: ['visto', 'editado', 'rechazado'],
+          visto: ['editado', 'completado', 'rechazado'],
+          editado: ['completado', 'rechazado'],
+          completado: [],   // estado terminal
+          rechazado: [],    // estado terminal
+        };
+        const allowed = validTransitions[existing.status] ?? [];
+        if (!allowed.includes(data.status)) {
+          return res.status(400).json({
+            error: `No se puede cambiar de "${existing.status}" a "${data.status}"`,
+          });
+        }
+      }
+
       const updateData: any = { ...data };
 
-      if (data.status === 'completado') {
+      if (data.status === 'completado' || data.status === 'rechazado') {
         updateData.completedAt = new Date();
       }
 
       const assignment = await prisma.documentAssignment.update({
         where: { id: req.params.id },
         data: updateData,
+        include: {
+          document: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true } },
+        },
       });
+
+      // ── Notificar al asignador en estados terminales ──
+      if (data.status === 'completado' || data.status === 'rechazado') {
+        const statusLabel = data.status === 'completado' ? 'completada' : 'rechazada';
+        prisma.notification.create({
+          data: {
+            userId: existing.assignedBy,
+            title: `Asignación ${statusLabel}`,
+            message: `${(assignment as any).assignee?.name ?? 'Un usuario'} marcó el documento "${(assignment as any).document?.name ?? 'Documento'}" como ${data.status}`,
+            type: 'assignment',
+            entityType: 'document',
+            entityId: existing.documentId,
+          },
+        }).catch(err => console.error('[Assignment notification] Error:', err));
+      }
 
       res.json(assignment);
     } catch (error: any) {

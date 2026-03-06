@@ -21,6 +21,61 @@ import path from 'path';
 import fs from 'fs';
 
 export const driveRouter = Router();
+
+// ─── Rutas de Autenticación Públicas ────────────────────────────────────────
+
+// ─── GET /api/drive/auth/url ─────────────────────────────────────────────────
+// Genera la URL de autorización OAuth2 para obtener el refresh_token inicial.
+driveRouter.get('/auth/url', (_req: Request, res: Response) => {
+    const { google } = require('googleapis');
+    const auth = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:4000/api/drive/auth/callback',
+    );
+    const url = auth.generateAuthUrl({
+        scope: ['https://www.googleapis.com/auth/drive.file'],
+        access_type: 'offline',
+        prompt: 'consent',
+    });
+    res.json({ url });
+});
+
+// ─── GET /api/drive/auth/callback ────────────────────────────────────────────
+// Recibe el 'code' de Google y lo intercambia por un refresh_token
+driveRouter.get('/auth/callback', async (req: Request, res: Response) => {
+    const code = req.query.code as string;
+    if (!code) {
+        res.status(400).send("No se proporcionó un código de autorización.");
+        return;
+    }
+
+    try {
+        const { google } = require('googleapis');
+        const auth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:4000/api/drive/auth/callback'
+        );
+
+        const { tokens } = await auth.getToken(code);
+
+        console.log("==========================================");
+        console.log("¡ÉXITO! Aquí están tus tokens de acceso.");
+        console.log("Copia el siguiente REFRESH_TOKEN a tu .env:");
+        console.log("GOOGLE_REFRESH_TOKEN=\"" + tokens.refresh_token + "\"");
+        console.log("==========================================");
+
+        res.json({
+            mensaje: "Autenticación exitosa. Revisa la consola de tu terminal backend para ver el refresh_token correspondiente.",
+            refresh_token: tokens.refresh_token
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Error al intercambiar el código por tokens", detalles: error });
+    }
+});
+
+// Requiere autenticación para todo lo que sigue
 driveRouter.use(authenticate);
 
 const UPLOADS_DIR = path.resolve('uploads');
@@ -305,20 +360,4 @@ driveRouter.get(
     },
 );
 
-// ─── GET /api/drive/auth/url ─────────────────────────────────────────────────
-// Genera la URL de autorización OAuth2 para obtener el refresh_token inicial.
 
-driveRouter.get('/auth/url', (_req: Request, res: Response) => {
-    const { google } = require('googleapis');
-    const auth = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:4000/api/drive/auth/callback',
-    );
-    const url = auth.generateAuthUrl({
-        scope: ['https://www.googleapis.com/auth/drive.file'],
-        access_type: 'offline',
-        prompt: 'consent',
-    });
-    res.json({ url });
-});

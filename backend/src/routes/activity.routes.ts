@@ -7,13 +7,66 @@ import { validateQuery, paginationQuery } from '../middleware/validate.js';
 export const activityRouter = Router();
 activityRouter.use(authenticate);
 
+// ─── Category → filter mapping ─────────────────────────────────────────────
+const CATEGORY_FILTERS: Record<string, any> = {
+  documents: { entityType: { in: ['document'] } },
+  convenios: { entityType: { in: ['convenio'] } },
+  team: {
+    OR: [
+      { entityType: { in: ['user', 'group'] } },
+      { activity: { in: ['USER_REGISTERED', 'USER_UPDATED', 'GROUP_CREATED', 'GROUP_UPDATED', 'GROUP_DELETED', 'GROUP_MEMBER_ADDED', 'GROUP_MEMBER_REMOVED'] } },
+    ],
+  },
+  security: {
+    activity: { in: ['LOGIN', 'LOGOUT', 'PASSWORD_CHANGED', 'ADMIN_ACCESS_GRANTED', 'ADMIN_ACCESS_DENIED', 'BACKUP_CREATED', 'BACKUP_RESTORED', 'SETTINGS_CHANGED'] },
+  },
+  assignments: {
+    activity: { in: ['DOCUMENT_ASSIGNED', 'DOCUMENT_SHARED', 'COLLABORATION_STARTED', 'COLLABORATION_ENDED'] },
+  },
+};
+
 const activityQuerySchema = paginationQuery.extend({
   userId: z.string().uuid().optional(),
   activity: z.string().optional(),
   entityType: z.string().optional(),
+  category: z.enum(['documents', 'convenios', 'team', 'security', 'assignments']).optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
 });
+
+/** Build shared where-clause from common query params */
+function buildWhereClause(query: any, user: any): any {
+  const { userId, activity, entityType, category, from, to } = query;
+  const where: any = {};
+
+  // Asistentes solo ven su propia actividad
+  if (user.role !== 'admin') {
+    where.userId = user.id;
+  } else if (userId) {
+    where.userId = userId;
+  }
+
+  // Category filter (takes precedence over individual entityType/activity)
+  if (category && CATEGORY_FILTERS[category]) {
+    const catFilter = CATEGORY_FILTERS[category];
+    if (catFilter.OR) {
+      where.OR = catFilter.OR;
+    } else {
+      Object.assign(where, catFilter);
+    }
+  } else {
+    if (activity) where.activity = activity;
+    if (entityType) where.entityType = entityType;
+  }
+
+  if (from || to) {
+    where.createdAt = {};
+    if (from) where.createdAt.gte = new Date(from);
+    if (to) where.createdAt.lte = new Date(to);
+  }
+
+  return where;
+}
 
 // ─── GET /api/activity ──────────────────────────────────────────────────────
 // Bitácora de actividad. Admin ve todo, asistente ve solo su actividad.
@@ -22,24 +75,9 @@ activityRouter.get(
   validateQuery(activityQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, userId, activity, entityType, from, to } = req.query as any;
+      const { page, limit, sortOrder } = req.query as any;
       const skip = (page - 1) * limit;
-      const where: any = {};
-
-      // Asistentes solo ven su propia actividad
-      if (req.user!.role !== 'admin') {
-        where.userId = req.user!.id;
-      } else if (userId) {
-        where.userId = userId;
-      }
-
-      if (activity) where.activity = activity;
-      if (entityType) where.entityType = entityType;
-      if (from || to) {
-        where.createdAt = {};
-        if (from) where.createdAt.gte = new Date(from);
-        if (to) where.createdAt.lte = new Date(to);
-      }
+      const where = buildWhereClause(req.query, req.user!);
 
       const [logs, total] = await Promise.all([
         prisma.activityLog.findMany({
@@ -67,22 +105,7 @@ activityRouter.get(
   '/export',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { userId, activity, entityType, from, to } = req.query as any;
-      const where: any = {};
-
-      if (req.user!.role !== 'admin') {
-        where.userId = req.user!.id;
-      } else if (userId) {
-        where.userId = userId;
-      }
-
-      if (activity) where.activity = activity;
-      if (entityType) where.entityType = entityType;
-      if (from || to) {
-        where.createdAt = {};
-        if (from) where.createdAt.gte = new Date(from);
-        if (to) where.createdAt.lte = new Date(to);
-      }
+      const where = buildWhereClause(req.query, req.user!);
 
       const logs = await prisma.activityLog.findMany({
         where,

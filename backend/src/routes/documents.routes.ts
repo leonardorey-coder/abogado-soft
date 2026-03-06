@@ -10,7 +10,8 @@ import { mkdir } from 'fs/promises';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import prisma from '../lib/prisma.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { requirePermission, getEffectivePermission } from '../middleware/checkPermission.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import * as Diff from 'diff';
 import * as pdfParseModule from 'pdf-parse';
@@ -37,6 +38,23 @@ function serializeBigInt(obj: any): any {
 function paramId(req: Request): string {
   const id = req.params.id;
   return Array.isArray(id) ? id[0] : id;
+}
+
+/**
+ * Resuelve la ruta del archivo: si es absoluta la usa tal cual,
+ * si es relativa (solo nombre de archivo) busca en uploads/.
+ */
+function resolveFilePath(localPath: string): string {
+  if (path.isAbsolute(localPath)) {
+    return localPath;
+  }
+  // Path relativo → buscar en uploads/
+  const inUploads = path.join(process.cwd(), 'uploads', localPath);
+  if (fs.existsSync(inUploads)) {
+    return inUploads;
+  }
+  // Fallback: resolver desde cwd
+  return path.resolve(localPath);
 }
 
 // ─── Multer config para subida de archivos ──────────────────────────────────
@@ -147,7 +165,7 @@ documentsRouter.get(
 
       const where: any = {
         isDeleted: includeDeleted ? undefined : false,
-        // Solo documentos propios o con permisos
+        // Solo documentos propios o con permisos explícitos o que pertenezcan al grupo
         OR: [
           { ownerId: req.user!.id },
           { permissions: { some: { userId: req.user!.id } } },
@@ -172,6 +190,16 @@ documentsRouter.get(
             group: { select: { id: true, name: true } },
             case_: { select: { id: true, caseNumber: true, title: true } },
             _count: { select: { comments: true, versions: true, assignments: true } },
+            assignments: {
+              where: {
+                status: {
+                  in: ['pendiente', 'visto', 'editado']
+                }
+              },
+              include: {
+                assignee: { select: { id: true, name: true, email: true, avatarUrl: true } }
+              }
+            }
           },
         }),
         prisma.document.count({ where }),
@@ -188,6 +216,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id',
   validateParams(uuidParam),
+  requirePermission('download'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const document = await prisma.document.findUniqueOrThrow({
@@ -229,6 +258,17 @@ documentsRouter.get(
       });
 
       res.json(serializeBigInt(document));
+
+      // ── Auto-transición de asignación: pendiente → visto ──
+      // Se ejecuta después de enviar la respuesta (fire-and-forget)
+      prisma.documentAssignment.updateMany({
+        where: {
+          documentId: paramId(req),
+          assignedTo: req.user!.id,
+          status: 'pendiente',
+        },
+        data: { status: 'visto' },
+      }).catch(err => console.error('[Assignment auto-status] Error pendiente→visto:', err));
     } catch (error) {
       next(error);
     }
@@ -256,6 +296,18 @@ documentsRouter.post(
       };
       const docType = typeMap[ext] ?? 'pdf';
 
+      // Obtener el primer grupo del usuario si no se proporciona groupId
+      let defaultGroupId = req.body.groupId;
+      if (!defaultGroupId) {
+        const userGroup = await prisma.groupMember.findFirst({
+          where: { userId: req.user!.id },
+          select: { groupId: true }
+        });
+        if (userGroup) {
+          defaultGroupId = userGroup.groupId;
+        }
+      }
+
       const document = await prisma.document.create({
         data: {
           name: req.body.name || file.originalname,
@@ -265,7 +317,7 @@ documentsRouter.post(
           mimeType: file.mimetype,
           ownerId: req.user!.id,
           description: req.body.description || undefined,
-          groupId: req.body.groupId || undefined,
+          groupId: defaultGroupId || undefined,
           caseId: req.body.caseId || undefined,
           tags: req.body.tags ? JSON.parse(req.body.tags) : [],
         },
@@ -297,21 +349,64 @@ documentsRouter.post(
 documentsRouter.get(
   '/:id/file',
   validateParams(uuidParam),
+  requirePermission('download'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: paramId(req) },
       });
 
-      if (!doc.localPath) {
+      let targetPath = doc.localPath;
+      let targetMime = doc.mimeType;
+
+      const versionQuery = req.query.version;
+      if (versionQuery) {
+        const ver = await prisma.documentVersion.findFirst({
+          where: { documentId: paramId(req), version: parseInt(versionQuery as string, 10) }
+        });
+        if (ver && ver.localPath) {
+          targetPath = ver.localPath;
+        }
+      }
+
+      if (!targetPath) {
         res.status(404).json({ error: 'Archivo no disponible' });
         return;
       }
 
-      if (doc.mimeType) {
-        res.setHeader('Content-Type', doc.mimeType);
+      if (targetMime) {
+        res.setHeader('Content-Type', targetMime);
       }
-      res.sendFile(path.resolve(doc.localPath));
+      res.sendFile(resolveFilePath(targetPath));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/versions/:versionId/file ────────────────────────
+documentsRouter.get(
+  '/:id/versions/:versionId/file',
+  validateParams(z.object({ id: z.string().uuid(), versionId: z.string().uuid() })),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const verId = Array.isArray(req.params.versionId) ? req.params.versionId[0] : req.params.versionId;
+
+      const version = await prisma.documentVersion.findUniqueOrThrow({
+        where: { id: verId, documentId: docId },
+        include: { document: { select: { mimeType: true } } }
+      });
+
+      if (!version.localPath || !fs.existsSync(version.localPath)) {
+        res.status(404).json({ error: 'Archivo de versión no disponible' });
+        return;
+      }
+
+      if (version.document.mimeType) {
+        res.setHeader('Content-Type', version.document.mimeType);
+      }
+      res.sendFile(path.resolve(version.localPath));
     } catch (error) {
       next(error);
     }
@@ -322,6 +417,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id/download',
   validateParams(uuidParam),
+  requirePermission('download'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = await prisma.document.findUniqueOrThrow({
@@ -333,7 +429,7 @@ documentsRouter.get(
         return;
       }
 
-      res.download(path.resolve(doc.localPath), doc.name);
+      res.download(resolveFilePath(doc.localPath), doc.name);
     } catch (error) {
       next(error);
     }
@@ -346,6 +442,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id/content',
   validateParams(uuidParam),
+  requirePermission('read'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = await prisma.document.findUniqueOrThrow({
@@ -414,10 +511,22 @@ documentsRouter.post(
     try {
       const data = req.body;
 
+      let defaultGroupId = data.groupId;
+      if (!defaultGroupId) {
+        const userGroup = await prisma.groupMember.findFirst({
+          where: { userId: req.user!.id },
+          select: { groupId: true }
+        });
+        if (userGroup) {
+          defaultGroupId = userGroup.groupId;
+        }
+      }
+
       const document = await prisma.document.create({
         data: {
           ...data,
           ownerId: req.user!.id,
+          groupId: defaultGroupId || undefined,
           size: BigInt(data.size),
           expirationDate: data.expirationDate ? new Date(data.expirationDate) : undefined,
         },
@@ -445,6 +554,7 @@ documentsRouter.post(
 documentsRouter.patch(
   '/:id',
   validateParams(uuidParam),
+  requirePermission('write'),
   validate(updateDocumentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -477,6 +587,7 @@ documentsRouter.patch(
 documentsRouter.delete(
   '/:id',
   validateParams(uuidParam),
+  requirePermission('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const document = await prisma.document.update({
@@ -511,6 +622,7 @@ documentsRouter.delete(
 documentsRouter.delete(
   '/:id/permanent',
   validateParams(uuidParam),
+  requirePermission('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = await prisma.document.findUnique({ where: { id: paramId(req) } });
@@ -584,6 +696,7 @@ const createVersionSchema = z.object({
 documentsRouter.post(
   '/:id/versions',
   validateParams(uuidParam),
+  requirePermission('write'),
   validate(createVersionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -644,6 +757,7 @@ const createCommentSchema = z.object({
 documentsRouter.post(
   '/:id/comments',
   validateParams(uuidParam),
+  requirePermission('read'),
   validate(createCommentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -676,6 +790,9 @@ documentsRouter.post(
 );
 
 // ─── GET /api/documents/:id/diff ─────────────────────────────────────────────
+// @ts-expect-error No types available for htmldiff-js
+import HtmlDiff from 'htmldiff-js';
+
 documentsRouter.get(
   '/:id/diff',
   validateParams(uuidParam),
@@ -694,30 +811,30 @@ documentsRouter.get(
         }),
       ]);
 
-      const extractText = async (ver: any) => {
+      const extractHtml = async (ver: any) => {
         if (!ver || !ver.localPath || !fs.existsSync(ver.localPath)) return '';
         const ext = path.extname(ver.localPath).toLowerCase();
 
         if (ext === '.txt' || ext === '.rtf') {
-          return fs.readFileSync(ver.localPath, 'utf-8');
+          return `<p>${fs.readFileSync(ver.localPath, 'utf-8')}</p>`;
         }
         if (ext === '.docx' || ext === '.doc') {
-          const result = await mammoth.extractRawText({ path: ver.localPath });
+          const result = await mammoth.convertToHtml({ path: ver.localPath });
           return result.value || '';
         }
         if (ext === '.pdf') {
           const dataBuffer = fs.readFileSync(ver.localPath);
           const data = await pdfParse(dataBuffer);
-          return data.text || '';
+          return `<p>${data.text.replace(/\\n/g, '<br/>')}</p>`;
         }
         return '';
       };
 
-      const [text1, text2] = await Promise.all([extractText(ver1), extractText(ver2)]);
+      const [html1, html2] = await Promise.all([extractHtml(ver1), extractHtml(ver2)]);
 
-      const diffs = Diff.diffLines(text1, text2);
+      const diffHtml = HtmlDiff.execute(html1, html2);
 
-      res.json(diffs);
+      res.json({ html: diffHtml });
     } catch (error) {
       next(error);
     }
@@ -725,17 +842,20 @@ documentsRouter.get(
 );
 
 // ─── POST /api/documents/:id/save ────────────────────────────────────────────
-// Endpoint unificado: recibe el archivo del editor, lo guarda localmente,
-// crea nueva versión en DB y auto-sync a Google Drive si está configurado.
+// Endpoint unificado: recibe el archivo del editor, lo guarda localmente.
+// Si createVersion=true, crea nueva versión en DB. Si no, solo sobreescribe.
+// Auto-sync a Google Drive si está configurado.
 
 documentsRouter.post(
   '/:id/save',
   validateParams(uuidParam),
+  requirePermission('write'),
   uploadMiddleware.single('file'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const docId = paramId(req);
       const changeNote = req.body.changeNote ?? null;
+      const createVersion = req.body.createVersion === 'true';
 
       // 1. Verificar que el documento existe
       const doc = await prisma.document.findUniqueOrThrow({
@@ -746,69 +866,521 @@ documentsRouter.post(
         },
       });
 
-      // 2. Guardar archivo subido (overwrite del archivo local existente)
+      // 2. Guardar archivo subido
       if (!req.file) {
         res.status(400).json({ error: 'No se recibió ningún archivo.' });
         return;
       }
 
-      const uploadedPath = req.file.filename; // nombre relativo en uploads/
-      const newVersion = doc.version + 1;
       const fileSize = req.file.size;
 
-      // 3. Crear versión y actualizar documento en transacción
-      const [updatedDoc] = await prisma.$transaction([
-        prisma.document.update({
+      if (createVersion) {
+        // ── Modo "Nueva Versión": incrementar versión y crear registro ──
+        const newVersion = doc.version + 1;
+
+        await prisma.$transaction([
+          prisma.document.update({
+            where: { id: docId },
+            data: {
+              localPath: req.file.path,
+              size: BigInt(fileSize),
+              version: newVersion,
+              updatedAt: new Date(),
+            },
+          }),
+          prisma.documentVersion.create({
+            data: {
+              documentId: docId,
+              version: newVersion,
+              localPath: req.file.path,
+              size: BigInt(fileSize),
+              changeNote,
+              createdBy: req.user!.id,
+            } as any,
+          }),
+          prisma.activityLog.create({
+            data: {
+              userId: req.user!.id,
+              activity: 'DOCUMENT_VERSION_CREATED',
+              entityType: 'document',
+              entityId: docId,
+              entityName: doc.name,
+              description: `Nueva versión ${newVersion} guardada${changeNote ? `: ${changeNote}` : ''}`,
+            },
+          }),
+        ]);
+
+        // Auto-sync a Google Drive
+        let syncResult = null;
+        try {
+          const driveReady = await verifyCredentials();
+          if (driveReady) {
+            syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote);
+          }
+        } catch (syncError) {
+          console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
+          syncResult = { ok: false, error: (syncError as Error).message };
+        }
+
+        res.json(serializeBigInt({
+          ok: true,
+          version: newVersion,
+          size: fileSize,
+          localPath: req.file.path,
+          syncResult,
+        }));
+      } else {
+        // ── Modo "Guardar": solo sobreescribe archivo sin nueva versión ──
+        await prisma.document.update({
           where: { id: docId },
           data: {
-            localPath: uploadedPath,
+            localPath: req.file.path,
             size: BigInt(fileSize),
-            version: newVersion,
             updatedAt: new Date(),
           },
-        }),
-        prisma.documentVersion.create({
-          data: {
-            documentId: docId,
-            version: newVersion,
-            localPath: path.join(process.cwd(), 'uploads', uploadedPath),
-            size: BigInt(fileSize),
-            changeNote,
-            createdBy: req.user!.id,
-          } as any,
-        }),
-        prisma.activityLog.create({
-          data: {
-            userId: req.user!.id,
-            activity: 'DOCUMENT_VERSION_CREATED',
-            entityType: 'document',
-            entityId: docId,
-            entityName: doc.name,
-            description: `Nueva versión ${newVersion} guardada${changeNote ? `: ${changeNote}` : ''}`,
-          },
-        }),
-      ]);
+        });
 
-      // 4. Auto-sync a Google Drive (si las credenciales están configuradas)
-      let syncResult = null;
-      try {
-        const driveReady = await verifyCredentials();
-        if (driveReady) {
-          syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote);
-        }
-      } catch (syncError) {
-        // No fallamos el guardado por un error de sync
-        console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
-        syncResult = { ok: false, error: (syncError as Error).message };
+        res.json(serializeBigInt({
+          ok: true,
+          version: doc.version,
+          size: fileSize,
+          localPath: req.file.path,
+          syncResult: null,
+        }));
       }
 
-      res.json(serializeBigInt({
-        ok: true,
-        version: newVersion,
-        size: fileSize,
-        localPath: uploadedPath,
-        syncResult,
-      }));
+      // ── Auto-transición de asignación: pendiente|visto → editado ──
+      // Se ejecuta después de enviar la respuesta (fire-and-forget)
+      prisma.documentAssignment.updateMany({
+        where: {
+          documentId: docId,
+          assignedTo: req.user!.id,
+          status: { in: ['pendiente', 'visto'] },
+        },
+        data: { status: 'editado' },
+      }).catch(err => console.error('[Assignment auto-status] Error →editado:', err));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/permissions ──────────────────────────────────────
+// Lista todos los permisos del documento
+documentsRouter.get(
+  '/:id/permissions',
+  validateParams(uuidParam),
+  requirePermission('download'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const permissions = await prisma.documentPermission.findMany({
+        where: { documentId: paramId(req) },
+        include: {
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          group: { select: { id: true, name: true } },
+          granter: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      // También incluir el permiso efectivo del usuario que consulta
+      const effectivePermission = req.effectivePermission ?? 'none';
+
+      res.json({ permissions, effectivePermission });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/effective-permission ─────────────────────────────
+// Devuelve el permiso efectivo del usuario autenticado sobre este documento
+documentsRouter.get(
+  '/:id/effective-permission',
+  validateParams(uuidParam),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const level = await getEffectivePermission(req.user!.id, paramId(req));
+      res.json({ permission: level });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── PUT /api/documents/:id/permissions ──────────────────────────────────────
+// Batch upsert — reemplaza todos los permisos del documento
+const batchPermissionsSchema = z.object({
+  permissions: z.array(z.object({
+    userId: z.string().uuid().optional(),
+    groupId: z.string().uuid().optional(),
+    permissionLevel: z.enum(['none', 'download', 'read', 'write', 'admin']),
+    expiresAt: z.string().datetime().optional().nullable(),
+  })).min(0),
+});
+
+documentsRouter.put(
+  '/:id/permissions',
+  validateParams(uuidParam),
+  authorize('admin'),
+  requirePermission('admin'),
+  validate(batchPermissionsSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { permissions: incoming } = req.body as z.infer<typeof batchPermissionsSchema>;
+
+      // Transacción: eliminar existentes y crear nuevos
+      await prisma.$transaction(async (tx) => {
+        // Eliminar todos los permisos actuales
+        await tx.documentPermission.deleteMany({ where: { documentId: docId } });
+
+        // Crear los nuevos (filtrar 'none' ya que no se persisten)
+        const toCreate = incoming.filter(p => p.permissionLevel !== 'none');
+        if (toCreate.length > 0) {
+          await tx.documentPermission.createMany({
+            data: toCreate.map(p => ({
+              documentId: docId,
+              userId: p.userId || null,
+              groupId: p.groupId || null,
+              permissionLevel: p.permissionLevel as any,
+              grantedBy: req.user!.id,
+              expiresAt: p.expiresAt ? new Date(p.expiresAt) : null,
+            })),
+          });
+        }
+      });
+
+      // Log de actividad
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_PERMISSION_CHANGED',
+          entityType: 'document',
+          entityId: docId,
+          description: `Permisos actualizados (${incoming.length} registros)`,
+          metadata: { count: incoming.length },
+        },
+      });
+
+      // Devolver los permisos actualizados
+      const updated = await prisma.documentPermission.findMany({
+        where: { documentId: docId },
+        include: {
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          group: { select: { id: true, name: true } },
+          granter: { select: { id: true, name: true } },
+        },
+      });
+
+      res.json({ permissions: updated });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/:id/permissions ─────────────────────────────────────
+// Crea un permiso individual
+const addPermissionSchema = z.object({
+  userId: z.string().uuid().optional(),
+  groupId: z.string().uuid().optional(),
+  permissionLevel: z.enum(['download', 'read', 'write', 'admin']),
+  expiresAt: z.string().datetime().optional().nullable(),
+});
+
+documentsRouter.post(
+  '/:id/permissions',
+  validateParams(uuidParam),
+  authorize('admin'),
+  requirePermission('admin'),
+  validate(addPermissionSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { userId, groupId, permissionLevel, expiresAt } = req.body;
+
+      if (!userId && !groupId) {
+        res.status(400).json({ error: 'Se requiere userId o groupId' });
+        return;
+      }
+
+      // Upsert: si ya existe un permiso para este user/group, actualizarlo
+      const existing = await prisma.documentPermission.findFirst({
+        where: {
+          documentId: docId,
+          ...(userId ? { userId } : { groupId }),
+        },
+      });
+
+      let permission;
+      if (existing) {
+        permission = await prisma.documentPermission.update({
+          where: { id: existing.id },
+          data: {
+            permissionLevel: permissionLevel as any,
+            grantedBy: req.user!.id,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+          include: {
+            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            group: { select: { id: true, name: true } },
+          },
+        });
+      } else {
+        permission = await prisma.documentPermission.create({
+          data: {
+            documentId: docId,
+            userId: userId || null,
+            groupId: groupId || null,
+            permissionLevel: permissionLevel as any,
+            grantedBy: req.user!.id,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+          include: {
+            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            group: { select: { id: true, name: true } },
+          },
+        });
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_PERMISSION_CHANGED',
+          entityType: 'document',
+          entityId: docId,
+          description: `Permiso ${permissionLevel} otorgado`,
+        },
+      });
+
+      res.status(201).json(permission);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── DELETE /api/documents/:id/permissions/:permId ───────────────────────────
+// Elimina un permiso específico
+documentsRouter.delete(
+  '/:id/permissions/:permId',
+  validateParams(z.object({ id: z.string().uuid(), permId: z.string().uuid() })),
+  authorize('admin'),
+  requirePermission('admin'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const permId = Array.isArray(req.params.permId) ? req.params.permId[0] : req.params.permId;
+
+      await prisma.documentPermission.delete({ where: { id: permId } });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_PERMISSION_CHANGED',
+          entityType: 'document',
+          entityId: paramId(req),
+          description: 'Permiso eliminado',
+        },
+      });
+
+      res.json({ message: 'Permiso eliminado' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+// ─── POST /api/documents/:id/access-pin ─────────────────────────────────────
+// Genera un PIN de acceso de un solo uso (solo admin/abogado)
+documentsRouter.post(
+  '/:id/access-pin',
+  validateParams(uuidParam),
+  authorize('admin'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+
+      // Verificar que el documento existe
+      const doc = await prisma.document.findUnique({ where: { id: docId } });
+      if (!doc) {
+        res.status(404).json({ error: 'Documento no encontrado' });
+        return;
+      }
+
+      // Invalidar PINs anteriores no usados de este documento
+      await prisma.documentAccessPin.updateMany({
+        where: { documentId: docId, isUsed: false },
+        data: { isUsed: true },
+      });
+
+      // Generar PIN de 6 dígitos
+      const pin = String(Math.floor(100000 + Math.random() * 900000));
+
+      // Crear PIN con expiración de 15 minutos
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      const accessPin = await prisma.documentAccessPin.create({
+        data: {
+          documentId: docId,
+          pin,
+          createdBy: req.user!.id,
+          expiresAt,
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_PERMISSION_CHANGED',
+          entityType: 'document',
+          entityId: docId,
+          description: 'PIN de acceso generado',
+        },
+      });
+
+      res.status(201).json({
+        pin: accessPin.pin,
+        expiresAt: accessPin.expiresAt.toISOString(),
+        documentName: doc.name,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/:id/redeem-pin ─────────────────────────────────────
+// Canjea un PIN de acceso para obtener permisos de admin en el documento
+const redeemPinSchema = z.object({
+  pin: z.string().length(6),
+});
+
+documentsRouter.post(
+  '/:id/redeem-pin',
+  validateParams(uuidParam),
+  validate(redeemPinSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { pin } = req.body;
+      const userId = req.user!.id;
+
+      // Buscar PIN válido
+      const accessPin = await prisma.documentAccessPin.findFirst({
+        where: {
+          documentId: docId,
+          pin,
+          isUsed: false,
+          expiresAt: { gt: new Date() },
+        },
+      });
+
+      if (!accessPin) {
+        res.status(400).json({ error: 'PIN inválido, expirado o ya utilizado' });
+        return;
+      }
+
+      // Marcar PIN como usado
+      await prisma.documentAccessPin.update({
+        where: { id: accessPin.id },
+        data: {
+          isUsed: true,
+          usedBy: userId,
+          usedAt: new Date(),
+        },
+      });
+
+      // Otorgar permiso admin al usuario en este documento (upsert)
+      const existing = await prisma.documentPermission.findFirst({
+        where: { documentId: docId, userId },
+      });
+
+      if (existing) {
+        await prisma.documentPermission.update({
+          where: { id: existing.id },
+          data: {
+            permissionLevel: 'admin',
+            grantedBy: accessPin.createdBy,
+          },
+        });
+      } else {
+        await prisma.documentPermission.create({
+          data: {
+            documentId: docId,
+            userId,
+            permissionLevel: 'admin',
+            grantedBy: accessPin.createdBy,
+          },
+        });
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          userId,
+          activity: 'DOCUMENT_PERMISSION_CHANGED',
+          entityType: 'document',
+          entityId: docId,
+          description: 'Acceso completo otorgado via PIN',
+        },
+      });
+
+      res.json({ message: 'Acceso completo otorgado', permission: 'admin' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/fix-groups ─────────────────────────────────────────
+// Migración: asigna groupId a documentos huérfanos usando el grupo del dueño.
+// Solo debe ejecutarse una vez. Requiere autenticación.
+
+documentsRouter.post(
+  '/fix-groups',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // Obtener todos los documentos sin groupId
+      const orphanDocs = await prisma.document.findMany({
+        where: { groupId: null },
+        select: { id: true, ownerId: true },
+      });
+
+      if (orphanDocs.length === 0) {
+        res.json({ message: 'No hay documentos sin grupo para corregir.', fixed: 0 });
+        return;
+      }
+
+      // Obtener los grupos de cada owner
+      const ownerIds = [...new Set(orphanDocs.map(d => d.ownerId).filter((id): id is string => id !== null))];
+      const ownerGroups = await prisma.groupMember.findMany({
+        where: { userId: { in: ownerIds } },
+        select: { userId: true, groupId: true },
+        distinct: ['userId'],
+      });
+
+      const ownerGroupMap = new Map<string, string>();
+      for (const og of ownerGroups) {
+        ownerGroupMap.set(og.userId, og.groupId);
+      }
+
+      // Actualizar cada documento huérfano
+      let fixed = 0;
+      for (const doc of orphanDocs) {
+        const groupId = doc.ownerId ? ownerGroupMap.get(doc.ownerId) : undefined;
+        if (groupId) {
+          await prisma.document.update({
+            where: { id: doc.id },
+            data: { groupId },
+          });
+          fixed++;
+        }
+      }
+
+      res.json({
+        message: `${fixed} documentos actualizados con groupId.`,
+        fixed,
+        total: orphanDocs.length,
+      });
     } catch (error) {
       next(error);
     }
