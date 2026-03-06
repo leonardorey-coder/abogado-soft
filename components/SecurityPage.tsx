@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { backupsApi, downloadBackup, ApiBackup } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 export const SecurityPage: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const [backups, setBackups] = useState<ApiBackup[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -25,28 +29,51 @@ export const SecurityPage: React.FC = () => {
   const handleGenerateBackup = async () => {
     try {
       setGenerating(true);
-      await backupsApi.create({ name: 'Manual Backup', type: 'full' });
-      alert("Respaldo iniciado correctamente. Dependiendo del tamaño, puede tardar unos segundos o minutos.");
+      await backupsApi.create({ name: "Manual Backup", type: "full" });
+      alert(
+        "Respaldo iniciado correctamente. Dependiendo del tamaño, puede tardar unos segundos o minutos."
+      );
       fetchBackups();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error generating backup:", err);
-      alert("Error al intentar generar el respaldo.");
+      const msg =
+        err?.status === 403
+          ? "No tienes permisos para generar respaldos. Solo administradores pueden hacerlo."
+          : "Error al intentar generar el respaldo. Intenta de nuevo más tarde.";
+      alert(msg);
     } finally {
       setGenerating(false);
     }
   };
 
   const handleDownloadLatest = async () => {
-    const latestCompleted = backups.find(b => b.status === "completed" && b.filePath);
+    const latestCompleted = backups.find(
+      (b) => b.status === "completed" && b.filePath
+    );
     if (!latestCompleted) {
       alert("No hay respaldos completados recientes para descargar.");
       return;
     }
     try {
-      await downloadBackup(latestCompleted.id, `backup_${new Date(latestCompleted.completedAt!).toISOString().split('T')[0]}.zip`);
+      await downloadBackup(
+        latestCompleted.id,
+        `backup_${new Date(latestCompleted.completedAt!).toISOString().split("T")[0]}.zip`
+      );
     } catch (err) {
       console.error("Error downloading:", err);
       alert("Error al descargar el archivo físico.");
+    }
+  };
+
+  const handleDownloadById = async (b: ApiBackup) => {
+    try {
+      await downloadBackup(
+        b.id,
+        `backup_${new Date(b.completedAt!).toISOString().split("T")[0]}.zip`
+      );
+    } catch (err) {
+      console.error("Error downloading:", err);
+      alert("Error al descargar el archivo.");
     }
   };
 
@@ -62,6 +89,37 @@ export const SecurityPage: React.FC = () => {
   }
 
   const daysNames = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
+
+  const statusLabel: Record<string, { text: string; color: string }> = {
+    completed: {
+      text: "Completado",
+      color:
+        "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    },
+    in_progress: {
+      text: "En progreso",
+      color:
+        "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    },
+    pending: {
+      text: "Pendiente",
+      color:
+        "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+    },
+    failed: {
+      text: "Fallido",
+      color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+    },
+  };
+
+  const formatSize = (size: string | null) => {
+    if (!size) return "—";
+    const bytes = Number(size);
+    if (isNaN(bytes) || bytes === 0) return "—";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#111318] dark:text-white flex-1 font-display">
@@ -85,16 +143,18 @@ export const SecurityPage: React.FC = () => {
                 resguardada las 24 horas.
               </p>
               <div className="flex flex-wrap gap-4 mt-4">
-                <button
-                  onClick={handleGenerateBackup}
-                  disabled={generating}
-                  className="bg-primary/10 text-primary px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/20 transition-all"
-                >
-                  <span className="material-symbols-outlined text-xl">
-                    {generating ? 'sync' : 'backup'}
-                  </span>{" "}
-                  {generating ? 'Generando...' : 'Generar Respaldo'}
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={handleGenerateBackup}
+                    disabled={generating}
+                    className="bg-primary/10 text-primary px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/20 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {generating ? "sync" : "backup"}
+                    </span>{" "}
+                    {generating ? "Generando..." : "Generar Respaldo"}
+                  </button>
+                )}
                 <button
                   onClick={handleDownloadLatest}
                   className="bg-primary text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-primary/20"
@@ -121,34 +181,161 @@ export const SecurityPage: React.FC = () => {
             <div className="grid grid-cols-4 md:grid-cols-7 gap-4 px-2">
               {daysOfWeek.map((day, idx) => {
                 const isToday = idx === 6;
-                const dateKey = day.toISOString().split('T')[0];
+                const dateKey = day.toISOString().split("T")[0];
 
                 // Find if there's any completed backup that started on this day
-                const hasBackup = backups.some(b => {
-                  if (b.status !== 'completed' || !b.startedAt) return false;
-                  return b.startedAt.split('T')[0] === dateKey;
+                const hasBackup = backups.some((b) => {
+                  if (b.status !== "completed" || !b.startedAt) return false;
+                  return b.startedAt.split("T")[0] === dateKey;
                 });
 
                 return (
-                  <div key={idx} className={`flex flex-col items-center gap-3 ${!hasBackup && !isToday ? 'opacity-30' : ''}`}>
-                    <span className={`text-xs font-medium uppercase tracking-widest ${isToday ? 'text-primary font-bold' : 'text-[#616f89]'}`}>
+                  <div
+                    key={idx}
+                    className={`flex flex-col items-center gap-3 ${!hasBackup && !isToday ? "opacity-30" : ""}`}
+                  >
+                    <span
+                      className={`text-xs font-medium uppercase tracking-widest ${isToday ? "text-primary font-bold" : "text-[#616f89]"}`}
+                    >
                       {daysNames[day.getDay()]}
                     </span>
-                    <div className={`size-12 rounded-full flex items-center justify-center ${hasBackup
-                        ? (isToday ? 'bg-primary text-white ring-4 ring-primary/20' : 'bg-primary/10 text-primary')
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
-                      }`}
+                    <div
+                      className={`size-12 rounded-full flex items-center justify-center ${hasBackup
+                          ? isToday
+                            ? "bg-primary text-white ring-4 ring-primary/20"
+                            : "bg-primary/10 text-primary"
+                          : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                        }`}
                     >
                       <span className="material-symbols-outlined font-bold">
-                        {hasBackup ? 'check_circle' : 'schedule'}
+                        {hasBackup ? "check_circle" : "schedule"}
                       </span>
                     </div>
-                    {isToday && <span className="text-[10px] text-primary font-bold">HOY</span>}
+                    {isToday && (
+                      <span className="text-[10px] text-primary font-bold">
+                        HOY
+                      </span>
+                    )}
                   </div>
                 );
               })}
             </div>
           </section>
+
+          {/* Backup History Table */}
+          <section className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-[#f0f2f4] dark:border-gray-800 p-6">
+            <h2 className="text-[#111318] dark:text-white text-xl font-bold px-2 pb-4">
+              Historial de respaldos
+            </h2>
+
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <span className="material-symbols-outlined animate-spin text-primary text-3xl">
+                  progress_activity
+                </span>
+              </div>
+            ) : backups.length === 0 ? (
+              <div className="text-center py-8 text-[#616f89] dark:text-gray-400">
+                <span className="material-symbols-outlined text-5xl mb-2 block opacity-40">
+                  cloud_off
+                </span>
+                <p className="font-medium">
+                  No hay respaldos registrados aún.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-gray-800 text-[#616f89] dark:text-gray-400 text-left">
+                      <th className="pb-3 px-2 font-semibold">Nombre</th>
+                      <th className="pb-3 px-2 font-semibold">Tipo</th>
+                      <th className="pb-3 px-2 font-semibold">Estado</th>
+                      <th className="pb-3 px-2 font-semibold">Documentos</th>
+                      <th className="pb-3 px-2 font-semibold">Tamaño</th>
+                      <th className="pb-3 px-2 font-semibold">Fecha</th>
+                      <th className="pb-3 px-2 font-semibold text-right">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backups.slice(0, 10).map((b) => {
+                      const st = statusLabel[b.status] ?? {
+                        text: b.status,
+                        color: "bg-gray-100 text-gray-600",
+                      };
+                      return (
+                        <tr
+                          key={b.id}
+                          className="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
+                        >
+                          <td className="py-3 px-2 font-medium text-[#111318] dark:text-white">
+                            {b.name}
+                          </td>
+                          <td className="py-3 px-2 text-[#616f89] dark:text-gray-400 capitalize">
+                            {b.type}
+                          </td>
+                          <td className="py-3 px-2">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${st.color}`}
+                            >
+                              {st.text}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-[#616f89] dark:text-gray-400">
+                            {b.documentsCount ?? "—"}
+                          </td>
+                          <td className="py-3 px-2 text-[#616f89] dark:text-gray-400">
+                            {formatSize(b.size)}
+                          </td>
+                          <td className="py-3 px-2 text-[#616f89] dark:text-gray-400 whitespace-nowrap">
+                            {b.startedAt
+                              ? new Date(b.startedAt).toLocaleDateString(
+                                "es-MX",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )
+                              : "—"}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            {b.status === "completed" && b.filePath ? (
+                              <button
+                                onClick={() => handleDownloadById(b)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm">
+                                  download
+                                </span>
+                                Descargar
+                              </button>
+                            ) : b.status === "in_progress" ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-blue-500">
+                                <span className="material-symbols-outlined text-sm animate-spin">
+                                  progress_activity
+                                </span>
+                                Procesando
+                              </span>
+                            ) : b.status === "failed" ? (
+                              <span className="text-xs text-red-500 font-medium">
+                                {b.errorMessage ?? "Error"}
+                              </span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           {/* "How it works" 3 Simple Steps */}
           <section className="py-4">
             <h2 className="text-[#111318] dark:text-white text-[22px] font-bold px-4 mb-8">
@@ -169,7 +356,9 @@ export const SecurityPage: React.FC = () => {
                 <div className="size-12 rounded-xl bg-primary flex items-center justify-center text-white text-xl font-bold">
                   2
                 </div>
-                <h3 className="text-lg font-bold">Sincronización instantánea</h3>
+                <h3 className="text-lg font-bold">
+                  Sincronización instantánea
+                </h3>
                 <p className="text-[#616f89] dark:text-gray-400 text-sm leading-relaxed">
                   Cada cambio se guarda automáticamente al instante. Olvídate de
                   presionar "Guardar" o perder trabajo por un apagón.

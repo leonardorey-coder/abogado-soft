@@ -9,7 +9,7 @@ import archiver from 'archiver';
 
 export const backupsRouter = Router();
 backupsRouter.use(authenticate);
-backupsRouter.use(authorize('admin'));
+// authorize('admin') se aplica individualmente en POST y DELETE
 
 const createBackupSchema = z.object({
   name: z.string().min(1).max(500),
@@ -47,6 +47,7 @@ backupsRouter.get(
 // ─── POST /api/backups ──────────────────────────────────────────────────────
 backupsRouter.post(
   '/',
+  authorize('admin'),
   validate(createBackupSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -202,6 +203,7 @@ backupsRouter.get(
 // ─── DELETE /api/backups/:id ────────────────────────────────────────────────
 backupsRouter.delete(
   '/:id',
+  authorize('admin'),
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
