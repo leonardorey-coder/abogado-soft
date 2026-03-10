@@ -191,11 +191,6 @@ documentsRouter.get(
             case_: { select: { id: true, caseNumber: true, title: true } },
             _count: { select: { comments: true, versions: true, assignments: true } },
             assignments: {
-              where: {
-                status: {
-                  in: ['pendiente', 'visto', 'editado']
-                }
-              },
               include: {
                 assignee: { select: { id: true, name: true, email: true, avatarUrl: true } }
               }
@@ -337,7 +332,29 @@ documentsRouter.post(
         },
       });
 
-      res.status(201).json(serializeBigInt(document));
+      // Auto-sync a Google Drive para nuevos documentos
+      let syncResult = null;
+      try {
+        const driveReady = await verifyCredentials();
+        if (driveReady) {
+          syncResult = await syncDocumentToDrive(document.id, req.user!.id, undefined, { skipNewVersion: true });
+        }
+      } catch (syncError) {
+        console.error('[Upload] Auto-sync a Drive falló:', (syncError as Error).message);
+        syncResult = { ok: false, error: (syncError as Error).message };
+      }
+
+      const freshDocument = await prisma.document.findUniqueOrThrow({
+        where: { id: document.id },
+        include: {
+          owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        },
+      });
+
+      res.status(201).json(serializeBigInt({
+        ...freshDocument,
+        syncResult,
+      }));
     } catch (error) {
       next(error);
     }
@@ -910,12 +927,12 @@ documentsRouter.post(
           }),
         ]);
 
-        // Auto-sync a Google Drive
+        // Auto-sync a Google Drive (versión ya creada aquí; no crear otra en Drive)
         let syncResult = null;
         try {
           const driveReady = await verifyCredentials();
           if (driveReady) {
-            syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote);
+            syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
           }
         } catch (syncError) {
           console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
@@ -930,7 +947,7 @@ documentsRouter.post(
           syncResult,
         }));
       } else {
-        // ── Modo "Guardar": solo sobreescribe archivo sin nueva versión ──
+        // ── Modo "Guardar": solo sobreescribe archivo sin nueva versión; igual se sincroniza a Drive ──
         await prisma.document.update({
           where: { id: docId },
           data: {
@@ -940,12 +957,35 @@ documentsRouter.post(
           },
         });
 
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_UPDATED',
+            entityType: 'document',
+            entityId: docId,
+            entityName: doc.name,
+            description: `Documento editado: ${doc.name}`,
+            metadata: { source: 'editor_save', createVersion: false, size: fileSize },
+          },
+        });
+
+        let syncResult = null;
+        try {
+          const driveReady = await verifyCredentials();
+          if (driveReady) {
+            syncResult = await syncDocumentToDrive(docId, req.user!.id, undefined, { skipNewVersion: true });
+          }
+        } catch (syncError) {
+          console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
+          syncResult = { ok: false, error: (syncError as Error).message };
+        }
+
         res.json(serializeBigInt({
           ok: true,
           version: doc.version,
           size: fileSize,
           localPath: req.file.path,
-          syncResult: null,
+          syncResult,
         }));
       }
 

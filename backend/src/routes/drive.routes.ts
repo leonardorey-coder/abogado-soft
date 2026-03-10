@@ -42,15 +42,20 @@ function getMimeType(docType: string): string {
     return map[docType.toLowerCase()] ?? 'application/octet-stream';
 }
 
-// ─── Sync helper reutilizable ────────────────────────────────────────────────
-// Usado tanto por la ruta POST /api/drive/sync/:id como por
-// POST /api/documents/:id/save para sincronizar a Drive automáticamente.
+export type SyncDocumentToDriveOptions = {
+    /** Si true, no crea nueva versión ni incrementa; solo sube a Drive y actualiza campos. Usado desde POST /documents/:id/save */
+    skipNewVersion?: boolean;
+};
 
+// Usado por POST /api/drive/sync/:id y por POST /api/documents/:id/save.
 export async function syncDocumentToDrive(
     documentId: string,
     userId: string,
     changeNote?: string,
+    options: SyncDocumentToDriveOptions = {},
 ): Promise<{ ok: boolean; driveFileId: string; driveRevisionId: string | null; version: number }> {
+    const { skipNewVersion = false } = options;
+
     const doc = await prisma.document.findUniqueOrThrow({
         where: { id: documentId },
         select: {
@@ -74,7 +79,6 @@ export async function syncDocumentToDrive(
     const content = fs.readFileSync(filePath);
     const mimeType = getMimeType(doc.type);
 
-    // Marcar como syncing
     await prisma.document.update({
         where: { id: documentId },
         data: { syncStatus: 'syncing' },
@@ -93,8 +97,35 @@ export async function syncDocumentToDrive(
             driveRevisionId = result.driveRevisionId;
         }
 
-        const newVersion = doc.version + 1;
+        if (skipNewVersion) {
+            await prisma.$transaction([
+                prisma.document.update({
+                    where: { id: documentId },
+                    data: {
+                        driveFileId,
+                        driveRevisionId,
+                        lastSyncAt: new Date(),
+                        syncStatus: 'completed',
+                    },
+                }),
+                prisma.documentVersion.updateMany({
+                    where: { documentId, version: doc.version },
+                    data: { cloudUrl: driveFileId },
+                }),
+                prisma.documentSyncLog.create({
+                    data: {
+                        documentId,
+                        userId,
+                        operation: 'update',
+                        status: 'completed',
+                        driveRevisionId,
+                    },
+                }),
+            ]);
+            return { ok: true, driveFileId: driveFileId!, driveRevisionId, version: doc.version };
+        }
 
+        const newVersion = doc.version + 1;
         await prisma.$transaction([
             prisma.document.update({
                 where: { id: documentId },
@@ -111,7 +142,6 @@ export async function syncDocumentToDrive(
                     documentId,
                     version: newVersion,
                     cloudUrl: driveFileId,
-                    driveRevisionId,
                     changeNote: changeNote ?? null,
                     createdBy: userId,
                 } as any,
