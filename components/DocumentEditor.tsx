@@ -11,7 +11,7 @@ import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getD
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
-import { downloadLocalBlob } from '../lib/download';
+import { saveLocalBlob } from '../lib/download';
 import { HistoryTab } from './HistoryTab';
 import { CommentsTab } from './CommentsTab';
 import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
@@ -238,6 +238,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false);
+  const [localFileHandle, setLocalFileHandle] = useState<FileSystemFileHandle | null>(null);
 
   // New version
   const [newVersionName, setNewVersionName] = useState('');
@@ -361,8 +362,28 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       if (res.ok) {
         setHasChanges(false);
 
-        // Auto-download local copy
-        downloadLocalBlob(blob, isAutoSave ? `${doc.name?.replace('.docx', '')}_auto.docx` : fileName);
+        // Guardado local:
+        // - Guardar y Nueva Versión: pide ubicación solo la primera vez (si el navegador lo soporta)
+        // - Siguientes guardados (incluida Nueva Versión): reutilizan la misma ruta sin volver a preguntar
+        // - Auto: solo escribe en local si ya existe una ruta elegida
+        const shouldPersistLocally = !isAutoSave || !!localFileHandle;
+        const shouldAskForLocation = !isAutoSave && !localFileHandle;
+        if (shouldPersistLocally) {
+          try {
+            const localName = isAutoSave ? `${doc.name?.replace('.docx', '')}_auto.docx` : fileName;
+            const localSaveResult = await saveLocalBlob(blob, localName, {
+              fileHandle: localFileHandle,
+              askForLocation: shouldAskForLocation
+            });
+            if (localSaveResult.fileHandle && localSaveResult.fileHandle !== localFileHandle) {
+              setLocalFileHandle(localSaveResult.fileHandle);
+            }
+          } catch (localSaveError: any) {
+            if (localSaveError?.name !== 'AbortError') {
+              console.warn('No se pudo guardar la copia local:', localSaveError);
+            }
+          }
+        }
 
         if (createVersion) {
           // Solo para nuevas versiones: actualizar metadatos sin recargar el editor
@@ -385,7 +406,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     } finally {
       setIsSaving(false);
     }
-  }, [doc, documentId, hasChanges, isSaving]);
+  }, [doc, documentId, hasChanges, isSaving, localFileHandle]);
+
+  useEffect(() => {
+    setLocalFileHandle(null);
+  }, [documentId]);
 
   // Handle auto-save every 1 minute
   useEffect(() => {
