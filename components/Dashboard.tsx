@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Document, FileStatus } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
+import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
@@ -27,6 +28,7 @@ import {
   CheckCircle,
   FileUp,
   Users,
+  User,
   ArrowRight,
   MoreVertical,
   Calendar,
@@ -81,6 +83,15 @@ const getFileTypeIcon = (type: string) => {
   }
 };
 
+const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  visto: "Visto",
+  editado: "Editado",
+  revisado: "Revisado",
+  completado: "Completado",
+  rechazado: "Rechazado",
+};
+
 const matchesSearch = (doc: Document, q: string): boolean => {
   if (!q.trim()) return true;
   const term = q.trim().toLowerCase();
@@ -123,6 +134,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
   const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [assignmentsReceived, setAssignmentsReceived] = useState<ApiDocumentAssignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   // Drag-and-drop state
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -181,6 +194,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   }, [handleWindowDragEnter, handleWindowDragLeave, handleWindowDragOver, handleWindowDrop]);
 
+  const refreshAssignments = useCallback(() => {
+    setAssignmentsLoading(true);
+    assignmentsApi
+      .listReceived({ limit: 30 })
+      .then((res) => setAssignmentsReceived(res.data ?? []))
+      .catch(() => setAssignmentsReceived([]))
+      .finally(() => setAssignmentsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refreshAssignments();
+  }, [refreshAssignments, documents.length]);
+
   // ─── Document action handlers ─────────────────────────────────────────
 
   const handleDocumentClick = (doc: Document) => {
@@ -197,6 +223,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await onStatusChange(doc.id, nextStatus);
     } catch (err) {
       console.error("Error archivando:", err);
+    }
+  };
+
+  const handleSetFileStatus = async (doc: Document, status: FileStatus) => {
+    if (doc.fileStatus === status) return;
+    try {
+      await onStatusChange(doc.id, status);
+    } catch (err) {
+      console.error("Error cambiando estado:", err);
     }
   };
 
@@ -473,15 +508,60 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </span>
                               )}
                             </div>
+                            {doc.assignments && doc.assignments.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-2 mt-2">
+                                {doc.assignments.map((a) => (
+                                  <span
+                                    key={a.id}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600"
+                                    title={`${a.assignee.name} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
+                                  >
+                                    {a.assignee.avatarUrl ? (
+                                      <img
+                                        src={a.assignee.avatarUrl}
+                                        alt=""
+                                        className="w-4 h-4 rounded-full object-cover shrink-0"
+                                      />
+                                    ) : (
+                                      <span className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                                        <User className="w-2.5 h-2.5 text-primary" />
+                                      </span>
+                                    )}
+                                    <span className="font-medium truncate max-w-[80px]">{a.assignee.name}</span>
+                                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                                      {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Status badge */}
-                          <StatusBadge
-                            label={doc.fileStatus}
-                            tone={FILE_STATUS_TONE[doc.fileStatus]}
-                            dot
-                            className="shrink-0 hidden sm:inline-flex"
-                          />
+                          {/* Estado (permiso): Activo / Pendiente / Inactivo */}
+                          <div
+                            className="flex items-center gap-0.5 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
+                              <button
+                                key={status}
+                                type="button"
+                                onClick={() => handleSetFileStatus(doc, status)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold uppercase border transition-colors ${
+                                  doc.fileStatus === status
+                                    ? status === "ACTIVO"
+                                      ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
+                                      : status === "PENDIENTE"
+                                        ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
+                                        : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
+                                    : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400 dark:border-slate-600 dark:hover:bg-slate-700"
+                                }`}
+                                title={status === "ACTIVO" ? "Marcar activo" : status === "PENDIENTE" ? "Marcar pendiente" : "Marcar inactivo"}
+                              >
+                                {status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pend." : "Inact."}
+                              </button>
+                            ))}
+                          </div>
 
                           {/* Action menu */}
                           <div
@@ -527,9 +607,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* ── Right Column (~40%) ────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Pendientes section */}
+            {/* Pendientes: estado pendiente + asignados al usuario */}
             <SectionCard title="Pendientes" noPadding>
-              {loading ? (
+              {loading || assignmentsLoading ? (
                 <div className="p-5 space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="flex items-center gap-3">
@@ -541,7 +621,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                   ))}
                 </div>
-              ) : pendingDocuments.length === 0 ? (
+              ) : pendingDocuments.length === 0 && assignmentsReceived.length === 0 ? (
                 <div className="py-10 px-6 text-center">
                   <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -553,44 +633,96 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                  {pendingDocuments.map((doc) => {
-                    const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
-                    return (
-                      <div
-                        key={doc.id}
-                        onClick={() => handleDocumentClick(doc)}
-                        className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleDocumentClick(doc);
-                          }
-                        }}
-                      >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}>
-                          <TypeIcon className={`w-4 h-4 ${typeColor}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                            {doc.name}
-                          </p>
-                          {doc.expirationDate ? (
-                            <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5 font-medium">
-                              <AlertCircle className="w-3 h-3 shrink-0" />
-                              Vence {doc.expirationDate}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                              {doc.timeAgo}
-                            </p>
-                          )}
-                        </div>
-                        <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                  {pendingDocuments.length > 0 && (
+                    <>
+                      <div className="px-5 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/60">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Estado pendiente
+                        </p>
                       </div>
-                    );
-                  })}
+                      {pendingDocuments.map((doc) => {
+                        const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
+                        return (
+                          <div
+                            key={`pending-${doc.id}`}
+                            onClick={() => handleDocumentClick(doc)}
+                            className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                handleDocumentClick(doc);
+                              }
+                            }}
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}>
+                              <TypeIcon className={`w-4 h-4 ${typeColor}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                                {doc.name}
+                              </p>
+                              {doc.expirationDate ? (
+                                <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5 font-medium">
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  Vence {doc.expirationDate}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                                  {doc.timeAgo}
+                                </p>
+                              )}
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  {assignmentsReceived.length > 0 && (
+                    <>
+                      <div className="px-5 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/60">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Asignados a ti
+                        </p>
+                      </div>
+                      {assignmentsReceived.map((a) => {
+                        const doc = a.document;
+                        if (!doc) return null;
+                        const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type ?? "DOCX");
+                        const statusLabel = a.status === "pendiente" ? "Pendiente" : a.status === "visto" ? "Visto" : a.status === "editado" ? "Editado" : a.status;
+                        return (
+                          <div
+                            key={`assign-${a.id}`}
+                            onClick={() => navigate(`/documento/${doc.id}`)}
+                            className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                navigate(`/documento/${doc.id}`);
+                              }
+                            }}
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}>
+                              <TypeIcon className={`w-4 h-4 ${typeColor}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                                {doc.name}
+                              </p>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                                {a.assigner?.name ?? "Asignado"} · {statusLabel}
+                              </p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </SectionCard>
@@ -635,6 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setAssignDocument(null);
             onRefresh();
+            refreshAssignments();
           }}
         />
       )}
