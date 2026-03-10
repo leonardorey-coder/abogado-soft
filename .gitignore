@@ -35,3 +35,9 @@ supabase/.temp/
 # Uploaded files
 backend/uploads/
 .vercel
+
+# Credenciales de Google
+abogadosoft-600baea8efc9.json
+
+# Respaldos de prueba de documentos en google drive
+backend/backups/
