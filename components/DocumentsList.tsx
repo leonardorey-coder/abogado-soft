@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Document, FileStatus } from "../types";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { documentsApi } from "../lib/api";
 import { apiDocToFrontend } from "../lib/useDocuments";
 
@@ -38,6 +38,7 @@ const FILE_STATUS_OPTIONS: { value: FileStatus; label: string }[] = [
 
 export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", onOpenDocument }) => {
   const navigate = useNavigate();
+  const { openUploadModal } = useOutletContext<{ openUploadModal: (files?: File[]) => void }>();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"TODOS" | FileStatus>("TODOS");
@@ -119,7 +120,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
           <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Gestión de Documentos</h1>
           <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Administre y visualice los documentos del despacho con total claridad.</p>
         </div>
-        <button type="button" onClick={() => navigate('/documento/nuevo')} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
+        <button type="button" onClick={() => openUploadModal()} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
           <span className="material-symbols-outlined">add_circle</span> Nuevo Documento
         </button>
       </div>

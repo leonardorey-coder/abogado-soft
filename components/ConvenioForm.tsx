@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { conveniosApi, ApiConvenio } from "../lib/api";
+import { downloadLocalJSON } from "../lib/download";
 
 const inputClass =
     "w-full bg-background-light dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl px-4 py-3 text-[#111318] dark:text-white font-medium focus:border-primary focus:ring-0 transition-all";
@@ -13,6 +14,8 @@ export const ConvenioForm: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(isEditing);
     const [error, setError] = useState<string | null>(null);
+    const [hasChanges, setHasChanges] = useState(false);
+    const [isAutoSaving, setIsAutoSaving] = useState(false);
 
     const [formData, setFormData] = useState({
         numero: "",
@@ -52,7 +55,45 @@ export const ConvenioForm: React.FC = () => {
         e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
     ) => {
         setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+        setHasChanges(true);
     };
+
+    // Auto-save logic
+    const formDataRef = useRef(formData);
+    useEffect(() => {
+        formDataRef.current = formData;
+    }, [formData]);
+
+    useEffect(() => {
+        const autoSaveInterval = setInterval(async () => {
+            if (hasChanges && !isAutoSaving && isEditing && id) {
+                setIsAutoSaving(true);
+                try {
+                    const payload: any = { ...formDataRef.current };
+                    if (!payload.departamento) delete payload.departamento;
+                    if (!payload.descripcion) delete payload.descripcion;
+                    if (!payload.notas) delete payload.notas;
+                    if (!payload.monto) delete payload.monto;
+                    else payload.monto = Number(payload.monto);
+
+                    delete payload.numero;
+                    await conveniosApi.update(id, payload);
+
+                    // Force local download of JSON
+                    downloadLocalJSON(formDataRef.current, `convenio_${formDataRef.current.numero}_auto.json`);
+
+                    setHasChanges(false);
+                    console.log('Auto-guardado local/cloud exitoso para convenio.');
+                } catch (err) {
+                    console.error('Error en auto-guardado de convenio:', err);
+                } finally {
+                    setIsAutoSaving(false);
+                }
+            }
+        }, 60000); // 1 minuto
+
+        return () => clearInterval(autoSaveInterval);
+    }, [hasChanges, isAutoSaving, isEditing, id]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -70,15 +111,18 @@ export const ConvenioForm: React.FC = () => {
             if (isEditing && id) {
                 delete payload.numero; // No se actualiza si no es soportado, pero partial lo permite. Dejemoslo si se ocupa. En schema de Prisma si, pero req.body partial.
                 const res = await conveniosApi.update(id, payload);
+                downloadLocalJSON(formData, `convenio_${formData.numero}.json`);
                 navigate(`/convenio/${res.id}`);
             } else {
                 const res = await conveniosApi.create(payload);
+                downloadLocalJSON(formData, `convenio_${formData.numero}.json`);
                 navigate(`/convenio/${res.id}`);
             }
         } catch (err: any) {
             setError(err.message || "Error al guardar el convenio");
         } finally {
             setLoading(false);
+            setHasChanges(false);
         }
     };
 

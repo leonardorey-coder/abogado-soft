@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_LABELS } from "../lib/constants";
 import type { Session } from "@supabase/supabase-js";
@@ -22,6 +23,7 @@ async function getAccessToken(): Promise<string | null> {
 
 export const CompleteProfilePage: React.FC = () => {
   const { user, setAuth, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [groupOption, setGroupOption] = useState<GroupOption>("join");
@@ -111,7 +113,9 @@ export const CompleteProfilePage: React.FC = () => {
       // 3. Refrescar datos del usuario (ahora tendrá grupo → needsProfileSetup = false)
       await refreshUser();
 
-      // ProtectedRoute detectará que needsProfileSetup=false y redirigirá al dashboard automáticamente
+      // Explicitly redirect to the dashboard
+      navigate("/");
+
     } catch (err: any) {
       setError(err.message ?? "Error de conexión. Intente de nuevo.");
     } finally {
@@ -154,8 +158,8 @@ export const CompleteProfilePage: React.FC = () => {
           <div className="flex items-center gap-3 mb-8">
             <div
               className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${step >= 1
-                  ? "bg-primary text-white"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                ? "bg-primary text-white"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500"
                 }`}
             >
               1
@@ -166,8 +170,8 @@ export const CompleteProfilePage: React.FC = () => {
             />
             <div
               className={`flex items-center justify-center size-8 rounded-full text-sm font-bold transition-colors ${step >= 2
-                  ? "bg-primary text-white"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                ? "bg-primary text-white"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500"
                 }`}
             >
               2
@@ -202,14 +206,14 @@ export const CompleteProfilePage: React.FC = () => {
                       type="button"
                       onClick={() => setSelectedRole(r.value)}
                       className={`w-full flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all ${selectedRole === r.value
-                          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                         }`}
                     >
                       <div
                         className={`p-3 rounded-lg ${selectedRole === r.value
-                            ? "bg-primary text-white"
-                            : "bg-gray-100 dark:bg-gray-800 text-gray-500"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-gray-800 text-gray-500"
                           }`}
                       >
                         <span className="material-symbols-outlined text-2xl">
@@ -226,8 +230,8 @@ export const CompleteProfilePage: React.FC = () => {
                       </div>
                       <div
                         className={`mt-1 size-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedRole === r.value
-                            ? "border-primary bg-primary"
-                            : "border-gray-300 dark:border-gray-600"
+                          ? "border-primary bg-primary"
+                          : "border-gray-300 dark:border-gray-600"
                           }`}
                       >
                         {selectedRole === r.value && (
@@ -265,8 +269,8 @@ export const CompleteProfilePage: React.FC = () => {
                         setError(null);
                       }}
                       className={`flex-1 py-3 text-sm font-bold transition-colors ${groupOption === "join"
-                          ? "bg-primary text-white"
-                          : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        ? "bg-primary text-white"
+                        : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                         }`}
                     >
                       <span className="material-symbols-outlined text-base align-middle mr-1">
@@ -281,8 +285,8 @@ export const CompleteProfilePage: React.FC = () => {
                         setError(null);
                       }}
                       className={`flex-1 py-3 text-sm font-bold transition-colors ${groupOption === "create"
-                          ? "bg-primary text-white"
-                          : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        ? "bg-primary text-white"
+                        : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                         }`}
                     >
                       <span className="material-symbols-outlined text-base align-middle mr-1">

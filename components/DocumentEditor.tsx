@@ -11,9 +11,11 @@ import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getD
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
+import { downloadLocalBlob } from '../lib/download';
 import { HistoryTab } from './HistoryTab';
 import { CommentsTab } from './CommentsTab';
 import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
+import { ShareModal } from './ShareModal';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -225,8 +227,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  // Share copied
-  const [shareCopied, setShareCopied] = useState(false);
+  // Share Modal
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Unsaved changes
   const [hasChanges, setHasChanges] = useState(false);
@@ -359,6 +361,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       if (res.ok) {
         setHasChanges(false);
 
+        // Auto-download local copy
+        downloadLocalBlob(blob, isAutoSave ? `${doc.name?.replace('.docx', '')}_auto.docx` : fileName);
+
         if (createVersion) {
           // Solo para nuevas versiones: actualizar metadatos sin recargar el editor
           try {
@@ -466,13 +471,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       console.error('Error agregando comentario:', err);
       throw err;
     }
-  };
-
-  const handleCopyShareLink = () => {
-    if (!documentId) return;
-    navigator.clipboard.writeText(getShareUrl(documentId));
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2000);
   };
 
   const handleDownload = async () => {
@@ -898,9 +896,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                       </button>
                     </>
                   )}
-                  <button onClick={handleCopyShareLink} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
-                    <span className="material-symbols-outlined">{shareCopied ? 'check' : 'share'}</span>
-                    {shareCopied ? 'Copiado' : 'Compartir'}
+                  <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
+                    <span className="material-symbols-outlined">share</span>
+                    Compartir
                   </button>
                 </div>
                 {!showDiff && (
@@ -1093,6 +1091,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           </aside>
         )}
       </div>
+
+      {showShareModal && doc && (
+        <ShareModal document={doc as any} onClose={() => setShowShareModal(false)} />
+      )}
     </div>
   );
 };

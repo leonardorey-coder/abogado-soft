@@ -123,6 +123,34 @@ export async function downloadDocument(documentId: string, fileName?: string): P
   URL.revokeObjectURL(blobUrl);
 }
 
+/** Obtiene el File de un documento con autenticación para compartirlo en Web Share API */
+export async function getShareableDocumentFile(documentId: string, fileName?: string): Promise<File> {
+  const token = await getAccessToken();
+  const url = getDocumentDownloadUrl(documentId);
+
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Error de servidor' }));
+    throw new ApiError(res.status, body.error ?? 'Error al obtener el archivo para compartir');
+  }
+
+  const contentDisposition = res.headers.get('Content-Disposition');
+  let downloadName = fileName ?? 'documento';
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match?.[1]) {
+      downloadName = match[1].replace(/['"]/g, '');
+    }
+  }
+
+  const blob = await res.blob();
+  const mimeType = res.headers.get('Content-Type') || (downloadName.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/octet-stream');
+  return new File([blob], downloadName, { type: mimeType });
+}
+
 /** Descarga un respaldo con autenticación */
 export async function downloadBackup(id: string, fileName?: string): Promise<void> {
   const token = await getAccessToken();
@@ -359,6 +387,7 @@ export interface ApiBackup {
   completedAt: string | null;
   createdBy: string;
   creator?: { id: string; name: string };
+  progress?: number;
 }
 
 export interface ApiGroup {
@@ -920,6 +949,32 @@ export const backupsApi = {
   delete: (id: string) => apiFetch<{ message: string }>(`/backups/${id}`, {
     method: 'DELETE',
   }),
+
+  latestDaily: () => apiFetch<{ available: boolean; backup?: ApiBackup }>('/backups/latest-daily'),
+
+  download: async (id: string, name: string) => {
+    const token = await getAccessToken();
+    const url = `${API_URL}/backups/${id}/download`;
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new ApiError(res.status, 'Error al descargar respaldo');
+
+    let downloadName = `${name}.zip`;
+    const contentDisposition = res.headers.get('Content-Disposition');
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (match?.[1]) downloadName = match[1].replace(/['"]/g, '');
+    }
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = downloadName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }
 };
 
 // ─── GOOGLE DRIVE ───────────────────────────────────────────────────────

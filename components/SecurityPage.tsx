@@ -14,9 +14,21 @@ export const SecurityPage: React.FC = () => {
     fetchBackups();
   }, []);
 
-  const fetchBackups = async () => {
+  // Polling for backups in progress
+  useEffect(() => {
+    const hasInProgress = backups.some((b) => b.status === "in_progress");
+    if (!hasInProgress) return;
+
+    const interval = setInterval(() => {
+      fetchBackups(false); // don't show loading spinner every 3s
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [backups]);
+
+  const fetchBackups = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await backupsApi.list({ limit: 50 });
       setBackups(res.data);
     } catch (err) {
@@ -201,10 +213,10 @@ export const SecurityPage: React.FC = () => {
                     </span>
                     <div
                       className={`size-12 rounded-full flex items-center justify-center ${hasBackup
-                          ? isToday
-                            ? "bg-primary text-white ring-4 ring-primary/20"
-                            : "bg-primary/10 text-primary"
-                          : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                        ? isToday
+                          ? "bg-primary text-white ring-4 ring-primary/20"
+                          : "bg-primary/10 text-primary"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-500"
                         }`}
                     >
                       <span className="material-symbols-outlined font-bold">
@@ -315,12 +327,22 @@ export const SecurityPage: React.FC = () => {
                                 Descargar
                               </button>
                             ) : b.status === "in_progress" ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-blue-500">
-                                <span className="material-symbols-outlined text-sm animate-spin">
-                                  progress_activity
+                              <div className="flex flex-col gap-1 items-end w-full max-w-[120px] ml-auto">
+                                <span className="inline-flex items-center gap-1 text-xs text-blue-500 font-medium">
+                                  <span className="material-symbols-outlined text-sm animate-spin">
+                                    progress_activity
+                                  </span>
+                                  Procesando {b.progress !== undefined ? `${b.progress}%` : ''}
                                 </span>
-                                Procesando
-                              </span>
+                                {b.progress !== undefined && (
+                                  <div className="w-full bg-blue-100 dark:bg-blue-900/30 rounded-full h-1.5 mt-1 overflow-hidden">
+                                    <div
+                                      className="bg-blue-500 h-1.5 rounded-full transition-all duration-500 ease-out"
+                                      style={{ width: `${b.progress}%` }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
                             ) : b.status === "failed" ? (
                               <span className="text-xs text-red-500 font-medium">
                                 {b.errorMessage ?? "Error"}

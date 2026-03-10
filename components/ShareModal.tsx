@@ -6,8 +6,11 @@ interface ShareModalProps {
   onClose: () => void;
 }
 
+import { getShareableDocumentFile } from '../lib/api';
+
 export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/doc/${document.id}` : "";
 
@@ -24,13 +27,30 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
   const handleSystemShare = async () => {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({
+        setSharing(true);
+        // Intentar obtener el archivo para compartirlo
+        const file = await getShareableDocumentFile(document.id, document.name);
+
+        let shareData: ShareData = {
           title: document.name,
-          url: shareUrl,
           text: `Compartir documento: ${document.name}`,
-        });
+        };
+
+        // Si el navegador soporta compartir el archivo lo enviamos
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          shareData.files = [file];
+        } else {
+          // Fallback a solo enviar la URL si no soporta archivo
+          shareData.url = shareUrl;
+        }
+
+        await navigator.share(shareData);
       } catch (err) {
-        if ((err as Error).name !== "AbortError") { }
+        if ((err as Error).name !== "AbortError") {
+          alert("Error al compartir el archivo. Es posible que tu navegador no soporte compartir documentos.");
+        }
+      } finally {
+        setSharing(false);
       }
     }
   };
@@ -83,10 +103,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
             <button
               type="button"
               onClick={handleSystemShare}
-              className={"w-full " + inputButtonClass + " border-2 border-[#dbdfe6] dark:border-[#2d3748] bg-slate-50 dark:bg-[#101622] hover:bg-slate-100 dark:hover:bg-[#1a212f] text-[#111318] dark:text-white"}
+              disabled={sharing}
+              className={`w-full ${inputButtonClass} border-2 border-[#dbdfe6] dark:border-[#2d3748] bg-slate-50 dark:bg-[#101622] hover:bg-slate-100 dark:hover:bg-[#1a212f] text-[#111318] dark:text-white ${sharing ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              <span className="material-symbols-outlined">share</span>
-              Abrir menú de compartir
+              <span className={`material-symbols-outlined ${sharing ? 'animate-spin' : ''}`}>
+                {sharing ? 'progress_activity' : 'share'}
+              </span>
+              {sharing ? 'Preparando archivo...' : 'Abrir menú de compartir'}
             </button>
           </div>
         </div>
