@@ -16,6 +16,7 @@ import { activityRouter } from './routes/activity.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { driveRouter } from './routes/drive.routes.js';
+import { setupCronJobs } from './cronJobs.js';
 // ─── Rutas ───────────────────────────────────────────────────────────────────
 
 const app = express();
@@ -52,6 +53,9 @@ app.use('/api/drive', driveRouter);
 
 // ─── Error handler (siempre al final) ────────────────────────────────────────
 app.use(errorHandler);
+
+// Inicializar tareas programadas (Cron)
+setupCronJobs();
 
 // ─── Iniciar servidor ────────────────────────────────────────────────────────
 app.listen(PORT, () => {

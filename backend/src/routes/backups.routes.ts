@@ -6,6 +6,11 @@ import { validate, validateParams, validateQuery, uuidParam, paginationQuery } f
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
+import { uploadFileStream, downloadFileStream, deleteFile } from '../lib/googleDrive';
+import {
+  generateSystemBackup,
+  activeBackupsProgress
+} from '../lib/backupService.js';
 
 export const backupsRouter = Router();
 backupsRouter.use(authenticate);
@@ -37,11 +42,62 @@ backupsRouter.get(
         prisma.backup.count(),
       ]);
 
-      res.json({ data: backups, total, page, limit });
+      const backupsWithProgress = backups.map(b => {
+        const progress = activeBackupsProgress.get(b.id);
+        return {
+          ...b,
+          size: typeof b.size === 'bigint' ? b.size.toString() : b.size,
+          progress: progress !== undefined ? progress : undefined
+        };
+      });
+
+      res.json({ data: backupsWithProgress, total, page, limit });
     } catch (error) {
       next(error);
     }
   },
+);
+
+backupsRouter.get(
+  '/latest-daily',
+  authorize('admin'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Buscar el respaldo automático más reciente que sea de hoy y esté completado
+      const backup = await prisma.backup.findFirst({
+        where: {
+          name: 'Respaldo Diario Automático',
+          status: 'completed',
+          cloudUrl: { not: null },
+          createdAt: { gte: today },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+        }
+      });
+
+      if (!backup) {
+        res.json({ available: false });
+        return;
+      }
+
+      res.json({
+        available: true,
+        backup: {
+          ...backup,
+          size: typeof (backup as any).size === 'bigint' ? (backup as any).size.toString() : (backup as any).size
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 );
 
 // ─── POST /api/backups ──────────────────────────────────────────────────────
@@ -51,107 +107,14 @@ backupsRouter.post(
   validate(createBackupSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const docCount = await prisma.document.count({ where: { isDeleted: false } });
+      const { name, type } = req.body;
+      const backupId = await generateSystemBackup(name, type, req.user!.id);
+      const backup = await prisma.backup.findUnique({ where: { id: backupId } });
 
-      const backupDir = path.join(process.cwd(), 'backups');
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true });
-      }
-
-      const safeName = req.body.name.replace(/[^a-z0-9_-]/gi, '_');
-      const filename = `backup_${safeName}_${Date.now()}.zip`;
-      const filePath = path.join(backupDir, filename);
-
-      const backup = await prisma.backup.create({
-        data: {
-          ...req.body,
-          createdBy: req.user!.id,
-          status: 'in_progress',
-          documentsCount: docCount,
-          startedAt: new Date(),
-        },
+      res.status(201).json({
+        ...backup,
+        size: typeof backup?.size === 'bigint' ? backup.size.toString() : backup?.size
       });
-
-      await prisma.activityLog.create({
-        data: {
-          userId: req.user!.id,
-          activity: 'BACKUP_CREATED',
-          entityType: 'backup',
-          entityId: backup.id,
-          entityName: backup.name,
-          description: `Respaldo iniciado: ${backup.name} (${backup.type})`,
-        },
-      });
-
-      res.status(201).json(backup);
-
-      // --- Proceso asíncrono de respaldo ---
-      (async () => {
-        try {
-          // Extraer base de datos
-          const dbDump = {
-            users: await prisma.user.findMany(),
-            groups: await prisma.group.findMany(),
-            groupMembers: await prisma.groupMember.findMany(),
-            documents: await prisma.document.findMany(),
-            documentPermissions: await prisma.documentPermission.findMany(),
-            documentVersions: await prisma.documentVersion.findMany(),
-            documentAssignments: await prisma.documentAssignment.findMany(),
-            cases: await prisma.case.findMany(),
-            convenios: await prisma.convenio.findMany(),
-            convenioDocuments: await prisma.convenioDocument.findMany(),
-            // Se excluyen activity logs o sessions por tamaño, o se incluyen limitados
-          };
-
-          const output = fs.createWriteStream(filePath);
-          const archive = archiver('zip', { zlib: { level: 9 } });
-
-          output.on('close', async () => {
-            await prisma.backup.update({
-              where: { id: backup.id },
-              data: {
-                status: 'completed',
-                completedAt: new Date(),
-                filePath: filePath,
-                size: BigInt(archive.pointer()),
-              }
-            });
-          });
-
-          archive.on('error', async (err: any) => {
-            console.error('Backup ZIP Error:', err);
-            await prisma.backup.update({
-              where: { id: backup.id },
-              data: { status: 'failed', errorMessage: err.message, completedAt: new Date() }
-            });
-          });
-
-          archive.pipe(output);
-
-          // Adjuntar JSON de BD
-          const dbJsonStr = JSON.stringify(dbDump, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-          );
-          archive.append(dbJsonStr, { name: 'database.json' });
-
-          // Si es 'full', adjuntar directorio de uploads
-          if (req.body.type === 'full') {
-            const uploadsDir = path.join(process.cwd(), 'uploads');
-            if (fs.existsSync(uploadsDir)) {
-              archive.directory(uploadsDir, 'uploads');
-            }
-          }
-
-          await archive.finalize();
-        } catch (err: any) {
-          console.error("Backup Async Process Error:", err);
-          await prisma.backup.update({
-            where: { id: backup.id },
-            data: { status: 'failed', errorMessage: err.message, completedAt: new Date() }
-          });
-        }
-      })();
-
     } catch (error) {
       next(error);
     }
@@ -168,15 +131,26 @@ backupsRouter.get(
         where: { id: req.params.id },
       });
 
-      if (backup.status !== 'completed' || !backup.filePath) {
+      if (backup.status !== 'completed' || (!backup.filePath && !backup.cloudUrl)) {
         return res.status(400).json({ error: 'El respaldo no está completado o no tiene archivo' });
       }
 
-      if (!fs.existsSync(backup.filePath)) {
-        return res.status(404).json({ error: 'El archivo físico del respaldo ya no existe' });
+      // Si tiene archivo en Drive, lo streameamos directo
+      if (backup.cloudUrl) {
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="backup_${backup.name}.zip"`);
+        const stream = await downloadFileStream(backup.cloudUrl);
+        stream.pipe(res);
+        return;
       }
 
-      res.download(backup.filePath, path.basename(backup.filePath));
+      // Fallback para respaldos viejos en disco
+      if (backup.filePath && fs.existsSync(backup.filePath)) {
+        res.download(backup.filePath, path.basename(backup.filePath));
+        return;
+      }
+
+      return res.status(404).json({ error: 'El archivo del respaldo ya no existe' });
     } catch (error) {
       next(error);
     }
@@ -193,7 +167,14 @@ backupsRouter.get(
         where: { id: req.params.id },
         include: { creator: { select: { id: true, name: true } } },
       });
-      res.json(backup);
+
+      const progress = activeBackupsProgress.get(backup.id);
+
+      res.json({
+        ...backup,
+        size: typeof backup.size === 'bigint' ? backup.size.toString() : backup.size,
+        progress: progress !== undefined ? progress : undefined
+      });
     } catch (error) {
       next(error);
     }
@@ -211,6 +192,16 @@ backupsRouter.delete(
         where: { id: req.params.id }
       });
 
+      // Eliminar de Drive si existe
+      if (backup.cloudUrl) {
+        try {
+          await deleteFile(backup.cloudUrl);
+        } catch (e) {
+          console.error('No se pudo borrar el archivo de Drive', e);
+        }
+      }
+
+      // Eliminar archivo local si es un respaldo viejo
       if (backup.filePath && fs.existsSync(backup.filePath)) {
         fs.unlinkSync(backup.filePath);
       }

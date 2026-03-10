@@ -5,6 +5,7 @@
 
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
+import fs from 'fs';
 
 // ─── OAuth2 Client ──────────────────────────────────────────────────────────
 
@@ -100,6 +101,36 @@ export async function uploadFile(
     };
 }
 
+// ─── Upload de archivo por Stream (para archivos grandes) ───────────────────
+
+export async function uploadFileStream(
+    name: string,
+    mimeType: string,
+    filePath: string,
+    folderId?: string,
+): Promise<DriveUploadResult> {
+    const drive = getDriveClient();
+    const folder = folderId ?? (await getOrCreateFolder());
+
+    const res = await drive.files.create({
+        requestBody: {
+            name,
+            parents: [folder],
+        },
+        media: {
+            mimeType,
+            body: fs.createReadStream(filePath),
+        },
+        fields: 'id, webViewLink, headRevisionId',
+    });
+
+    return {
+        driveFileId: res.data.id!,
+        driveRevisionId: res.data.headRevisionId ?? null,
+        webViewLink: res.data.webViewLink ?? null,
+    };
+}
+
 // ─── Actualizar archivo ya existente en Drive ────────────────────────────────
 
 export async function updateFile(
@@ -132,6 +163,19 @@ export async function downloadFile(driveFileId: string): Promise<Buffer> {
     );
 
     return Buffer.from(res.data as ArrayBuffer);
+}
+
+// ─── Descargar archivo desde Drive por Stream ───────────────────────────────
+
+export async function downloadFileStream(driveFileId: string): Promise<Readable> {
+    const drive = getDriveClient();
+
+    const res = await drive.files.get(
+        { fileId: driveFileId, alt: 'media' },
+        { responseType: 'stream' },
+    );
+
+    return res.data as Readable;
 }
 
 // ─── Listar revisiones de un archivo en Drive ───────────────────────────────

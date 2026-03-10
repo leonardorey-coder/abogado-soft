@@ -70,16 +70,25 @@ usersRouter.get(
       const roleFilter = req.query.role as string | undefined;
       const statusFilter = req.query.isActive as string | undefined;
 
-      const where = {
-        ...(search && {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }),
+      // Obtener los grupos del solicitante
+      const currentUserGroups = await prisma.groupMember.findMany({
+        where: { userId: req.user!.id },
+        select: { groupId: true }
+      });
+      const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+      const baseWhere: any = {
+        OR: [
+          { id: req.user!.id },
+          { groupMemberships: { some: { groupId: { in: groupIds } } } }
+        ],
         ...(roleFilter && { role: roleFilter as any }),
         ...(statusFilter !== undefined && { isActive: statusFilter === 'true' }),
       };
+
+      const where = search
+        ? { AND: [baseWhere, { OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { email: { contains: search, mode: 'insensitive' as const } }] }] }
+        : baseWhere;
 
       const [users, total] = await Promise.all([
         prisma.user.findMany({
@@ -111,8 +120,20 @@ usersRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const user = await prisma.user.findUniqueOrThrow({
-        where: { id: req.params.id },
+      const currentUserGroups = await prisma.groupMember.findMany({
+        where: { userId: req.user!.id },
+        select: { groupId: true }
+      });
+      const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+      const user = await prisma.user.findFirstOrThrow({
+        where: {
+          id: req.params.id,
+          OR: [
+            { id: req.user!.id },
+            { groupMemberships: { some: { groupId: { in: groupIds } } } }
+          ]
+        },
         select: {
           id: true, email: true, name: true, role: true,
           avatarUrl: true, officeName: true, department: true,
@@ -199,9 +220,26 @@ usersRouter.patch(
       const isAdmin = req.user!.role === 'admin';
       const isSelf = req.user!.id === targetId;
 
-      if (!isAdmin && !isSelf) {
-        res.status(403).json({ error: 'Sin permiso para editar este usuario.' });
-        return;
+      if (!isSelf) {
+        if (!isAdmin) {
+          res.status(403).json({ error: 'Sin permiso para editar este usuario.' });
+          return;
+        }
+
+        const currentUserGroups = await prisma.groupMember.findMany({
+          where: { userId: req.user!.id },
+          select: { groupId: true }
+        });
+        const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+        const sharesGroup = await prisma.groupMember.findFirst({
+          where: { userId: targetId, groupId: { in: groupIds } }
+        });
+
+        if (!sharesGroup) {
+          res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
+          return;
+        }
       }
 
       const { name, officeName, department, position, phone } = req.body;
@@ -258,6 +296,21 @@ usersRouter.patch(
         return;
       }
 
+      const currentUserGroups = await prisma.groupMember.findMany({
+        where: { userId: req.user!.id },
+        select: { groupId: true }
+      });
+      const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+      const sharesGroup = await prisma.groupMember.findFirst({
+        where: { userId: targetId, groupId: { in: groupIds } }
+      });
+
+      if (!sharesGroup) {
+        res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
+        return;
+      }
+
       const user = await prisma.user.update({
         where: { id: targetId },
         data: { role },
@@ -300,6 +353,21 @@ usersRouter.patch(
         return;
       }
 
+      const currentUserGroups = await prisma.groupMember.findMany({
+        where: { userId: req.user!.id },
+        select: { groupId: true }
+      });
+      const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+      const sharesGroup = await prisma.groupMember.findFirst({
+        where: { userId: targetId, groupId: { in: groupIds } }
+      });
+
+      if (!sharesGroup) {
+        res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
+        return;
+      }
+
       const user = await prisma.user.update({
         where: { id: targetId },
         data: { isActive },
@@ -338,6 +406,21 @@ usersRouter.delete(
 
       if (req.user!.id === targetId) {
         res.status(400).json({ error: 'No puedes eliminar tu propia cuenta.' });
+        return;
+      }
+
+      const currentUserGroups = await prisma.groupMember.findMany({
+        where: { userId: req.user!.id },
+        select: { groupId: true }
+      });
+      const groupIds = currentUserGroups.map(gm => gm.groupId);
+
+      const sharesGroup = await prisma.groupMember.findFirst({
+        where: { userId: targetId, groupId: { in: groupIds } }
+      });
+
+      if (!sharesGroup) {
+        res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
         return;
       }
 
