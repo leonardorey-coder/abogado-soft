@@ -23,6 +23,15 @@ const assignmentsQuerySchema = paginationQuery.extend({
   status: z.enum(['pendiente', 'visto', 'editado', 'revisado', 'completado', 'rechazado']).optional(),
 });
 
+const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
+  pendiente: 'Pendiente',
+  visto: 'Visto',
+  editado: 'Editado',
+  revisado: 'Revisado',
+  completado: 'Completado',
+  rechazado: 'Rechazado',
+};
+
 // ─── GET /api/assignments (mis asignaciones recibidas) ──────────────────────
 assignmentsRouter.get(
   '/',
@@ -216,6 +225,26 @@ assignmentsRouter.patch(
             entityId: existing.documentId,
           },
         }).catch(err => console.error('[Assignment notification] Error:', err));
+      }
+
+      if (data.status && data.status !== existing.status) {
+        const isTerminal = data.status === 'completado' || data.status === 'rechazado';
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: isTerminal ? 'COLLABORATION_ENDED' : 'COLLABORATION_STARTED',
+            entityType: 'document',
+            entityId: existing.documentId,
+            entityName: assignment.document.name,
+            description: `Estado de asignación: ${ASSIGNMENT_STATUS_LABEL[existing.status] ?? existing.status} → ${ASSIGNMENT_STATUS_LABEL[data.status] ?? data.status}`,
+            metadata: {
+              assignmentId: assignment.id,
+              fromStatus: existing.status,
+              toStatus: data.status,
+              automatic: false,
+            },
+          },
+        });
       }
 
       res.json(assignment);

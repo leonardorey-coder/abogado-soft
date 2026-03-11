@@ -256,14 +256,45 @@ documentsRouter.get(
 
       // ── Auto-transición de asignación: pendiente → visto ──
       // Se ejecuta después de enviar la respuesta (fire-and-forget)
-      prisma.documentAssignment.updateMany({
-        where: {
-          documentId: paramId(req),
-          assignedTo: req.user!.id,
-          status: 'pendiente',
-        },
-        data: { status: 'visto' },
-      }).catch(err => console.error('[Assignment auto-status] Error pendiente→visto:', err));
+      (async () => {
+        try {
+          const docId = paramId(req);
+          const pendingAssignments = await prisma.documentAssignment.findMany({
+            where: {
+              documentId: docId,
+              assignedTo: req.user!.id,
+              status: 'pendiente',
+            },
+            select: { id: true },
+          });
+
+          if (pendingAssignments.length === 0) return;
+
+          await prisma.documentAssignment.updateMany({
+            where: { id: { in: pendingAssignments.map(a => a.id) } },
+            data: { status: 'visto' },
+          });
+
+          await prisma.activityLog.createMany({
+            data: pendingAssignments.map(a => ({
+              userId: req.user!.id,
+              activity: 'COLLABORATION_STARTED',
+              entityType: 'document',
+              entityId: docId,
+              entityName: document.name,
+              description: 'Estado automático de asignación: Pendiente → Visto',
+              metadata: {
+                assignmentId: a.id,
+                fromStatus: 'pendiente',
+                toStatus: 'visto',
+                automatic: true,
+              },
+            })),
+          });
+        } catch (err) {
+          console.error('[Assignment auto-status] Error pendiente→visto:', err);
+        }
+      })();
     } catch (error) {
       next(error);
     }
@@ -710,6 +741,10 @@ const createVersionSchema = z.object({
   checksum: z.string().optional(),
 });
 
+const updateVersionSchema = z.object({
+  changeNote: z.string().trim().max(300).nullable().optional(),
+});
+
 documentsRouter.post(
   '/:id/versions',
   validateParams(uuidParam),
@@ -756,6 +791,40 @@ documentsRouter.post(
       });
 
       res.status(201).json(serializeBigInt(version));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── PATCH /api/documents/:id/versions/:versionId ────────────────────────────
+documentsRouter.patch(
+  '/:id/versions/:versionId',
+  validateParams(z.object({ id: z.string().uuid(), versionId: z.string().uuid() })),
+  requirePermission('write'),
+  validate(updateVersionSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const documentId = paramId(req);
+      const versionId = Array.isArray(req.params.versionId) ? req.params.versionId[0] : req.params.versionId;
+      const nextChangeNote = req.body.changeNote === undefined ? null : req.body.changeNote;
+
+      const existingVersion = await prisma.documentVersion.findFirst({
+        where: { id: versionId, documentId },
+        select: { id: true },
+      });
+
+      if (!existingVersion) {
+        res.status(404).json({ error: 'Versión no encontrada para este documento.' });
+        return;
+      }
+
+      const version = await prisma.documentVersion.update({
+        where: { id: versionId },
+        data: { changeNote: nextChangeNote },
+      });
+
+      res.json(serializeBigInt(version));
     } catch (error) {
       next(error);
     }
@@ -989,16 +1058,46 @@ documentsRouter.post(
         }));
       }
 
-      // ── Auto-transición de asignación: pendiente|visto → editado ──
+      // ── Auto-transición de asignación: pendiente|visto → revisado ──
       // Se ejecuta después de enviar la respuesta (fire-and-forget)
-      prisma.documentAssignment.updateMany({
-        where: {
-          documentId: docId,
-          assignedTo: req.user!.id,
-          status: { in: ['pendiente', 'visto'] },
-        },
-        data: { status: 'editado' },
-      }).catch(err => console.error('[Assignment auto-status] Error →editado:', err));
+      (async () => {
+        try {
+          const assignmentsToUpdate = await prisma.documentAssignment.findMany({
+            where: {
+              documentId: docId,
+              assignedTo: req.user!.id,
+              status: { in: ['pendiente', 'visto'] },
+            },
+            select: { id: true, status: true },
+          });
+
+          if (assignmentsToUpdate.length === 0) return;
+
+          await prisma.documentAssignment.updateMany({
+            where: { id: { in: assignmentsToUpdate.map(a => a.id) } },
+            data: { status: 'revisado' },
+          });
+
+          await prisma.activityLog.createMany({
+            data: assignmentsToUpdate.map(a => ({
+              userId: req.user!.id,
+              activity: 'COLLABORATION_STARTED',
+              entityType: 'document',
+              entityId: docId,
+              entityName: doc.name,
+              description: `Estado automático de asignación: ${a.status === 'pendiente' ? 'Pendiente' : 'Visto'} → Revisado`,
+              metadata: {
+                assignmentId: a.id,
+                fromStatus: a.status,
+                toStatus: 'revisado',
+                automatic: true,
+              },
+            })),
+          });
+        } catch (err) {
+          console.error('[Assignment auto-status] Error →revisado:', err);
+        }
+      })();
     } catch (error) {
       next(error);
     }

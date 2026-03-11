@@ -29,6 +29,7 @@ const activityQuerySchema = paginationQuery.extend({
   userId: z.string().uuid().optional(),
   activity: z.string().optional(),
   entityType: z.string().optional(),
+  entityId: z.string().optional(),
   category: z.enum(['documents', 'convenios', 'team', 'security', 'assignments']).optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
@@ -36,7 +37,7 @@ const activityQuerySchema = paginationQuery.extend({
 
 /** Build shared where-clause from common query params */
 function buildWhereClause(query: any, user: any): any {
-  const { userId, activity, entityType, category, from, to } = query;
+  const { userId, activity, entityType, entityId, category, from, to } = query;
   const where: any = {};
 
   // Asistentes solo ven su propia actividad
@@ -57,6 +58,10 @@ function buildWhereClause(query: any, user: any): any {
   } else {
     if (activity) where.activity = activity;
     if (entityType) where.entityType = entityType;
+  }
+
+  if (entityId) {
+    where.entityId = entityId;
   }
 
   if (from || to) {
