@@ -4,6 +4,8 @@ import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import * as Diff from 'diff';
+import { syncDocumentToDrive } from './drive.routes.js';
+import { verifyCredentials } from '../lib/googleDrive.js';
 
 export const conveniosRouter = Router();
 conveniosRouter.use(authenticate);
@@ -225,7 +227,19 @@ conveniosRouter.post(
           addedBy: req.user!.id,
         },
       });
-      res.status(201).json(link);
+
+      let syncResult = null;
+      try {
+        const driveReady = await verifyCredentials();
+        if (driveReady) {
+          syncResult = await syncDocumentToDrive(req.body.documentId, req.user!.id, 'Documento vinculado a convenio', { skipNewVersion: true });
+        }
+      } catch (syncError) {
+        console.error('[Convenio] Auto-sync a Drive falló:', (syncError as Error).message);
+        syncResult = { ok: false, error: (syncError as Error).message };
+      }
+
+      res.status(201).json({ ...link, syncResult });
     } catch (error) {
       next(error);
     }

@@ -9,6 +9,8 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate, validateParams, uuidParam } from '../middleware/validate.js';
+import { google } from 'googleapis';
+import crypto from 'crypto';
 import {
     uploadFile,
     updateFile,
@@ -22,10 +24,87 @@ import fs from 'fs';
 
 export const driveRouter = Router();
 
-// Requiere autenticación para todo lo que sigue
-driveRouter.use(authenticate);
-
 const UPLOADS_DIR = path.resolve('uploads');
+
+const oauthStateMap = new Map<string, string>();
+
+function getOAuthClient() {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:4000/api/drive/auth/callback';
+
+    if (!clientId || !clientSecret) {
+        throw new Error('[GoogleDrive] Faltan variables de entorno: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET');
+    }
+
+    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
+
+driveRouter.get('/auth', authenticate, (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const oauth2Client = getOAuthClient();
+        const state = crypto.randomUUID();
+        oauthStateMap.set(state, req.user!.id);
+
+        const url = oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            prompt: 'consent',
+            scope: ['https://www.googleapis.com/auth/drive'],
+            state,
+        });
+
+        res.redirect(url);
+    } catch (error) {
+        next(error);
+    }
+});
+
+driveRouter.get('/auth/callback', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const code = String(req.query.code ?? '');
+        const state = String(req.query.state ?? '');
+
+        if (!code) {
+            res.status(400).send('Falta el parametro "code".');
+            return;
+        }
+
+        const userId = oauthStateMap.get(state);
+        if (!userId || !state) {
+            res.status(400).send('Estado OAuth invalido. Reintenta /api/drive/auth.');
+            return;
+        }
+
+        const oauth2Client = getOAuthClient();
+        const { tokens } = await oauth2Client.getToken(code);
+
+        const refreshToken = tokens.refresh_token;
+        if (!refreshToken) {
+            res.status(400).send(
+                'Google no devolvio refresh_token. ' +
+                'Revoca el acceso anterior de la app y reintenta /api/drive/auth.'
+            );
+            return;
+        }
+
+        oauthStateMap.delete(state);
+
+        res.type('text/plain').send(
+            [
+                'OK. Copia esto en tu .env (raiz o backend/.env):',
+                '',
+                `GOOGLE_REFRESH_TOKEN="${refreshToken}"`,
+                '',
+                'Luego reinicia el backend.',
+            ].join('\n')
+        );
+    } catch (error) {
+        next(error);
+    }
+});
+
+// A partir de aquí, todas las rutas requieren autenticación
+driveRouter.use(authenticate);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +157,16 @@ export async function syncDocumentToDrive(
 
     const content = fs.readFileSync(filePath);
     const mimeType = getMimeType(doc.type);
+    const convenioLinksCount = await prisma.convenioDocument.count({
+        where: { documentId },
+    });
+    const isConvenioDocument = convenioLinksCount > 0;
+    const documentsFolderId = process.env.GOOGLE_DRIVE_FOLDER_DOCUMENTS;
+    const contractsFolderId = process.env.GOOGLE_DRIVE_FOLDER_CONTRACTS;
+    const targetFolderId = isConvenioDocument ? contractsFolderId : documentsFolderId;
+    const baseName = doc.name;
+    const hasExtension = baseName.toLowerCase().endsWith(`.${doc.type.toLowerCase()}`);
+    const driveFileName = hasExtension ? baseName : `${baseName}.${doc.type}`;
 
     await prisma.document.update({
         where: { id: documentId },
@@ -92,7 +181,7 @@ export async function syncDocumentToDrive(
             const result = await updateFile(driveFileId, mimeType, content);
             driveRevisionId = result.driveRevisionId;
         } else {
-            const result = await uploadFile(`${doc.name}.${doc.type}`, mimeType, content);
+            const result = await uploadFile(driveFileName, mimeType, content, targetFolderId);
             driveFileId = result.driveFileId;
             driveRevisionId = result.driveRevisionId;
         }
