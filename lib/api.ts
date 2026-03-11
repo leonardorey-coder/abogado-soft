@@ -503,6 +503,12 @@ export const documentsApi = {
       body: JSON.stringify(data),
     }),
 
+  updateVersionNote: (id: string, versionId: string, data: { changeNote?: string | null }) =>
+    apiFetch<ApiDocumentVersion>(`/documents/${id}/versions/${versionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
   addComment: (id: string, data: { content: string; parentId?: string }) =>
     apiFetch<ApiDocumentComment>(`/documents/${id}/comments`, {
       method: 'POST',
@@ -802,6 +808,7 @@ export const activityApi = {
     userId?: string;
     activity?: string;
     entityType?: string;
+    entityId?: string;
     category?: string;
     from?: string;
     to?: string;
@@ -812,6 +819,7 @@ export const activityApi = {
     if (params?.userId) query.set('userId', params.userId);
     if (params?.activity) query.set('activity', params.activity);
     if (params?.entityType) query.set('entityType', params.entityType);
+    if (params?.entityId) query.set('entityId', params.entityId);
     if (params?.category) query.set('category', params.category);
     if (params?.from) query.set('from', params.from);
     if (params?.to) query.set('to', params.to);
