@@ -486,7 +486,19 @@ export const TeamPage: React.FC = () => {
           ) : (
             <div className="mt-6 space-y-3">
               {assignments.map(assign => (
-                <div key={assign.id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] hover:shadow-sm transition-shadow">
+                <div
+                  key={assign.id}
+                  onClick={() => navigate(`/documento/${assign.documentId}`)}
+                  className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] hover:shadow-sm transition-all cursor-pointer hover:border-primary/50"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/documento/${assign.documentId}`);
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-4">
                     <div className="size-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center border border-blue-100 dark:border-blue-800 text-blue-600 dark:text-blue-400">
                       <span className="material-symbols-outlined text-xl">description</span>
@@ -508,12 +520,6 @@ export const TeamPage: React.FC = () => {
                       }`}>
                       {assign.status.toUpperCase()}
                     </span>
-                    <button
-                      onClick={() => navigate(`/documento/${assign.documentId}`)}
-                      className="text-primary font-semibold text-sm hover:underline"
-                    >
-                      Abrir
-                    </button>
                   </div>
                 </div>
               ))}

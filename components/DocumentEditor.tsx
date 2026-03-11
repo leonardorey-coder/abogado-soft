@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Document } from '../types';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { documentsApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi } from '../lib/api';
+import { documentsApi, activityApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, ApiActivityLog, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
@@ -22,7 +22,7 @@ const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000
 // SuperDoc export options type (defined locally since not exported from superdoc)
 type SuperDocExportOptions = Record<string, unknown>;
 
-type EditorTab = 'EDITOR' | 'HISTORY' | 'COMMENTS' | 'DETAILS';
+type RightPanel = 'NONE' | 'COMMENTS' | 'VERSIONS' | 'HISTORY' | 'DETAILS';
 type SyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
 
 interface DocumentEditorProps {
@@ -203,8 +203,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const { id: documentId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<EditorTab>('EDITOR');
+  const [rightPanel, setRightPanel] = useState<RightPanel>('COMMENTS');
   const [doc, setDoc] = useState<ApiDocument | null>(null);
+  const [documentActivity, setDocumentActivity] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,8 +242,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [localFileHandle, setLocalFileHandle] = useState<FileSystemFileHandle | null>(null);
 
   // New version
-  const [newVersionName, setNewVersionName] = useState('');
-  const [isEditingVersionName, setIsEditingVersionName] = useState(false);
+  const [newVersionNote, setNewVersionNote] = useState('');
+  const [currentVersionNoteDraft, setCurrentVersionNoteDraft] = useState('');
+  const [isEditingCurrentVersionNote, setIsEditingCurrentVersionNote] = useState(false);
+  const [isSavingVersionNote, setIsSavingVersionNote] = useState(false);
+  const versionLoadRequestRef = useRef(0);
 
   // Diff data
   const [diffHtml, setDiffHtml] = useState<string | null>(null);
@@ -280,6 +284,28 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     fetchDocument();
   }, [fetchDocument]);
 
+  useEffect(() => {
+    if (!documentId) {
+      setDocumentActivity([]);
+      return;
+    }
+
+    activityApi
+      .list({
+        page: 1,
+        limit: 100,
+        entityType: 'document',
+        entityId: documentId,
+      })
+      .then((res) => {
+        setDocumentActivity(res.data ?? []);
+      })
+      .catch((err) => {
+        console.error('Error al cargar bitácora del documento:', err);
+        setDocumentActivity([]);
+      });
+  }, [documentId]);
+
   // ─── Fetch effective permission ─────────────────────────────────────
   useEffect(() => {
     if (!documentId) return;
@@ -303,41 +329,41 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const docLocalPath = doc?.localPath;
   const docType = doc?.type;
 
+  const loadDocumentBlobFromUrl = useCallback(async (url: string, errorMessage: string) => {
+    const requestId = ++versionLoadRequestRef.current;
+    try {
+      setLoadingBlob(true);
+      const { supabase } = await import('../lib/supabaseAuth');
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token;
+
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) throw new Error(errorMessage);
+
+      const blob = await res.blob();
+      if (requestId === versionLoadRequestRef.current) {
+        setDocumentBlob(blob);
+      }
+    } finally {
+      if (requestId === versionLoadRequestRef.current) {
+        setLoadingBlob(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!docId || !docLocalPath) return;
-
-    // Load active or historic version blob depending on what is selected
     const isDocx = docType?.toLowerCase() === 'docx' || docType?.toLowerCase() === 'doc';
     if (!isDocx) return;
 
-    const loadBlob = async () => {
-      try {
-        setLoadingBlob(true);
-        const fileUrl = getDocumentFileUrl(docId);
-
-        // Get auth token
-        const { supabase } = await import('../lib/supabaseAuth');
-        const session = (await supabase.auth.getSession()).data.session;
-        const token = session?.access_token;
-
-        const res = await fetch(fileUrl, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-
-        if (!res.ok) throw new Error('No se pudo cargar el documento');
-
-        const blob = await res.blob();
-        setDocumentBlob(blob);
-      } catch (err: any) {
-        console.error('Error loading document blob:', err);
-        setError('Error al cargar el archivo para edición');
-      } finally {
-        setLoadingBlob(false);
-      }
-    };
-
-    loadBlob();
-  }, [docId, docLocalPath, docType]);
+    loadDocumentBlobFromUrl(getDocumentFileUrl(docId), 'No se pudo cargar el documento').catch((err) => {
+      console.error('Error loading document blob:', err);
+      setError('Error al cargar el archivo para edición');
+    });
+  }, [docId, docLocalPath, docType, loadDocumentBlobFromUrl]);
 
   // ─── Save Handlers ───────────────────────────────────────────────────
 
@@ -433,30 +459,50 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const handleLoadVersion = async (versionId: string) => {
     if (!documentId) return;
     if (versionId === 'current') {
-      await fetchDocument();
+      try {
+        await Promise.all([
+          fetchDocument(),
+          loadDocumentBlobFromUrl(getDocumentFileUrl(documentId), 'No se pudo cargar la versión actual'),
+        ]);
+      } catch (err: any) {
+        console.error('Error loading current version:', err);
+      }
       return;
     }
 
     try {
-      setLoadingBlob(true);
-      const { getDocumentVersionFileUrl } = await import('../lib/api');
-      const url = getDocumentVersionFileUrl(documentId, versionId);
-
-      const { supabase } = await import('../lib/supabaseAuth');
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
-
-      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      if (!res.ok) throw new Error('No se pudo cargar la versión');
-      const blob = await res.blob();
-      setDocumentBlob(blob);
+      await loadDocumentBlobFromUrl(getDocumentVersionFileUrl(documentId, versionId), 'No se pudo cargar la versión');
     } catch (err: any) {
       console.error('Error loading historic version:', err);
-      // Fallback a alert
-    } finally {
-      setLoadingBlob(false);
     }
   };
+
+  const handleRenameCurrentVersion = useCallback(async () => {
+    if (!doc || !documentId) return;
+    const currentVersionEntry = (doc.versions ?? []).find(v => v.version === doc.version);
+    if (!currentVersionEntry) {
+      setIsEditingCurrentVersionNote(false);
+      return;
+    }
+
+    const normalizedNote = currentVersionNoteDraft.trim();
+    try {
+      setIsSavingVersionNote(true);
+      const updatedVersion = await documentsApi.updateVersionNote(documentId, currentVersionEntry.id, {
+        changeNote: normalizedNote || null,
+      });
+      setDoc(prev => {
+        if (!prev) return prev;
+        const nextVersions = (prev.versions ?? []).map(v => (v.id === updatedVersion.id ? updatedVersion : v));
+        return { ...prev, versions: nextVersions };
+      });
+      setIsEditingCurrentVersionNote(false);
+    } catch (err) {
+      console.error('Error renaming current version:', err);
+    } finally {
+      setIsSavingVersionNote(false);
+    }
+  }, [doc, documentId, currentVersionNoteDraft]);
 
   const handleCompare = async () => {
     if (selectedVersions.length !== 2 || !doc || !documentId) return;
@@ -566,6 +612,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // ─── Data extraction ─────────────────────────────────────────────────
 
   const versions = doc.versions ?? [];
+  const currentVersionEntry = versions.find(v => v.version === doc.version) ?? null;
+  const historicalVersions = versions.filter(v => v.version !== doc.version);
   const comments = doc.comments ?? [];
   const caseData = doc.case_ as any;
 
@@ -644,7 +692,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         )}
 
         {/* Editor area */}
-        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-md xl:pr-[300px] lg:pr-[250px]">
+        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-sm">
           {canUseSuperdoc ? (
             loadingBlob ? (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">
@@ -701,124 +749,109 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     );
   };
 
-  const renderHistoryView = () => <HistoryTab versions={versions as any} />;
+  const renderHistoryView = () => {
+    const timelineData = currentVersionEntry
+      ? [currentVersionEntry, ...historicalVersions]
+      : historicalVersions;
+    return <HistoryTab versions={timelineData as any} activityLogs={documentActivity} />;
+  };
 
   const renderCommentsView = () => <CommentsTab comments={comments as any} onAddComment={handleAddComment} />;
 
   const renderDetailsView = () => (
-    <div className="flex-1 overflow-y-auto p-8 md:p-12">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-3xl font-black text-[#0e0e1b] dark:text-white mb-2">Detalles del Documento</h2>
-        <p className="text-gray-500 mb-8">Información del documento y expediente vinculado.</p>
+    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {/* Document info */}
+      <div className="space-y-4">
+        <h3 className="font-bold text-[#0e0e1b] dark:text-white text-lg border-b border-gray-200 dark:border-gray-800 pb-2">Información Principal</h3>
 
-        {/* Document info */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-8">
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Nombre</label>
-              <p className="text-lg font-semibold dark:text-white">{doc.name}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tipo</label>
-              <p className="text-lg font-semibold dark:text-white">{doc.type.toUpperCase()}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tamaño</label>
-              <p className="text-lg font-semibold dark:text-white">{formatFileSize(doc.size)}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Versión</label>
-              <p className="text-lg font-semibold dark:text-white">v{doc.version}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Propietario</label>
-              <p className="text-lg font-semibold dark:text-white">{doc.owner?.name ?? 'Sin asignar'}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Última Modificación</label>
-              <p className="text-lg font-semibold dark:text-white">{formatDate(doc.updatedAt)}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Estado</label>
-              <p className="text-lg font-semibold dark:text-white">{doc.fileStatus}</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Creado</label>
-              <p className="text-lg font-semibold dark:text-white">{formatDate(doc.createdAt)}</p>
-            </div>
-            {doc.description && (
-              <div className="col-span-1 md:col-span-2 space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción</label>
-                <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
-                  {doc.description}
-                </p>
-              </div>
-            )}
-            {doc.tags && doc.tags.length > 0 && (
-              <div className="col-span-1 md:col-span-2 space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Etiquetas</label>
-                <div className="flex flex-wrap gap-2">
-                  {doc.tags.map(tag => (
-                    <span key={tag} className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">{tag}</span>
-                  ))}
-                </div>
-              </div>
-            )}
+        <div>
+          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Nombre</label>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">{doc.name}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Tipo</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{doc.type.toUpperCase()}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Tamaño</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatFileSize(doc.size)}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Versión</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">v{doc.version}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Estado</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{doc.fileStatus}</p>
           </div>
         </div>
 
-        {/* Case info (if linked) */}
-        {caseData && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-primary/5 p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-primary">{caseData.title}</h3>
-                <p className="text-sm text-gray-500 font-mono">Expediente #{caseData.caseNumber}</p>
-              </div>
-              <span className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg font-bold text-sm">{caseData.status}</span>
-            </div>
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              {caseData.client && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente Principal</label>
-                  <p className="text-lg font-semibold dark:text-white">{caseData.client}</p>
-                </div>
-              )}
-              {caseData.court && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Juzgado / Instancia</label>
-                  <p className="text-lg font-semibold dark:text-white">{caseData.court}</p>
-                </div>
-              )}
-              {caseData.caseType && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tipo de Proceso</label>
-                  <p className="text-lg font-semibold dark:text-white">{caseData.caseType}</p>
-                </div>
-              )}
-              {caseData.startDate && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Fecha de Inicio</label>
-                  <p className="text-lg font-semibold dark:text-white">{formatDate(caseData.startDate)}</p>
-                </div>
-              )}
-              {caseData.description && (
-                <div className="col-span-1 md:col-span-2 space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción del Caso</label>
-                  <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
-                    {caseData.description}
-                  </p>
-                </div>
-              )}
+        <div>
+          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Propietario</label>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">{doc.owner?.name ?? 'Sin asignar'}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Modificado</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatDate(doc.updatedAt)}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Creado</label>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatDate(doc.createdAt)}</p>
+          </div>
+        </div>
+
+        {doc.description && (
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Descripción</label>
+            <p className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-[#e7e7f3] dark:border-white/10">
+              {doc.description}
+            </p>
+          </div>
+        )}
+        {doc.tags && doc.tags.length > 0 && (
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Etiquetas</label>
+            <div className="flex flex-wrap gap-1.5">
+              {doc.tags.map(tag => (
+                <span key={tag} className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-medium">{tag}</span>
+              ))}
             </div>
           </div>
         )}
+      </div>
 
-        {!caseData && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-12 text-center text-gray-400">
-            <span className="material-symbols-outlined text-5xl mb-3 block">folder_off</span>
-            <p className="text-lg font-medium">Sin expediente vinculado</p>
-            <p className="text-sm mt-1">Este documento no está asociado a ningún caso.</p>
+      {/* Case info */}
+      <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+        <h3 className="font-bold text-[#0e0e1b] dark:text-white text-lg pb-1">Expediente</h3>
+        {caseData ? (
+          <>
+            <div>
+              <p className="text-sm font-bold text-primary break-words">{caseData.title}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Exp. #{caseData.caseNumber}</span>
+                <span className="text-[10px] font-bold bg-green-100 text-green-800 px-1.5 py-0.5 rounded">{caseData.status}</span>
+              </div>
+            </div>
+
+            {caseData.client && (
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Cliente</label>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">{caseData.client}</p>
+              </div>
+            )}
+            {caseData.court && (
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Juzgado</label>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">{caseData.court}</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center p-6 bg-gray-50 dark:bg-gray-900 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+            <span className="material-symbols-outlined text-gray-400 mb-2">folder_off</span>
+            <p className="text-xs text-gray-500 font-medium">Sin expediente vinculado</p>
           </div>
         )}
       </div>
@@ -863,15 +896,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           </div>
           <nav className="flex flex-col gap-2 grow">
             {([
-              { key: 'EDITOR' as EditorTab, icon: 'edit_document', label: 'Editor' },
-              { key: 'HISTORY' as EditorTab, icon: 'history', label: 'Historial' },
-              { key: 'COMMENTS' as EditorTab, icon: 'chat_bubble', label: `Comentarios (${comments.length})` },
-              { key: 'DETAILS' as EditorTab, icon: 'info', label: 'Detalles' },
+              { key: 'COMMENTS' as RightPanel, icon: 'chat_bubble', label: `Comentarios (${comments.length})` },
+              { key: 'VERSIONS' as RightPanel, icon: 'layers', label: 'Versiones' },
+              { key: 'HISTORY' as RightPanel, icon: 'history', label: 'Historial' },
+              { key: 'DETAILS' as RightPanel, icon: 'info', label: 'Detalles' },
             ]).map(tab => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left w-full ${activeTab === tab.key ? 'bg-primary text-white font-bold' : 'text-gray-600 dark:text-gray-400 hover:bg-background-light dark:hover:bg-white/5'
+                onClick={() => setRightPanel(rightPanel === tab.key ? 'NONE' : tab.key)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left w-full ${rightPanel === tab.key
+                  ? 'bg-primary text-white font-bold'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-background-light dark:hover:bg-white/5'
                   }`}
               >
                 <span className="material-symbols-outlined">{tab.icon}</span>
@@ -881,238 +916,286 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           </nav>
         </aside>
 
-        {/* Main Content */}
-        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible ml-64 min-w-0 ${activeTab === 'EDITOR' ? 'mr-80' : ''}`}>
-          {activeTab === 'EDITOR' && (
-            <>
-              {/* Toolbar */}
-              <div className="fixed left-64 top-16 right-80 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-6 py-4">
-                <div className="flex items-center gap-3">
-                  {showDiff ? (
-                    <button onClick={exitCompare} className="flex items-center gap-2 px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-gray-700 transition-colors">
-                      <span className="material-symbols-outlined">close</span>
-                      Salir de Comparación
-                    </button>
-                  ) : (
-                    <>
-                      {canUseSuperdoc && canEdit && (
-                        <>
-                          <button
-                            onClick={() => handleSaveDocument()}
-                            disabled={isSaving || (!hasChanges && !isSaving)}
-                            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
-                          >
-                            <span className={`material-symbols-outlined ${isSaving ? 'animate-spin' : ''}`}>
-                              {isSaving ? 'progress_activity' : 'save'}
-                            </span>
-                            {isSaving ? 'Guardando...' : 'Guardar'}
-                          </button>
-                        </>
-                      )}
-                      {canUseSuperdoc && !canEdit && (
-                        <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
-                          <span className="material-symbols-outlined text-base">lock</span>
-                          Solo lectura
-                        </span>
-                      )}
-                      <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
-                        <span className="material-symbols-outlined">download</span>
-                        Descargar
-                      </button>
-                    </>
-                  )}
-                  <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
-                    <span className="material-symbols-outlined">share</span>
-                    Compartir
+        {/* Main Content (Always shows editor + toolbar) */}
+        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'mr-80' : ''}`}>
+          <>
+            {/* Toolbar */}
+            <div className={`fixed left-64 top-16 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-80' : 'right-0'}`}>
+              <div className="flex items-center gap-3">
+                {showDiff ? (
+                  <button onClick={exitCompare} className="flex items-center gap-2 px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-gray-700 transition-colors">
+                    <span className="material-symbols-outlined">close</span>
+                    Salir de Comparación
                   </button>
-                </div>
-                {!showDiff && (
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    {/* Active users indicator */}
-                    {activeUsers.length > 0 && (
-                      <ActiveUsersIndicator users={activeUsers} />
+                ) : (
+                  <>
+                    {canUseSuperdoc && canEdit && (
+                      <>
+                        <button
+                          onClick={() => handleSaveDocument()}
+                          disabled={isSaving || (!hasChanges && !isSaving)}
+                          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <span className={`material-symbols-outlined ${isSaving ? 'animate-spin' : ''}`}>
+                            {isSaving ? 'progress_activity' : 'save'}
+                          </span>
+                          {isSaving ? 'Guardando...' : 'Guardar'}
+                        </button>
+                      </>
                     )}
-
-                    <div className="flex items-center gap-2">
-                      <span className={`material-symbols-outlined ${hasChanges ? 'text-amber-500' : 'text-green-500'} text-lg`}>
-                        {hasChanges ? 'sync_problem' : 'cloud_done'}
+                    {canUseSuperdoc && !canEdit && (
+                      <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+                        <span className="material-symbols-outlined text-base">lock</span>
+                        Solo lectura
                       </span>
-                      <span>{hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Document area */}
-              <div className="flex-1 overflow-y-auto pt-[87px] flex flex-col">
-                {renderEditorContent()}
-              </div>
-            </>
-          )}
-          {activeTab === 'HISTORY' && renderHistoryView()}
-          {activeTab === 'COMMENTS' && renderCommentsView()}
-          {activeTab === 'DETAILS' && renderDetailsView()}
-        </main>
-
-        {/* Right Sidebar — Version History (only in Editor tab) */}
-        {activeTab === 'EDITOR' && (
-          <aside className="w-80 shrink-0 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col fixed right-0 top-16 z-40 h-[calc(100vh-4rem)]">
-            <div className="p-6 border-b border-[#e7e7f3] dark:border-white/10 flex flex-col gap-3">
-              <h3 className="text-lg font-bold text-[#0e0e1b] dark:text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">history</span>
-                Historial de Versiones
-              </h3>
-              {versions.length > 1 && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Modo Comparación</span>
-                    <button
-                      onClick={() => { setIsCompareMode(!isCompareMode); setSelectedVersions([]); setShowDiff(false); }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isCompareMode ? 'bg-primary' : 'bg-gray-200'}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCompareMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                    )}
+                    <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
+                      <span className="material-symbols-outlined">download</span>
+                      Descargar
                     </button>
-                  </div>
-                  {isCompareMode && (
-                    <div className="text-xs text-primary font-bold bg-blue-50 p-2 rounded">
-                      Selecciona 2 versiones para comparar
-                    </div>
+                  </>
+                )}
+                <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
+                  <span className="material-symbols-outlined">share</span>
+                  Compartir
+                </button>
+              </div>
+              {!showDiff && (
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  {/* Active users indicator */}
+                  {activeUsers.length > 0 && (
+                    <ActiveUsersIndicator users={activeUsers} />
                   )}
-                </>
+
+                  <div className="flex items-center gap-2">
+                    <span className={`material-symbols-outlined ${hasChanges ? 'text-amber-500' : 'text-green-500'} text-lg`}>
+                      {hasChanges ? 'sync_problem' : 'cloud_done'}
+                    </span>
+                    <span>{hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}</span>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Create New Version Card */}
-              {!isCompareMode && hasChanges && (
-                <div className="p-4 rounded-xl border border-primary bg-primary/5 transition-all">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="bg-blue-100 text-blue-700 text-[10px] font-bold uppercase px-2 py-0.5 rounded">Nueva Versión</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input type="text" className="flex-1 text-sm border border-gray-300 rounded px-2 py-2 outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                      placeholder="Nota de cambio (opcional)"
-                      value={newVersionName}
-                      onChange={e => setNewVersionName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          handleSaveDocument(newVersionName || undefined, false, true);
-                          setNewVersionName('');
-                        }
-                      }}
-                    />
-                    <button onClick={() => { handleSaveDocument(newVersionName || undefined, false, true); setNewVersionName(''); }}
-                      className="bg-primary text-white p-2 rounded hover:bg-blue-700 transition-colors"
-                      title="Guardar Versión">
-                      <span className="material-symbols-outlined text-[20px]">check</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
-              {/* Current version card */}
-              <div
-                onClick={() => {
-                  if (isCompareMode) toggleVersionSelection('current');
-                  else handleLoadVersion('current');
-                }}
-                className={`p-4 rounded-xl border transition-all cursor-pointer ${selectedVersions.includes('current') ? 'border-primary ring-2 ring-offset-2 ring-primary bg-primary/5' : 'border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5'}`}
-              >
-                {isCompareMode && (
-                  <div className="absolute top-3 right-3">
-                    <div className={`size-5 rounded border flex items-center justify-center ${selectedVersions.includes('current') ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
-                      {selectedVersions.includes('current') && <span className="material-symbols-outlined text-white text-xs">check</span>}
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-between items-start mb-2">
-                  <span className="bg-primary text-white text-[10px] font-bold uppercase px-2 py-0.5 rounded">Versión Actual</span>
-                  <span className="text-xs text-gray-500">{formatTime(doc.updatedAt)}</span>
-                </div>
+            {/* Document area */}
+            <div className="flex-1 overflow-y-auto pt-[87px] flex flex-col">
+              {renderEditorContent()}
+            </div>
+          </>
+        </main>
 
-                <div className="flex items-center gap-2 group/edit">
-                  {!isEditingVersionName ? (
+        {/* Right Sidebar (Displays Comments, History, Details, etc) */}
+        {rightPanel !== 'NONE' && (
+          <aside className="w-80 shrink-0 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col fixed right-0 top-16 z-40 h-[calc(100vh-4rem)] shadow-lg">
+            {/* Header for the right panel */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#e7e7f3] dark:border-white/10 bg-gray-50/50 dark:bg-gray-800/50">
+              <span className="font-black text-[#0e0e1b] dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-[20px]">
+                  {rightPanel === 'COMMENTS' && 'chat_bubble'}
+                  {rightPanel === 'VERSIONS' && 'layers'}
+                  {rightPanel === 'HISTORY' && 'history'}
+                  {rightPanel === 'DETAILS' && 'info'}
+                </span>
+                {rightPanel === 'COMMENTS' && 'Comentarios'}
+                {rightPanel === 'VERSIONS' && 'Versiones'}
+                {rightPanel === 'HISTORY' && 'Historial Completo'}
+                {rightPanel === 'DETAILS' && 'Detalles'}
+              </span>
+              <button onClick={() => setRightPanel('NONE')} className="text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                <span className="material-symbols-outlined text-lg block">close</span>
+              </button>
+            </div>
+
+            {/* Render right panel content dynamically */}
+            {rightPanel === 'COMMENTS' && renderCommentsView()}
+
+            {rightPanel === 'VERSIONS' && (
+              <>
+                <div className="p-4 border-b border-[#e7e7f3] dark:border-white/10 flex flex-col gap-3">
+                  {historicalVersions.length > 0 && (
                     <>
-                      <p className="font-bold text-[#0e0e1b] dark:text-white text-lg">
-                        v{doc.version}
-                      </p>
-                      <button onClick={(e) => { e.stopPropagation(); setIsEditingVersionName(true); setNewVersionName(`v${doc.version + 1}`); }} className="text-gray-400 hover:text-primary opacity-0 group-hover/edit:opacity-100 transition-opacity">
-                        <span className="material-symbols-outlined text-[16px]">edit</span>
-                      </button>
-                      <p className="text-[#0e0e1b] dark:text-gray-300 font-medium ml-1 flex-1">— {formatDate(doc.updatedAt)}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Modo Comparación</span>
+                        <button
+                          onClick={() => { setIsCompareMode(!isCompareMode); setSelectedVersions([]); setShowDiff(false); }}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isCompareMode ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-700'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCompareMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                      {isCompareMode && (
+                        <div className="text-xs text-primary font-bold bg-blue-50 dark:bg-primary/10 p-2.5 rounded-lg">
+                          Selecciona 2 versiones para comparar
+                        </div>
+                      )}
                     </>
-                  ) : (
-                    <div className="flex items-center gap-1 w-full" onClick={e => e.stopPropagation()}>
-                      <input autoFocus type="text" className="w-16 text-sm border font-bold border-gray-300 rounded px-1 py-0.5 outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                        value={newVersionName}
-                        onChange={e => setNewVersionName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            handleSaveDocument(newVersionName || undefined);
-                            setIsEditingVersionName(false);
-                            setNewVersionName('');
-                          } else if (e.key === 'Escape') {
-                            setIsEditingVersionName(false);
-                            setNewVersionName('');
-                          }
-                        }}
-                      />
-                      <button onClick={() => { handleSaveDocument(newVersionName || undefined); setIsEditingVersionName(false); setNewVersionName(''); }} className="text-green-500 p-0.5 rounded hover:bg-green-100">
-                        <span className="material-symbols-outlined text-[18px]">check</span>
-                      </button>
-                      <button onClick={() => { setIsEditingVersionName(false); setNewVersionName(''); }} className="text-red-500 p-0.5 rounded hover:bg-red-100">
-                        <span className="material-symbols-outlined text-[18px]">close</span>
-                      </button>
-                    </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Editado por: {doc.owner?.name ?? 'Sistema'}</p>
-              </div>
 
-              {/* Previous versions */}
-              {versions.map(v => (
-                <div
-                  key={v.id}
-                  onClick={() => {
-                    if (isCompareMode) toggleVersionSelection(v.id);
-                    else handleLoadVersion(v.id);
-                  }}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer group relative border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5 ${selectedVersions.includes(v.id) ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
-                >
-                  {isCompareMode && (
-                    <div className="absolute top-3 right-3">
-                      <div className={`size-5 rounded border flex items-center justify-center ${selectedVersions.includes(v.id) ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
-                        {selectedVersions.includes(v.id) && <span className="material-symbols-outlined text-white text-xs">check</span>}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* Create New Version Card */}
+                  {!isCompareMode && hasChanges && (
+                    <div className="p-4 rounded-xl border border-primary bg-primary/5 shadow-sm transition-all">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="bg-blue-100 text-blue-700 text-[10px] font-bold uppercase px-2 py-0.5 rounded">Nueva Versión</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                          placeholder="Nota (opcional)"
+                          value={newVersionNote}
+                          onChange={e => setNewVersionNote(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              handleSaveDocument(newVersionNote || undefined, false, true);
+                              setNewVersionNote('');
+                            }
+                          }}
+                        />
+                        <button onClick={() => { handleSaveDocument(newVersionNote || undefined, false, true); setNewVersionNote(''); }}
+                          className="bg-primary text-white p-2 text-sm rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-bold h-full flex items-center justify-center"
+                          title="Guardar">
+                          Guardar
+                        </button>
                       </div>
                     </div>
                   )}
-                  <div className="flex justify-between items-start mb-2 pr-6">
-                    <span className="text-xs font-bold text-gray-400">v{v.version}</span>
-                    <span className="text-xs text-gray-500">{formatTime(v.createdAt)}</span>
+
+                  {/* Current version card */}
+                  <div
+                    onClick={() => {
+                      if (isCompareMode) toggleVersionSelection('current');
+                      else handleLoadVersion('current');
+                    }}
+                    className={`relative p-4 rounded-xl border transition-all cursor-pointer ${selectedVersions.includes('current') ? 'border-primary ring-2 ring-offset-2 ring-primary bg-primary/5' : 'border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5'}`}
+                  >
+                    {isCompareMode && (
+                      <div className="absolute top-3 right-3">
+                        <div className={`size-5 rounded border flex items-center justify-center ${selectedVersions.includes('current') ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
+                          {selectedVersions.includes('current') && <span className="material-symbols-outlined text-white text-xs">check</span>}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="bg-primary text-white text-[10px] font-bold uppercase px-2 py-0.5 rounded">Versión Actual</span>
+                      <span className="text-xs text-gray-500">{formatTime(doc.updatedAt)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 group/edit">
+                      {!isEditingCurrentVersionNote ? (
+                        <>
+                          <p className="font-bold text-[#0e0e1b] dark:text-white text-lg">
+                            v{doc.version}
+                          </p>
+                          <p className="text-[#0e0e1b] dark:text-gray-300 font-medium ml-1 flex-1">— {formatDate(doc.updatedAt)}</p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentVersionNoteDraft(currentVersionEntry?.changeNote ?? '');
+                              setIsEditingCurrentVersionNote(true);
+                            }}
+                            disabled={!currentVersionEntry}
+                            className="text-gray-400 hover:text-primary opacity-0 group-hover/edit:opacity-100 transition-opacity disabled:opacity-30 disabled:hover:text-gray-400"
+                            title="Renombrar versión actual"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-1 w-full" onClick={e => e.stopPropagation()}>
+                          <input autoFocus type="text" className="flex-1 text-sm border font-bold border-gray-300 rounded px-2 py-1 outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                            value={currentVersionNoteDraft}
+                            onChange={e => setCurrentVersionNoteDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                handleRenameCurrentVersion();
+                              } else if (e.key === 'Escape') {
+                                setIsEditingCurrentVersionNote(false);
+                                setCurrentVersionNoteDraft('');
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={handleRenameCurrentVersion}
+                            disabled={isSavingVersionNote}
+                            className="text-green-500 p-0.5 rounded hover:bg-green-100 bg-white shadow-sm border border-gray-100 disabled:opacity-60"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">check</span>
+                          </button>
+                          <button
+                            onClick={() => { setIsEditingCurrentVersionNote(false); setCurrentVersionNoteDraft(''); }}
+                            disabled={isSavingVersionNote}
+                            className="text-red-500 p-0.5 rounded hover:bg-red-100 bg-white shadow-sm border border-gray-100 disabled:opacity-60"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">close</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{currentVersionEntry?.changeNote ?? 'Sin nota de cambio'}</p>
+                    <p className="text-xs text-gray-400 mt-2 border-t pt-2 border-dashed border-gray-200 dark:border-gray-700">Editado por: {doc.owner?.name ?? 'Sistema'}</p>
                   </div>
-                  <p className="font-bold text-[#0e0e1b] dark:text-white">{formatDate(v.createdAt)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{v.changeNote ?? 'Sin nota de cambio'}</p>
-                  <p className="text-xs text-gray-400 mt-1">Por: {v.creator?.name ?? 'Sistema'} — {formatFileSize(v.size)}</p>
-                </div>
-              ))}
 
-              {versions.length === 0 && (
-                <div className="p-8 text-center text-gray-400">
-                  <span className="material-symbols-outlined text-3xl mb-2 block">history</span>
-                  <p className="text-sm">Sin versiones anteriores</p>
-                </div>
-              )}
-            </div>
+                  {/* Previous versions */}
+                  {historicalVersions.map(v => (
+                    <div
+                      key={v.id}
+                      onClick={() => {
+                        if (isCompareMode) toggleVersionSelection(v.id);
+                        else handleLoadVersion(v.id);
+                      }}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer group relative border-[#e7e7f3] dark:border-white/10 hover:bg-background-light dark:hover:bg-white/5 ${selectedVersions.includes(v.id) ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
+                    >
+                      {isCompareMode && (
+                        <div className="absolute top-3 right-3">
+                          <div className={`size-5 rounded border flex items-center justify-center ${selectedVersions.includes(v.id) ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
+                            {selectedVersions.includes(v.id) && <span className="material-symbols-outlined text-white text-xs">check</span>}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-start mb-2 pr-6">
+                        <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">v{v.version}</span>
+                        <span className="text-xs text-gray-500">{formatTime(v.createdAt)}</span>
+                      </div>
+                      <p className="font-bold text-[#0e0e1b] dark:text-white mt-1">{formatDate(v.createdAt)}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{v.changeNote ?? 'Sin nota de cambio'}</p>
+                      <p className="text-xs text-gray-400 mt-2 border-t pt-2 border-dashed border-gray-200 dark:border-gray-700 flex justify-between">
+                        <span>Por: {v.creator?.name ?? 'Sistema'}</span>
+                        <span>{formatFileSize(v.size)}</span>
+                      </p>
+                    </div>
+                  ))}
 
-            {/* Compare button */}
-            {isCompareMode && selectedVersions.length === 2 && (
-              <div className="p-4 border-t border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark">
-                <button onClick={handleCompare} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-primary text-white font-bold shadow-lg hover:bg-blue-700 transition-colors">
-                  <span className="material-symbols-outlined">compare_arrows</span>
-                  Comparar Versiones
-                </button>
+                  {historicalVersions.length === 0 && (
+                    <div className="p-8 text-center text-gray-400 border border-dashed rounded-xl border-gray-200">
+                      <span className="material-symbols-outlined text-3xl mb-2 block">history</span>
+                      <p className="text-sm">Sin versiones anteriores</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Compare button */}
+                {isCompareMode && selectedVersions.length === 2 && (
+                  <div className="p-4 border-t border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-10 relative">
+                    <button onClick={handleCompare} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-primary text-white font-bold shadow-lg hover:bg-blue-700 hover:scale-[1.02] transition-all">
+                      <span className="material-symbols-outlined">compare_arrows</span>
+                      Comparar Versiones
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {rightPanel === 'HISTORY' && (
+              <div className="flex-1 overflow-y-auto w-full">
+                {renderHistoryView()}
               </div>
             )}
 
+            {rightPanel === 'DETAILS' && (
+              <div className="flex-1 overflow-y-auto w-full bg-white dark:bg-[#0a0a10]">
+                {renderDetailsView()}
+              </div>
+            )}
           </aside>
         )}
       </div>
