@@ -14,7 +14,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { getNavGroups } from "../lib/navigation";
+import { getNavGroups, navigationConfig } from "../lib/navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { documentsApi, backupsApi } from "../lib/api";
@@ -68,6 +68,30 @@ const navGroups = getNavGroups();
 
 const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
   const location = useLocation();
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  // Minimum swipe distance
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    
+    if (isLeftSwipe && open) {
+      onClose();
+    }
+  };
 
   return (
     <>
@@ -81,8 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
 
       {/* Sidebar panel */}
       <aside
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
         className={`
-          fixed top-0 left-0 z-50 h-full w-60 flex flex-col
+          fixed top-0 left-0 z-50 h-full w-64 sm:w-60 flex flex-col
           bg-white dark:bg-slate-800/60
           border-r border-slate-200 dark:border-slate-700/60
           transition-transform duration-200 ease-in-out
@@ -102,10 +129,10 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors lg:hidden"
+            className="ml-auto w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors lg:hidden"
             aria-label="Cerrar menú"
           >
-            <X className="w-4 h-4" />
+            <X className="w-6 h-6 sm:w-4 sm:h-4" />
           </button>
         </div>
 
@@ -130,7 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
                         end={item.end}
                         onClick={onClose}
                         className={`
-                          flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors
+                          flex items-center gap-3 px-3 py-3 sm:px-2.5 sm:py-2 rounded-xl sm:rounded-lg text-base sm:text-sm font-medium transition-colors
                           ${
                             isActive
                               ? "bg-primary/10 text-primary dark:text-blue-400"
@@ -139,7 +166,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
                         `}
                       >
                         <Icon
-                          className={`w-[18px] h-[18px] shrink-0 ${
+                          className={`w-[22px] h-[22px] sm:w-[18px] sm:h-[18px] shrink-0 ${
                             isActive
                               ? "text-primary dark:text-blue-400"
                               : "text-slate-400 dark:text-slate-500"
@@ -183,11 +210,11 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
             <button
               type="button"
               onClick={onLogout}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
+              className="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
               aria-label="Cerrar sesión"
               title="Cerrar sesión"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-5 h-5 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
@@ -218,38 +245,38 @@ const TopBar: React.FC<TopBarProps> = ({
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 h-14 shrink-0 flex items-center gap-3 px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60">
+    <header className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-2 px-3 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
       {/* Left: hamburger (mobile) or back button (editor) */}
       {isEditorRoute ? (
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
+          className="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
           aria-label="Regresar"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-6 h-6 sm:w-5 sm:h-5" />
         </button>
       ) : (
         <button
           type="button"
           onClick={onMenuClick}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors lg:hidden"
+          className="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors lg:hidden"
           aria-label="Abrir menú"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-6 h-6 sm:w-5 sm:h-5" />
         </button>
       )}
 
       {/* Search */}
-      <div className="flex-1 max-w-md">
+      <div className="flex-1 max-w-md ml-1 sm:ml-0">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Buscar documentos…"
+            placeholder="Buscar…"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            className="w-full h-10 sm:h-9 pl-9 pr-3 rounded-lg text-sm sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
           />
         </div>
       </div>
@@ -259,9 +286,10 @@ const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onUploadClick}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-blue-700 shadow-sm transition-colors"
+          className="inline-flex items-center justify-center gap-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-blue-700 shadow-sm transition-colors"
+          aria-label="Nuevo documento"
         >
-          <Upload className="w-4 h-4" />
+          <Upload className="w-5 h-5 sm:w-4 sm:h-4" />
           <span className="hidden sm:inline">Nuevo documento</span>
         </button>
       </div>
@@ -426,6 +454,58 @@ const UploadModal: React.FC<UploadModalProps> = ({
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Bottom Nav (Mobile)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const BottomNav: React.FC = () => {
+  const location = useLocation();
+  const mobileItems = navigationConfig.filter((item) => item.mobileVisible);
+
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border-t border-slate-200 dark:border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      <div className="flex items-center justify-around h-16 px-2">
+        {mobileItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = item.end
+            ? location.pathname === item.path
+            : location.pathname.startsWith(item.path);
+
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.end}
+              className={`
+                flex flex-col items-center justify-center w-full h-full space-y-1 relative
+                ${
+                  isActive
+                    ? "text-primary dark:text-blue-400"
+                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                }
+              `}
+            >
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-b-full" />
+              )}
+              <div className={`p-1 rounded-xl transition-colors ${isActive ? 'bg-primary/10' : ''}`}>
+                <Icon
+                  className={`w-6 h-6 ${
+                    isActive ? "fill-primary/20" : ""
+                  }`}
+                />
+              </div>
+              <span className="text-[10px] font-semibold truncate w-full text-center px-1">
+                {item.label}
+              </span>
+            </NavLink>
+          );
+        })}
+      </div>
+    </nav>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
    AppLayout — Main shell component
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -442,9 +522,15 @@ export const AppLayout: React.FC = () => {
   // Detect editor routes — hide sidebar completely
   const isEditorRoute = location.pathname.includes("/documento/");
 
-  // Close sidebar on route change (mobile)
+  // Close sidebar on route change (mobile) and scroll to top
   useEffect(() => {
     setSidebarOpen(false);
+    
+    // Scroll to top on route change
+    const mainContent = document.getElementById("main-content");
+    if (mainContent) {
+      mainContent.scrollTo({ top: 0, behavior: "auto" });
+    }
   }, [location.pathname]);
 
   // Close sidebar on Escape key
@@ -618,10 +704,13 @@ export const AppLayout: React.FC = () => {
         />
 
         {/* Content area */}
-        <main className="flex-1 overflow-y-auto">
+        <main id="main-content" className="flex-1 overflow-y-auto pb-24 lg:pb-0">
           <Outlet context={{ searchQuery, openUploadModal, refreshDocuments }} />
         </main>
       </div>
+
+      {/* Bottom Navigation (Mobile only) */}
+      {!isEditorRoute && <BottomNav />}
 
       {/* Upload modal */}
       <UploadModal

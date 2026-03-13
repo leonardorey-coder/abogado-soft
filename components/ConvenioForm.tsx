@@ -306,19 +306,19 @@ export const ConvenioForm: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-[#dbdfe6] dark:border-[#2d3748]">
+                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-[#dbdfe6] dark:border-[#2d3748]">
                     <button
                         type="button"
                         onClick={() => navigate("/convenios")}
                         disabled={loading}
-                        className="px-6 py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl font-bold text-[#111318] dark:text-white hover:bg-gray-50 dark:hover:bg-[#101622] transition-colors disabled:opacity-50"
+                        className="w-full sm:w-auto px-6 py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl font-bold text-[#111318] dark:text-white hover:bg-gray-50 dark:hover:bg-[#101622] transition-colors disabled:opacity-50"
                     >
                         Cancelar
                     </button>
                     <button
                         type="submit"
                         disabled={loading}
-                        className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition-colors disabled:opacity-50"
                     >
                         {loading ? (
                             <span className="material-symbols-outlined animate-spin">progress_activity</span>

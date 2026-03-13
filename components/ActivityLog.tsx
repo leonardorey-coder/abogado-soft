@@ -303,7 +303,7 @@ export const ActivityLog: React.FC = () => {
           </div>
 
           {/* ── Category Tabs ── */}
-          <div className="flex gap-2 flex-wrap border-b border-slate-200 dark:border-slate-700 pb-1">
+          <div className="flex gap-2 overflow-x-auto border-b border-slate-200 dark:border-slate-700 pb-1 no-scrollbar">
             {CATEGORIES.map(cat => {
               const isActive = activeTab === cat.key;
               return (
@@ -401,7 +401,7 @@ export const ActivityLog: React.FC = () => {
               </div>
 
               {/* Period filter */}
-              <div className="flex items-center gap-2 flex-wrap border-t border-gray-100 dark:border-gray-800 pt-4">
+              <div className="flex items-center gap-2 overflow-x-auto border-t border-gray-100 dark:border-gray-800 pt-4 pb-2 no-scrollbar">
                 <span className="text-xs font-bold text-[#616f89] uppercase tracking-wider mr-2">Periodo:</span>
                 {(["today", "week", "month", "custom"] as PeriodFilter[]).map(p => (
                   <button

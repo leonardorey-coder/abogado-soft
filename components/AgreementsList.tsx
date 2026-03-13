@@ -95,7 +95,7 @@ export const AgreementsList: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-4 flex-wrap">
+      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
         {([
           { key: "TODOS" as FilterEstado, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
           { key: "ACTIVO" as FilterEstado, label: "Activos", count: counts.activos, icon: "verified", color: "text-green-600" },
@@ -109,65 +109,130 @@ export const AgreementsList: React.FC = () => {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-background-light dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[20%]">Nº de Convenio</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">Institución Colaboradora</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Fecha Firma</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-            {loading ? Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i} className="animate-pulse">
-                <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-24" /></td>
-                <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-48" /></td>
-                <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-20 mx-auto" /></td>
-                <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-16 mx-auto" /></td>
-                <td className="px-6 py-5"><div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-16 ml-auto" /></td>
-              </tr>
-            )) : convenios.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-12 text-center text-[#616f89] dark:text-[#a0aec0]">
-                <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron convenios
-              </td></tr>
-            ) : convenios.map((c) => {
-              const estado = (c.estado as EstadoConvenio) || "PENDIENTE";
-              return (
-                <tr key={c.id} className="hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50 transition-colors">
-                  <td className="px-6 py-5 text-[#111318] dark:text-white font-bold">{c.numero}</td>
-                  <td className="px-6 py-5">
-                    <div className="flex flex-col">
-                      <span className="text-[#111318] dark:text-white font-bold">{c.institucion}</span>
-                      <span className="text-[#616f89] dark:text-[#a0aec0] text-sm">{c.departamento || c.descripcion || ""}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-[#616f89] dark:text-[#a0aec0] font-medium text-center">{formatFecha(c.fechaInicio)}</td>
-                  <td className="px-6 py-5 text-center">
-                    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-bold uppercase ${estadoStyles[estado] || estadoStyles.PENDIENTE}`}>
-                      <span className={`size-2 rounded-full ${estadoDot[estado] || estadoDot.PENDIENTE}`} /> {estado === "ACTIVO" ? "Activo" : estado === "PENDIENTE" ? "Pendiente" : "Expirado"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
-                      <span className="material-symbols-outlined text-lg">visibility</span>Ver
-                    </button>
-                  </td>
+      <div className="rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm flex flex-col">
+        {loading ? (
+          <div className="overflow-x-auto no-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="bg-background-light dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
+                  <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[20%]">Nº de Convenio</th>
+                  <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">Institución Colaboradora</th>
+                  <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Fecha Firma</th>
+                  <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
+                  <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-right">Acciones</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-24" /></td>
+                    <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-48" /></td>
+                    <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-20 mx-auto" /></td>
+                    <td className="px-6 py-5"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-16 mx-auto" /></td>
+                    <td className="px-6 py-5"><div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-16 ml-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : convenios.length === 0 ? (
+          <div className="px-6 py-16 text-center text-[#616f89] dark:text-[#a0aec0] flex flex-col items-center justify-center">
+            <span className="material-symbols-outlined text-5xl mb-3 opacity-50">folder_off</span>
+            <p className="text-lg font-medium">No se encontraron convenios</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden md:block overflow-x-auto no-scrollbar">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="bg-background-light dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
+                    <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[20%]">Nº de Convenio</th>
+                    <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">Institución Colaboradora</th>
+                    <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Fecha Firma</th>
+                    <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
+                    <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+                  {convenios.map((c) => {
+                    const estado = (c.estado as EstadoConvenio) || "PENDIENTE";
+                    return (
+                      <tr key={c.id} className="hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50 transition-colors">
+                        <td className="px-6 py-5 text-[#111318] dark:text-white font-bold">{c.numero}</td>
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col">
+                            <span className="text-[#111318] dark:text-white font-bold">{c.institucion}</span>
+                            <span className="text-[#616f89] dark:text-[#a0aec0] text-sm">{c.departamento || c.descripcion || ""}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-[#616f89] dark:text-[#a0aec0] font-medium text-center">{formatFecha(c.fechaInicio)}</td>
+                        <td className="px-6 py-5 text-center">
+                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-bold uppercase ${estadoStyles[estado] || estadoStyles.PENDIENTE}`}>
+                            <span className={`size-2 rounded-full ${estadoDot[estado] || estadoDot.PENDIENTE}`} /> {estado === "ACTIVO" ? "Activo" : estado === "PENDIENTE" ? "Pendiente" : "Expirado"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
+                            <span className="material-symbols-outlined text-lg">visibility</span>Ver
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-        <div className="px-6 py-5 bg-background-light dark:bg-[#101622] flex items-center justify-between border-t border-[#dbdfe6] dark:border-[#2d3748]">
-          <button type="button" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl font-bold text-sm text-[#616f89] dark:text-[#a0aec0] hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            <span className="material-symbols-outlined">arrow_back</span>Anterior
+            {/* Mobile card view */}
+            <div className="md:hidden flex flex-col divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+              {convenios.map((c) => {
+                const estado = (c.estado as EstadoConvenio) || "PENDIENTE";
+                return (
+                  <div key={c.id} className="p-4 flex flex-col gap-3 hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50 transition-colors">
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider mb-0.5">Institución Colaboradora</span>
+                        <span className="text-[#111318] dark:text-white font-bold text-base leading-tight">{c.institucion}</span>
+                        {c.departamento && <span className="text-[#616f89] dark:text-[#a0aec0] text-sm mt-0.5">{c.departamento}</span>}
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2 bg-[#f6f6f8] dark:bg-[#101622] p-3 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Nº de Convenio</span>
+                        <span className="text-sm font-bold text-[#111318] dark:text-white">{c.numero}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Fecha Firma</span>
+                        <span className="text-sm font-medium text-[#111318] dark:text-white">{formatFecha(c.fechaInicio)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Estado</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase ${estadoStyles[estado] || estadoStyles.PENDIENTE}`}>
+                          <span className={`size-1.5 rounded-full ${estadoDot[estado] || estadoDot.PENDIENTE}`} /> {estado === "ACTIVO" ? "Activo" : estado === "PENDIENTE" ? "Pendiente" : "Expirado"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-1 flex justify-end">
+                      <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">visibility</span>Ver Detalles
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <div className="px-4 sm:px-6 py-4 sm:py-5 bg-background-light dark:bg-[#101622] flex items-center justify-between border-t border-[#dbdfe6] dark:border-[#2d3748]">
+          <button type="button" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm text-[#616f89] dark:text-[#a0aec0] hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <span className="material-symbols-outlined text-base sm:text-xl">arrow_back</span><span className="hidden sm:inline">Anterior</span>
           </button>
-          <div className="text-sm font-bold text-[#111318] dark:text-white">Página <span className="text-primary">{page}</span> de {totalPages}</div>
-          <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl font-bold text-sm text-primary hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            Siguiente<span className="material-symbols-outlined">arrow_forward</span>
+          <div className="text-xs sm:text-sm font-bold text-[#111318] dark:text-white">Página <span className="text-primary">{page}</span> de {totalPages}</div>
+          <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm text-primary hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <span className="hidden sm:inline">Siguiente</span><span className="material-symbols-outlined text-base sm:text-xl">arrow_forward</span>
           </button>
         </div>
       </div>

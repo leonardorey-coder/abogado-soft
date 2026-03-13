@@ -877,7 +877,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
       <div className="flex grow min-h-0 overflow-hidden relative">
         {/* Left Sidebar */}
-        <aside className="w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
+        <aside className="hidden lg:flex w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
           <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
             <span className="material-symbols-outlined text-xl">arrow_back</span>
             Atrás
@@ -917,15 +917,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         </aside>
 
         {/* Main Content (Always shows editor + toolbar) */}
-        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'mr-80' : ''}`}>
+        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible lg:ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'lg:mr-80' : ''}`}>
           <>
             {/* Toolbar */}
-            <div className={`fixed left-64 top-16 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-80' : 'right-0'}`}>
+            <div className={`fixed left-0 lg:left-64 top-16 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-4 lg:px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-0 lg:right-80' : 'right-0'} overflow-x-auto no-scrollbar`}>
               <div className="flex items-center gap-3">
                 {showDiff ? (
-                  <button onClick={exitCompare} className="flex items-center gap-2 px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-gray-700 transition-colors">
-                    <span className="material-symbols-outlined">close</span>
-                    Salir de Comparación
+                  <button onClick={exitCompare} className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-gray-800 text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg hover:bg-gray-700 transition-colors shrink-0">
+                    <span className="material-symbols-outlined text-xl sm:text-2xl">close</span>
+                    <span className="hidden sm:inline">Salir de Comparación</span>
+                    <span className="sm:hidden">Salir</span>
                   </button>
                 ) : (
                   <>
@@ -934,30 +935,30 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                         <button
                           onClick={() => handleSaveDocument()}
                           disabled={isSaving || (!hasChanges && !isSaving)}
-                          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
+                          className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-primary text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed shrink-0"
                         >
-                          <span className={`material-symbols-outlined ${isSaving ? 'animate-spin' : ''}`}>
+                          <span className={`material-symbols-outlined text-xl sm:text-2xl ${isSaving ? 'animate-spin' : ''}`}>
                             {isSaving ? 'progress_activity' : 'save'}
                           </span>
-                          {isSaving ? 'Guardando...' : 'Guardar'}
+                          <span className="hidden sm:inline">{isSaving ? 'Guardando...' : 'Guardar'}</span>
                         </button>
                       </>
                     )}
                     {canUseSuperdoc && !canEdit && (
-                      <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+                      <span className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 shrink-0">
                         <span className="material-symbols-outlined text-base">lock</span>
-                        Solo lectura
+                        <span className="hidden sm:inline">Solo lectura</span>
                       </span>
                     )}
-                    <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
-                      <span className="material-symbols-outlined">download</span>
-                      Descargar
+                    <button onClick={handleDownload} className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-sm sm:text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors shrink-0">
+                      <span className="material-symbols-outlined text-xl sm:text-2xl">download</span>
+                      <span className="hidden sm:inline">Descargar</span>
                     </button>
                   </>
                 )}
-                <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors">
-                  <span className="material-symbols-outlined">share</span>
-                  Compartir
+                <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-sm sm:text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors shrink-0">
+                  <span className="material-symbols-outlined text-xl sm:text-2xl">share</span>
+                  <span className="hidden sm:inline">Compartir</span>
                 </button>
               </div>
               {!showDiff && (
@@ -978,7 +979,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             </div>
 
             {/* Document area */}
-            <div className="flex-1 overflow-y-auto pt-[87px] flex flex-col">
+            <div className="flex-1 overflow-y-auto pt-[87px] pb-24 lg:pb-0 flex flex-col">
               {renderEditorContent()}
             </div>
           </>
@@ -986,7 +987,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
         {/* Right Sidebar (Displays Comments, History, Details, etc) */}
         {rightPanel !== 'NONE' && (
-          <aside className="w-80 shrink-0 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col fixed right-0 top-16 z-40 h-[calc(100vh-4rem)] shadow-lg">
+          <aside className="w-full lg:w-80 shrink-0 border-l border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex flex-col fixed right-0 top-16 z-50 lg:z-40 h-[calc(100vh-4rem)] shadow-2xl lg:shadow-lg">
             {/* Header for the right panel */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#e7e7f3] dark:border-white/10 bg-gray-50/50 dark:bg-gray-800/50">
               <span className="font-black text-[#0e0e1b] dark:text-white flex items-center gap-2">
@@ -1203,6 +1204,32 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       {showShareModal && doc && (
         <ShareModal document={doc as any} onClose={() => setShowShareModal(false)} />
       )}
+
+      {/* Mobile Editor Bottom Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border-t border-slate-200 dark:border-slate-800 pb-safe flex items-center justify-around h-16 px-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        {([
+          { key: 'COMMENTS' as RightPanel, icon: 'chat_bubble', label: 'Comentarios' },
+          { key: 'VERSIONS' as RightPanel, icon: 'layers', label: 'Versiones' },
+          { key: 'HISTORY' as RightPanel, icon: 'history', label: 'Historial' },
+          { key: 'DETAILS' as RightPanel, icon: 'info', label: 'Detalles' },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setRightPanel(rightPanel === tab.key ? 'NONE' : tab.key)}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 relative ${
+              rightPanel === tab.key ? 'text-primary dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            {rightPanel === tab.key && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-b-full" />
+            )}
+            <div className={`p-1 rounded-xl transition-colors ${rightPanel === tab.key ? 'bg-primary/10' : ''}`}>
+              <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
+            </div>
+            <span className="text-[10px] font-semibold">{tab.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

@@ -256,8 +256,8 @@ export const SecurityPage: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto no-scrollbar">
+                <table className="w-full text-sm min-w-[800px]">
                   <thead>
                     <tr className="border-b border-gray-100 dark:border-gray-800 text-[#616f89] dark:text-gray-400 text-left">
                       <th className="pb-3 px-2 font-semibold">Nombre</th>

@@ -308,120 +308,214 @@ export const TeamPage: React.FC = () => {
         </div>
 
         {/* Users Table */}
-        <div className="bg-white dark:bg-[#1a212f] rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921]">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Usuario</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden md:table-cell">Cargo</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Último acceso</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-10 text-center text-[#616f89] dark:text-[#64748b]">No se encontraron usuarios.</td></tr>
-              )}
-              {users.map((u) => (
-                <tr
-                  key={u.id}
-                  className={`border-b border-[#dbdfe6] dark:border-[#2d3748] transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}
-                >
-                  {/* Avatar + name */}
-                  <td className="px-5 py-4">
+        <div className="bg-white dark:bg-[#1a212f] rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
+          {users.length === 0 ? (
+            <div className="px-5 py-16 text-center text-[#616f89] dark:text-[#64748b] flex flex-col items-center justify-center">
+              <span className="material-symbols-outlined text-5xl mb-3 opacity-50">group_off</span>
+              <p className="text-lg font-medium">No se encontraron usuarios.</p>
+            </div>
+          ) : (
+            <>
+              <div className="hidden md:block overflow-x-auto no-scrollbar">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead>
+                    <tr className="border-b border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921]">
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Usuario</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden md:table-cell">Cargo</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Último acceso</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</th>
+                      <th className="px-5 py-3 text-right text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr
+                        key={u.id}
+                        className={`border-b border-[#dbdfe6] dark:border-[#2d3748] transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}
+                      >
+                        {/* Avatar + name */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="size-9 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
+                              {u.avatarUrl ? (
+                                <img src={u.avatarUrl} alt={u.name} className="size-full object-cover" />
+                              ) : (
+                                <span className="text-primary text-sm font-bold">{(u.name || "?").charAt(0).toUpperCase()}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#111318] dark:text-white truncate">{u.name}</p>
+                              <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Cargo */}
+                        <td className="px-5 py-4 hidden md:table-cell">
+                          <div className="min-w-0">
+                            <p className="text-[#111318] dark:text-white truncate">{u.position || "—"}</p>
+                            {u.department && <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.department}</p>}
+                          </div>
+                        </td>
+
+                        {/* Rol */}
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${u.role === "admin" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                            {getRoleLabel(u.role)}
+                          </span>
+                        </td>
+
+                        {/* Último login */}
+                        <td className="px-5 py-4 hidden lg:table-cell text-[#616f89] dark:text-[#64748b] text-xs">
+                          {u.lastLogin ? formatTimeAgo(u.lastLogin) : "Nunca"}
+                        </td>
+
+                        {/* Estado */}
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${u.isActive ? "text-green-600 dark:text-green-400" : "text-[#616f89] dark:text-[#64748b]"}`}>
+                            <span className={`size-1.5 rounded-full ${u.isActive ? "bg-green-500" : "bg-gray-400"}`} />
+                            {u.isActive ? "Activo" : "Inactivo"}
+                          </span>
+                        </td>
+
+                        {/* Acciones */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Editar */}
+                            <button
+                              title="Editar"
+                              onClick={() => setEditingUser(u)}
+                              disabled={actionLoading === `edit-${u.id}`}
+                              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[#616f89] dark:text-[#64748b] hover:text-blue-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-base">edit</span>
+                            </button>
+
+                            {/* Cambiar rol */}
+                            <button
+                              title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
+                              disabled={actionLoading === `role-${u.id}`}
+                              onClick={() => handleChangeRole(u)}
+                              className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[#616f89] dark:text-[#64748b] hover:text-indigo-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-base">swap_horiz</span>
+                            </button>
+
+                            {/* Activar/Desactivar */}
+                            <button
+                              title={u.isActive ? "Desactivar" : "Activar"}
+                              disabled={actionLoading === `status-${u.id}`}
+                              onClick={() => handleToggleStatus(u)}
+                              className={`p-1.5 rounded-lg transition-colors ${u.isActive ? "hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600" : "hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"} text-[#616f89] dark:text-[#64748b]`}
+                            >
+                              <span className="material-symbols-outlined text-base">{u.isActive ? "person_off" : "person_check"}</span>
+                            </button>
+
+                            {/* Eliminar */}
+                            <button
+                              title="Eliminar"
+                              disabled={actionLoading === `delete-${u.id}`}
+                              onClick={() => setConfirmDeleteUser(u)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[#616f89] dark:text-[#64748b] hover:text-red-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-base">person_remove</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile card view */}
+              <div className="md:hidden flex flex-col divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+                {users.map((u) => (
+                  <div key={u.id} className={`p-4 flex flex-col gap-3 transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}>
                     <div className="flex items-center gap-3">
-                      <div className="size-9 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
+                      <div className="size-10 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
                         {u.avatarUrl ? (
                           <img src={u.avatarUrl} alt={u.name} className="size-full object-cover" />
                         ) : (
-                          <span className="text-primary text-sm font-bold">{(u.name || "?").charAt(0).toUpperCase()}</span>
+                          <span className="text-primary text-base font-bold">{(u.name || "?").charAt(0).toUpperCase()}</span>
                         )}
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-[#111318] dark:text-white truncate">{u.name}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[#111318] dark:text-white text-base truncate">{u.name}</p>
                         <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
                       </div>
                     </div>
-                  </td>
 
-                  {/* Cargo */}
-                  <td className="px-5 py-4 hidden md:table-cell">
-                    <div className="min-w-0">
-                      <p className="text-[#111318] dark:text-white truncate">{u.position || "—"}</p>
-                      {u.department && <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.department}</p>}
+                    <div className="flex flex-col gap-2 bg-[#f8fafb] dark:bg-[#101622] p-3 rounded-lg mt-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Cargo</span>
+                        <div className="text-right">
+                          <span className="text-sm font-medium text-[#111318] dark:text-white block">{u.position || "—"}</span>
+                          {u.department && <span className="text-[10px] text-[#616f89] dark:text-[#64748b] block">{u.department}</span>}
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</span>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${u.role === "admin" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                          {getRoleLabel(u.role)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</span>
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${u.isActive ? "text-green-600 dark:text-green-400" : "text-[#616f89] dark:text-[#64748b]"}`}>
+                          <span className={`size-1.5 rounded-full ${u.isActive ? "bg-green-500" : "bg-gray-400"}`} />
+                          {u.isActive ? "Activo" : "Inactivo"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Último acceso</span>
+                        <span className="text-xs text-[#111318] dark:text-white font-medium">{u.lastLogin ? formatTimeAgo(u.lastLogin) : "Nunca"}</span>
+                      </div>
                     </div>
-                  </td>
 
-                  {/* Rol */}
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${u.role === "admin" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
-                      {getRoleLabel(u.role)}
-                    </span>
-                  </td>
-
-                  {/* Último login */}
-                  <td className="px-5 py-4 hidden lg:table-cell text-[#616f89] dark:text-[#64748b] text-xs">
-                    {u.lastLogin ? formatTimeAgo(u.lastLogin) : "Nunca"}
-                  </td>
-
-                  {/* Estado */}
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${u.isActive ? "text-green-600 dark:text-green-400" : "text-[#616f89] dark:text-[#64748b]"}`}>
-                      <span className={`size-1.5 rounded-full ${u.isActive ? "bg-green-500" : "bg-gray-400"}`} />
-                      {u.isActive ? "Activo" : "Inactivo"}
-                    </span>
-                  </td>
-
-                  {/* Acciones */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-center justify-end gap-1">
-                      {/* Editar */}
+                    <div className="flex items-center justify-end gap-2 mt-1">
                       <button
                         title="Editar"
                         onClick={() => setEditingUser(u)}
                         disabled={actionLoading === `edit-${u.id}`}
-                        className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[#616f89] dark:text-[#64748b] hover:text-blue-600 transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold text-xs transition-colors"
                       >
-                        <span className="material-symbols-outlined text-base">edit</span>
+                        <span className="material-symbols-outlined text-[18px]">edit</span> Editar
                       </button>
 
-                      {/* Cambiar rol */}
                       <button
                         title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
                         disabled={actionLoading === `role-${u.id}`}
                         onClick={() => handleChangeRole(u)}
-                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[#616f89] dark:text-[#64748b] hover:text-indigo-600 transition-colors"
+                        className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 transition-colors"
                       >
-                        <span className="material-symbols-outlined text-base">swap_horiz</span>
+                        <span className="material-symbols-outlined text-[18px]">swap_horiz</span>
                       </button>
 
-                      {/* Activar/Desactivar */}
                       <button
                         title={u.isActive ? "Desactivar" : "Activar"}
                         disabled={actionLoading === `status-${u.id}`}
                         onClick={() => handleToggleStatus(u)}
-                        className={`p-1.5 rounded-lg transition-colors ${u.isActive ? "hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600" : "hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"} text-[#616f89] dark:text-[#64748b]`}
+                        className={`p-2 rounded-lg transition-colors ${u.isActive ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"}`}
                       >
-                        <span className="material-symbols-outlined text-base">{u.isActive ? "person_off" : "person_check"}</span>
+                        <span className="material-symbols-outlined text-[18px]">{u.isActive ? "person_off" : "person_check"}</span>
                       </button>
 
-                      {/* Eliminar */}
                       <button
                         title="Eliminar"
                         disabled={actionLoading === `delete-${u.id}`}
                         onClick={() => setConfirmDeleteUser(u)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[#616f89] dark:text-[#64748b] hover:text-red-600 transition-colors"
+                        className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
                       >
-                        <span className="material-symbols-outlined text-base">person_remove</span>
+                        <span className="material-symbols-outlined text-[18px]">person_remove</span>
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Stats summary */}
@@ -455,7 +549,7 @@ export const TeamPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex gap-4 flex-wrap overflow-x-auto pb-2">
+          <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
             {[
               { label: 'Todos', count: assignments.length, icon: 'check_circle', colorClass: 'bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
               { label: 'Pendientes', count: assignments.filter(a => a.status === 'pendiente').length, icon: 'pending', colorClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50' },

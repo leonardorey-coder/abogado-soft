@@ -171,7 +171,7 @@ export const AssignedList: React.FC = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {[
           { label: "Pendientes", count: counts.pendientes, icon: "schedule", color: "text-amber-500" },
           { label: "Vistos", count: counts.vistos, icon: "visibility", color: "text-blue-500" },
@@ -180,12 +180,12 @@ export const AssignedList: React.FC = () => {
           { label: "Rechazados", count: counts.rechazados, icon: "cancel", color: "text-red-500" },
           { label: "Total", count: counts.todos, icon: "description", color: "text-primary" },
         ].map(card => (
-          <div key={card.label} className="bg-white dark:bg-[#1a212f] p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[#616f89] dark:text-[#a0aec0] text-xs font-medium">{card.label}</p>
-              <span className={`material-symbols-outlined text-lg ${card.color}`}>{card.icon}</span>
+          <div key={card.label} className="bg-white dark:bg-[#1a212f] p-2.5 sm:p-3 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
+            <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+              <p className="text-[#616f89] dark:text-[#a0aec0] text-[10px] sm:text-xs font-medium truncate pr-1">{card.label}</p>
+              <span className={`material-symbols-outlined text-sm sm:text-base shrink-0 ${card.color}`}>{card.icon}</span>
             </div>
-            <p className="text-2xl font-bold dark:text-white">{card.count}</p>
+            <p className="text-lg sm:text-xl font-bold dark:text-white leading-none">{card.count}</p>
           </div>
         ))}
       </div>
@@ -220,10 +220,10 @@ export const AssignedList: React.FC = () => {
       </div>
 
       {/* Filter pills */}
-      <div className="flex gap-3 flex-wrap overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
         {pills.map(pill => (
-          <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary"}`}>
-            <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "text-white" : pill.color}`}>{pill.icon}</span>
+          <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-1 sm:gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary"}`}>
+            <span className={`material-symbols-outlined text-[14px] sm:text-[16px] ${filter === pill.key ? "text-white" : pill.color}`}>{pill.icon}</span>
             {pill.label} ({pill.count})
           </button>
         ))}
@@ -231,10 +231,10 @@ export const AssignedList: React.FC = () => {
 
       {/* Content */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="animate-pulse bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
-              <div className="flex items-start justify-between mb-4"><div className="h-16 w-16 bg-slate-200 dark:bg-slate-700 rounded-xl" /><div className="h-6 w-20 bg-slate-200 dark:bg-slate-700 rounded" /></div>
+            <div key={i} className="animate-pulse bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
+              <div className="flex items-start justify-between mb-4"><div className="h-12 w-12 sm:h-16 sm:w-16 bg-slate-200 dark:bg-slate-700 rounded-xl" /><div className="h-6 w-20 bg-slate-200 dark:bg-slate-700 rounded" /></div>
               <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3" />
               <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4" />
               <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-xl mt-4" />
@@ -242,12 +242,12 @@ export const AssignedList: React.FC = () => {
           ))}
         </div>
       ) : assignments.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-12 text-center">
+        <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-8 sm:p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-slate-400 block mb-2">folder_off</span>
           <p className="text-slate-600 dark:text-slate-400 font-medium">No hay documentos asignados en esta categoría.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" role="list">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" role="list">
           {assignments.map((a) => {
             const docType = a.document?.type || "docx";
             const { icon, color } = getFileIcon(docType);
@@ -255,44 +255,44 @@ export const AssignedList: React.FC = () => {
             const isUpdating = updatingId === a.id;
 
             return (
-              <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className={`min-w-0 bg-white dark:bg-slate-800 p-6 rounded-2xl border-2 transition-all cursor-pointer group shadow-sm relative flex flex-col h-full ${overdue ? "border-red-300 dark:border-red-800" : "border-slate-100 dark:border-slate-700 hover:border-primary"}`}>
-                <header className="flex items-start justify-between gap-3 mb-4">
-                  <div className={`p-4 ${color} rounded-xl shrink-0`} aria-hidden><span className="material-symbols-outlined text-[32px] font-bold">{icon}</span></div>
+              <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className={`min-w-0 bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl border-2 transition-all cursor-pointer group shadow-sm relative flex flex-col h-full ${overdue ? "border-red-300 dark:border-red-800" : "border-slate-100 dark:border-slate-700 hover:border-primary"}`}>
+                <header className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
+                  <div className={`p-3 sm:p-4 ${color} rounded-xl shrink-0`} aria-hidden><span className="material-symbols-outlined text-[24px] sm:text-[32px] font-bold">{icon}</span></div>
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase border ${getStatusStyle(a.status)}`}>
-                      <span className="material-symbols-outlined text-xs">{statusIcon(a.status)}</span>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] font-black uppercase border ${getStatusStyle(a.status)}`}>
+                      <span className="material-symbols-outlined text-[10px] sm:text-xs">{statusIcon(a.status)}</span>
                       {statusLabel(a.status)}
                     </span>
                     {overdue && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800">
-                        <span className="material-symbols-outlined text-xs">warning</span>VENCIDO
+                        <span className="material-symbols-outlined text-[10px] sm:text-xs">warning</span>VENCIDO
                       </span>
                     )}
                   </div>
                 </header>
-                <h3 className="text-xl font-extrabold mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
+                <h3 className="text-lg sm:text-xl font-extrabold mb-2 sm:mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
                   {(a.document?.name || "Documento").split("_").map((part, i) => i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>)}
                 </h3>
-                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-1">
-                  <span className="material-symbols-outlined text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
+                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm mb-1">
+                  <span className="material-symbols-outlined text-base sm:text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
                   <span>{tab === "RECIBIDOS" ? `De: ${a.assigner?.name || "Desconocido"}` : `Para: ${a.assignee?.name || "Desconocido"}`}</span>
                 </p>
-                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mb-3">
-                  <span className="material-symbols-outlined text-lg shrink-0">calendar_today</span>
+                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm mb-2 sm:mb-3">
+                  <span className="material-symbols-outlined text-base sm:text-lg shrink-0">calendar_today</span>
                   <span>{formatTimeAgo(a.createdAt)} · {formatDate(a.createdAt)}</span>
                 </p>
                 {a.dueDate && (
-                  <div className={`mb-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold ${overdue ? "text-red-600 bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/50" : "text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50"}`} role="alert">
-                    <span className="material-symbols-outlined text-lg shrink-0">{overdue ? "warning" : "event"}</span>
+                  <div className={`mb-2 sm:mb-3 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border text-[10px] sm:text-xs font-bold ${overdue ? "text-red-600 bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/50" : "text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50"}`} role="alert">
+                    <span className="material-symbols-outlined text-sm sm:text-lg shrink-0">{overdue ? "warning" : "event"}</span>
                     <span>{overdue ? "Venció" : "Vence"} el {formatDate(a.dueDate)}</span>
                   </div>
                 )}
-                {a.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mb-3 italic line-clamp-2">"{a.notes}"</p>}
+                {a.notes && <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-2 sm:mb-3 italic line-clamp-2">"{a.notes}"</p>}
 
-                <footer className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <footer className="mt-auto pt-3 sm:pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
                   {/* View button – always available */}
-                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDocumentClick(a); }} className="flex-1 min-h-[44px] py-3 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-lg">visibility</span>Ver
+                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDocumentClick(a); }} className="flex-1 min-h-[36px] sm:min-h-[44px] py-2 sm:py-3 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 sm:gap-2">
+                    <span className="material-symbols-outlined text-base sm:text-lg">visibility</span>Ver
                   </button>
 
                   {tab === "RECIBIDOS" && !isTerminal(a.status) && (
@@ -302,10 +302,10 @@ export const AssignedList: React.FC = () => {
                           type="button"
                           disabled={isUpdating}
                           onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "completado"); }}
-                          className="min-h-[44px] py-3 px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-1"
+                          className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1"
                           title="Marcar como completado"
                         >
-                          <span className="material-symbols-outlined text-lg">{isUpdating ? "sync" : "check_circle"}</span>
+                          <span className="material-symbols-outlined text-base sm:text-lg">{isUpdating ? "sync" : "check_circle"}</span>
                         </button>
                       )}
                       {canReject(a.status) && (
@@ -313,18 +313,18 @@ export const AssignedList: React.FC = () => {
                           type="button"
                           disabled={isUpdating}
                           onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "rechazado"); }}
-                          className="min-h-[44px] py-3 px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-1"
+                          className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1"
                           title="Rechazar asignación"
                         >
-                          <span className="material-symbols-outlined text-lg">{isUpdating ? "sync" : "close"}</span>
+                          <span className="material-symbols-outlined text-base sm:text-lg">{isUpdating ? "sync" : "close"}</span>
                         </button>
                       )}
                     </>
                   )}
 
                   {tab === "ENVIADOS" && (
-                    <button type="button" disabled={isUpdating} onClick={(e) => { e.stopPropagation(); handleRevoke(a.id); }} className="min-h-[44px] py-3 px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2" title="Revocar asignación">
-                      <span className="material-symbols-outlined text-lg">block</span>
+                    <button type="button" disabled={isUpdating} onClick={(e) => { e.stopPropagation(); handleRevoke(a.id); }} className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 sm:gap-2" title="Revocar asignación">
+                      <span className="material-symbols-outlined text-base sm:text-lg">block</span>
                     </button>
                   )}
                 </footer>

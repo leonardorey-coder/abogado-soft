@@ -121,9 +121,9 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
           </div>
         </div>
         {/* Editor Layout */}
-        <div className="flex gap-6 min-h-[700px]">
+        <div className="flex flex-col lg:flex-row gap-6 min-h-[700px]">
           {/* Left Sidebar Navigation (SideNavBar style) */}
-          <aside className="w-64 flex flex-col gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <aside className="hidden lg:flex w-64 flex-col gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <div className="flex flex-col gap-1 px-2 pb-2 border-b border-gray-100 dark:border-gray-700">
               <h3 className="font-bold text-sm text-gray-400 uppercase tracking-wider">
                 Herramientas
@@ -159,8 +159,8 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
           {/* Main Editor Area */}
           <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
                   title="Negrita"
@@ -210,7 +210,7 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
                   <span>Agregar Fila</span>
                 </button>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 shrink-0 ml-4">
                 <div className="text-xs text-gray-500 font-medium">
                   Última sincronización: Hace 30s
                 </div>
@@ -412,7 +412,7 @@ export const ExcelEditor: React.FC<ExcelEditorProps> = ({ documentFromTrash }) =
             </div>
           </div>
           {/* Right Sidebar: Historial de Cambios */}
-          <aside className="w-80 flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+          <aside className="hidden lg:flex w-80 flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <h3 className="font-bold text-[#111318] dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">

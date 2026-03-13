@@ -142,7 +142,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
         </div>
       </div>
 
-      <div className="flex gap-4 flex-wrap">
+      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
         {([
           { key: "TODOS" as const, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
           { key: "ACTIVO" as const, label: "Activos", count: counts.activos, icon: "verified", color: "text-green-600" },
@@ -156,89 +156,171 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-background-light dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">Nombre</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%]">Tipo</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[23%]">Última modificación</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[8%] text-center">Sync</th>
-              <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%] text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-            {loading ? Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i} className="animate-pulse">
-                <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" /></td>
-                <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-12" /></td>
-                <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-24" /></td>
-                <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-16 mx-auto" /></td>
-                <td className="px-6 py-4"><div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-16 ml-auto" /></td>
+      <div className="rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm flex flex-col">
+        <div className="hidden md:block overflow-x-auto no-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="bg-background-light dark:bg-[#101622] border-b border-[#dbdfe6] dark:border-[#2d3748]">
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">Nombre</th>
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%]">Tipo</th>
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[23%]">Última modificación</th>
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[15%] text-center">Estado</th>
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[8%] text-center">Sync</th>
+                <th className="px-6 py-4 text-[#111318] dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%] text-right">Acciones</th>
               </tr>
-            )) : documents.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-12 text-center text-[#616f89] dark:text-[#a0aec0]">
-                <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron documentos
-              </td></tr>
-            ) : documents.map((doc) => (
-              <tr key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`transition-colors cursor-pointer ${lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
-                <td className="px-6 py-4"><div className="flex items-center gap-3"><span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0]">{getTypeIcon(doc.type)}</span><span className="text-[#111318] dark:text-white font-bold text-base truncate max-w-[240px]">{doc.name}</span></div></td>
-                <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] font-medium text-sm">{doc.type}</td>
-                <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] text-sm">{doc.lastModified}</td>
-                <td className="px-6 py-4 text-center">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}>
+            </thead>
+            <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+              {loading ? Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" /></td>
+                  <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-12" /></td>
+                  <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-24" /></td>
+                  <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-16 mx-auto" /></td>
+                  <td className="px-6 py-4"><div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-8 mx-auto" /></td>
+                  <td className="px-6 py-4"><div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-16 ml-auto" /></td>
+                </tr>
+              )) : documents.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-[#616f89] dark:text-[#a0aec0]">
+                  <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron documentos
+                </td></tr>
+              ) : documents.map((doc) => (
+                <tr key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`transition-colors cursor-pointer ${lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
+                  <td className="px-6 py-4"><div className="flex items-center gap-3"><span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0]">{getTypeIcon(doc.type)}</span><span className="text-[#111318] dark:text-white font-bold text-base truncate max-w-[240px]">{doc.name}</span></div></td>
+                  <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] font-medium text-sm">{doc.type}</td>
+                  <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] text-sm">{doc.lastModified}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}>
+                      {doc.fileStatus}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    {(doc as any).syncStatus === 'completed' ? (
+                      <span className="material-symbols-outlined text-green-500 text-lg" title="Sincronizado con Drive">cloud_done</span>
+                    ) : (doc as any).syncStatus === 'syncing' ? (
+                      <span className="material-symbols-outlined text-amber-500 text-lg animate-pulse" title="Sincronizando…">cloud_sync</span>
+                    ) : (doc as any).syncStatus === 'failed' ? (
+                      <span className="material-symbols-outlined text-red-500 text-lg" title="Error de sincronización">cloud_off</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-lg" title="Sin sincronizar">cloud_upload</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative inline-block text-left">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setStatusDropdownDocId(id => id === doc.id ? null : doc.id); }} className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span className="material-symbols-outlined">more_vert</span>
+                      </button>
+                      {statusDropdownDocId === doc.id && (
+                        <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden py-1 transform-gpu">
+                          <button type="button" onClick={(e) => { e.stopPropagation(); handleVer(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <span className="material-symbols-outlined text-[20px] text-primary">visibility</span>Abrir Documento
+                          </button>
+                          <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
+                          <div className="px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Cambiar Estado</div>
+                          {FILE_STATUS_OPTIONS.map(opt => (
+                            <button key={opt.value} type="button" onClick={(e) => { e.stopPropagation(); handleStatusChange(doc.id, opt.value); }} className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}>
+                              <span className="material-symbols-outlined text-[18px]">{doc.fileStatus === opt.value ? "radio_button_checked" : "radio_button_unchecked"}</span>{opt.label}
+                            </button>
+                          ))}
+                          <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
+                          <button type="button" onClick={(e) => { e.stopPropagation(); handleEliminar(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                            <span className="material-symbols-outlined text-[20px]">delete</span>Enviar a papelera
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card view */}
+        <div className="md:hidden flex flex-col divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
+          {loading ? Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="p-4 animate-pulse flex flex-col gap-3">
+              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+              <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2" />
+              <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-full mt-2" />
+            </div>
+          )) : documents.length === 0 ? (
+            <div className="px-6 py-12 text-center text-[#616f89] dark:text-[#a0aec0]">
+              <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron documentos
+            </div>
+          ) : documents.map((doc) => (
+            <div key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`p-4 flex flex-col gap-3 transition-colors cursor-pointer ${lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
+              <div className="flex items-start gap-3 mb-1">
+                <span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0] text-3xl shrink-0">{getTypeIcon(doc.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider block mb-0.5">Nombre</span>
+                  <h4 className="text-[#111318] dark:text-white font-bold text-base line-clamp-2 leading-tight">{doc.name}</h4>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-2 bg-[#f6f6f8] dark:bg-[#101622] p-3 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Tipo</span>
+                  <span className="text-sm font-semibold text-[#111318] dark:text-white">{doc.type}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Última modificación</span>
+                  <span className="text-sm font-medium text-[#111318] dark:text-white">{doc.lastModified}</span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Estado</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${getFileStatusBadge(doc.fileStatus)}`}>
                     {doc.fileStatus}
                   </span>
-                </td>
-                <td className="px-6 py-4 text-center">
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider">Sync</span>
                   {(doc as any).syncStatus === 'completed' ? (
-                    <span className="material-symbols-outlined text-green-500 text-lg" title="Sincronizado con Drive">cloud_done</span>
+                    <span className="material-symbols-outlined text-green-500 text-base" title="Sincronizado con Drive">cloud_done</span>
                   ) : (doc as any).syncStatus === 'syncing' ? (
-                    <span className="material-symbols-outlined text-amber-500 text-lg animate-pulse" title="Sincronizando…">cloud_sync</span>
+                    <span className="material-symbols-outlined text-amber-500 text-base animate-pulse" title="Sincronizando…">cloud_sync</span>
                   ) : (doc as any).syncStatus === 'failed' ? (
-                    <span className="material-symbols-outlined text-red-500 text-lg" title="Error de sincronización">cloud_off</span>
+                    <span className="material-symbols-outlined text-red-500 text-base" title="Error de sincronización">cloud_off</span>
                   ) : (
-                    <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-lg" title="Sin sincronizar">cloud_upload</span>
+                    <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-base" title="Sin sincronizar">cloud_upload</span>
                   )}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative inline-block text-left">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setStatusDropdownDocId(id => id === doc.id ? null : doc.id); }} className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                      <span className="material-symbols-outlined">more_vert</span>
-                    </button>
-                    {statusDropdownDocId === doc.id && (
-                      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden py-1 transform-gpu">
-                        <button type="button" onClick={(e) => { e.stopPropagation(); handleVer(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                          <span className="material-symbols-outlined text-[20px] text-primary">visibility</span>Abrir Documento
-                        </button>
-                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
-                        <div className="px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Cambiar Estado</div>
-                        {FILE_STATUS_OPTIONS.map(opt => (
-                          <button key={opt.value} type="button" onClick={(e) => { e.stopPropagation(); handleStatusChange(doc.id, opt.value); }} className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}>
-                            <span className="material-symbols-outlined text-[18px]">{doc.fileStatus === opt.value ? "radio_button_checked" : "radio_button_unchecked"}</span>{opt.label}
-                          </button>
-                        ))}
-                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
-                        <button type="button" onClick={(e) => { e.stopPropagation(); handleEliminar(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors">
-                          <span className="material-symbols-outlined text-[20px]">delete</span>Enviar a papelera
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
 
-        <div className="px-6 py-4 bg-background-light dark:bg-[#101622] flex items-center justify-between border-t border-[#dbdfe6] dark:border-[#2d3748]">
-          <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:border-primary disabled:opacity-50 transition-colors">
-            <span className="material-symbols-outlined">arrow_back</span>Anterior
+              <div className="flex items-center justify-end gap-2 mt-1" onClick={e => e.stopPropagation()}>
+                <button type="button" onClick={(e) => { e.stopPropagation(); handleVer(doc); }} className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[18px]">visibility</span>Ver
+                </button>
+                <div ref={statusDropdownDocId === doc.id ? dropdownRef : undefined} className="relative">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setStatusDropdownDocId(id => id === doc.id ? null : doc.id); }} className="p-2 bg-[#f6f6f8] dark:bg-[#101622] rounded-lg text-[#616f89] dark:text-[#a0aec0] hover:text-primary transition-colors">
+                    <span className="material-symbols-outlined">more_vert</span>
+                  </button>
+                  {statusDropdownDocId === doc.id && (
+                    <div className="absolute right-0 bottom-full mb-2 z-50 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden py-1 transform-gpu">
+                      <div className="px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Cambiar Estado</div>
+                      {FILE_STATUS_OPTIONS.map(opt => (
+                        <button key={opt.value} type="button" onClick={(e) => { e.stopPropagation(); handleStatusChange(doc.id, opt.value); }} className={getFileStatusOptionClass(opt.value, doc.fileStatus === opt.value)}>
+                          <span className="material-symbols-outlined text-[18px]">{doc.fileStatus === opt.value ? "radio_button_checked" : "radio_button_unchecked"}</span>{opt.label}
+                        </button>
+                      ))}
+                      <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 w-full" />
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleEliminar(doc); setStatusDropdownDocId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                        <span className="material-symbols-outlined text-[20px]">delete</span>Enviar a papelera
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-4 sm:px-6 py-4 bg-background-light dark:bg-[#101622] flex items-center justify-between border-t border-[#dbdfe6] dark:border-[#2d3748]">
+          <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:border-primary disabled:opacity-50 transition-colors">
+            <span className="material-symbols-outlined text-base sm:text-xl">arrow_back</span><span className="hidden sm:inline">Anterior</span>
           </button>
-          <span className="text-sm font-bold text-[#111318] dark:text-white">Página <span className="text-primary">{page}</span> de {totalPages}</span>
-          <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl text-sm font-bold text-primary hover:border-primary disabled:opacity-50 transition-colors">
-            Siguiente<span className="material-symbols-outlined">arrow_forward</span>
+          <span className="text-xs sm:text-sm font-bold text-[#111318] dark:text-white">Página <span className="text-primary">{page}</span> de {totalPages}</span>
+          <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 bg-white dark:bg-[#1a212f] border border-[#dbdfe6] dark:border-[#2d3748] rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold text-primary hover:border-primary disabled:opacity-50 transition-colors">
+            <span className="hidden sm:inline">Siguiente</span><span className="material-symbols-outlined text-base sm:text-xl">arrow_forward</span>
           </button>
         </div>
       </div>

@@ -92,18 +92,18 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, icon: Icon, va
   return (
     <div
       onClick={onClick}
-      className={`bg-white dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700/60 p-4 shadow-sm flex flex-col gap-3 ${onClick ? "cursor-pointer hover:border-primary/40 transition-colors" : ""}`}
+      className={`bg-white dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700/60 p-3 sm:p-4 shadow-sm flex flex-col gap-2 sm:gap-3 ${onClick ? "cursor-pointer hover:border-primary/40 transition-colors" : ""}`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{label}</span>
-        <Icon className={`w-4.5 h-4.5 ${s.icon}`} />
+        <span className="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate pr-1">{label}</span>
+        <Icon className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 ${s.icon}`} />
       </div>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{value}</span>
-        {pct !== null && <span className="text-xs text-slate-400 dark:text-slate-500">{pct}%</span>}
+        <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{value}</span>
+        {pct !== null && <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500">{pct}%</span>}
       </div>
       {pct !== null && (
-        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 overflow-hidden">
+        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 overflow-hidden mt-1 sm:mt-0">
           <div className={`h-1 rounded-full transition-all ${s.bar}`} style={{ width: `${pct}%` }} />
         </div>
       )}
@@ -155,7 +155,7 @@ interface FilterBarProps {
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({ pills, active, onChange }) => (
-  <div className="flex gap-2 flex-wrap">
+  <div className="flex gap-2 overflow-x-auto pb-2 -mb-2 no-scrollbar">
     {pills.map((p) => {
       const isActive = active === p.key;
       return (
@@ -163,7 +163,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({ pills, active, onChange })
           key={p.key}
           type="button"
           onClick={() => onChange(p.key)}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors border ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors border whitespace-nowrap shrink-0 ${
             isActive
               ? "bg-primary text-white border-primary"
               : "bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-300 hover:border-primary/40"
@@ -211,10 +211,10 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items }) => {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
+        className="w-10 h-10 sm:w-8 sm:h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
         aria-label="Más opciones"
       >
-        <MoreVertical className="w-4 h-4" />
+        <MoreVertical className="w-5 h-5 sm:w-4 sm:h-4" />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 animate-in fade-in slide-in-from-top-1">
@@ -225,13 +225,13 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items }) => {
                 type="button"
                 disabled={item.disabled}
                 onClick={(e) => { e.stopPropagation(); item.onClick(); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-sm font-medium flex items-center gap-2.5 transition-colors disabled:opacity-50 ${
+                className={`w-full text-left px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium flex items-center gap-3 sm:gap-2.5 transition-colors disabled:opacity-50 ${
                   item.danger
                     ? "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                     : "text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                 }`}
               >
-                {item.icon && <item.icon className="w-4 h-4 shrink-0" />}
+                {item.icon && <item.icon className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />}
                 {item.label}
               </button>
             </React.Fragment>
@@ -286,30 +286,34 @@ export const ModalFrame: React.FC<ModalFrameProps> = ({ open, onClose, title, de
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={`bg-white dark:bg-slate-800 w-full ${MODAL_SIZES[size]} rounded-xl shadow-xl flex flex-col overflow-hidden max-h-[90vh] border border-slate-200 dark:border-slate-700`}
+      <div className={`bg-white dark:bg-slate-800 w-full ${MODAL_SIZES[size]} rounded-t-2xl sm:rounded-xl shadow-xl flex flex-col overflow-hidden max-h-[90vh] sm:max-h-[85vh] border-t sm:border border-slate-200 dark:border-slate-700 animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Mobile drag handle indicator */}
+        <div className="w-full flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+        </div>
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-start justify-between gap-4 shrink-0">
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-start justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {Icon && <Icon className="w-5 h-5 text-primary shrink-0" />}
+            {Icon && <Icon className="w-6 h-6 sm:w-5 sm:h-5 text-primary shrink-0" />}
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
-              {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{description}</p>}
+              <h2 className="text-lg sm:text-base font-bold text-slate-900 dark:text-white">{title}</h2>
+              {description && <p className="text-sm sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{description}</p>}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0">
-            <X className="w-4 h-4" />
+          <button type="button" onClick={onClose} className="w-10 h-10 sm:w-8 sm:h-8 rounded-full sm:rounded-md flex items-center justify-center bg-slate-100 sm:bg-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-200 dark:bg-slate-700/50 dark:hover:bg-slate-700 transition-colors shrink-0">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-safe">{children}</div>
         {/* Footer */}
         {footer && (
-          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
+          <div className="px-5 sm:px-6 py-4 sm:py-4 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-end gap-3 shrink-0 bg-slate-50/50 dark:bg-slate-900/30 pb-safe">
             {footer}
           </div>
         )}
@@ -332,18 +336,18 @@ interface PaginationProps {
 }
 
 export const Pagination: React.FC<PaginationProps> = ({ page, totalPages, onPageChange, total, showing, label = "elementos" }) => (
-  <div className="flex items-center justify-between gap-4 px-5 py-3 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/20">
+  <div className="flex items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-3 sm:py-3 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/20">
     <button
       type="button"
       disabled={page <= 1}
       onClick={() => onPageChange(page - 1)}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-white dark:bg-slate-800"
+      className="inline-flex items-center justify-center gap-1.5 min-w-[44px] sm:min-w-0 h-10 sm:h-auto px-3 sm:py-1.5 rounded-lg sm:rounded-md text-sm sm:text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-white dark:bg-slate-800"
     >
-      <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+      <ChevronLeft className="w-5 h-5 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Anterior</span>
     </button>
-    <div className="text-xs text-slate-500 dark:text-slate-400">
+    <div className="text-xs text-slate-500 dark:text-slate-400 text-center flex-1">
       {showing !== undefined && total !== undefined ? (
-        <span>Mostrando <span className="font-semibold text-slate-700 dark:text-slate-200">{showing}</span> de {total} {label}</span>
+        <span>Mostrando <span className="font-semibold text-slate-700 dark:text-slate-200">{showing}</span> de {total} <span className="hidden sm:inline">{label}</span></span>
       ) : (
         <span>Pág. <span className="font-semibold text-slate-700 dark:text-slate-200">{page}</span> de {totalPages}</span>
       )}
@@ -352,9 +356,9 @@ export const Pagination: React.FC<PaginationProps> = ({ page, totalPages, onPage
       type="button"
       disabled={page >= totalPages}
       onClick={() => onPageChange(page + 1)}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-slate-200 dark:border-slate-700 text-primary hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-white dark:bg-slate-800"
+      className="inline-flex items-center justify-center gap-1.5 min-w-[44px] sm:min-w-0 h-10 sm:h-auto px-3 sm:py-1.5 rounded-lg sm:rounded-md text-sm sm:text-xs font-semibold border border-slate-200 dark:border-slate-700 text-primary hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-white dark:bg-slate-800"
     >
-      Siguiente <ChevronRight className="w-3.5 h-3.5" />
+      <span className="hidden sm:inline">Siguiente</span> <ChevronRight className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
     </button>
   </div>
 );
@@ -413,7 +417,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button: React.FC<ButtonProps> = ({ variant = "primary", icon: Icon, loading, children, size = "md", className = "", ...props }) => {
   const base = "inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
-  const sizeClass = size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm";
+  const sizeClass = size === "sm" ? "px-3 py-2 sm:py-1.5 text-sm sm:text-xs min-h-[36px] sm:min-h-0" : "px-4 py-3 sm:py-2.5 text-base sm:text-sm min-h-[44px] sm:min-h-0";
   const variants = {
     primary: "bg-primary text-white hover:bg-blue-700 shadow-sm",
     secondary: "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700",
