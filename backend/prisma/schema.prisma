@@ -492,6 +492,12 @@ model Convenio {
   notas         String?
   monto         Decimal?       @db.Decimal(14, 2)
   version       Int            @default(1)
+  tableData     Json?          @map("table_data") @db.JsonB
+
+  driveFileId   String?        @map("drive_file_id") @db.VarChar(255)
+  lastSyncAt    DateTime?      @map("last_sync_at") @db.Timestamptz()
+  syncStatus    SyncStatus     @default(pending) @map("sync_status")
+
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 

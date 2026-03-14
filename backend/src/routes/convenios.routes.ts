@@ -6,6 +6,7 @@ import { validate, validateParams, validateQuery, uuidParam, paginationQuery } f
 import * as Diff from 'diff';
 import { syncDocumentToDrive } from './drive.routes.js';
 import { verifyCredentials } from '../lib/googleDrive.js';
+import * as XLSX from 'xlsx';
 
 export const conveniosRouter = Router();
 conveniosRouter.use(authenticate);
@@ -20,6 +21,7 @@ const createConvenioSchema = z.object({
   estado: z.enum(['activo', 'pendiente', 'vencido', 'expirado', 'cancelado']).default('pendiente'),
   notas: z.string().optional(),
   monto: z.number().optional(),
+  tableData: z.any().optional(),
 });
 
 const updateConvenioSchema = createConvenioSchema.partial();
@@ -85,7 +87,7 @@ conveniosRouter.get(
           },
           versions: {
             orderBy: { version: 'desc' },
-            take: 10,
+            take: 20,
             include: { creator: { select: { id: true, name: true } } },
           },
           comments: {
@@ -354,6 +356,138 @@ conveniosRouter.post(
       });
 
       res.status(201).json(comment);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/convenios/:id/save-table ──────────────────────────────────────
+const saveTableSchema = z.object({
+  tableData: z.object({
+    columns: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      type: z.enum(['text', 'date', 'status', 'number']).default('text'),
+    })),
+    rows: z.array(z.object({
+      id: z.string(),
+      cells: z.record(z.string(), z.string()),
+    })),
+  }),
+  changeNote: z.string().optional(),
+  createVersion: z.boolean().default(false),
+});
+
+conveniosRouter.post(
+  '/:id/save-table',
+  validateParams(uuidParam),
+  validate(saveTableSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { tableData, changeNote, createVersion } = req.body;
+      const convenioId = req.params.id;
+
+      const conv = await prisma.convenio.findUniqueOrThrow({
+        where: { id: convenioId },
+      });
+
+      const isAdmin = req.user!.role === 'admin';
+      const isResponsable = conv.responsableId === req.user!.id;
+      if (!isAdmin && !isResponsable) {
+        res.status(403).json({ error: 'No tienes permiso para editar este convenio' });
+        return;
+      }
+
+      if (createVersion) {
+        const newVersionNum = conv.version + 1;
+
+        const [version] = await prisma.$transaction([
+          prisma.convenioVersion.create({
+            data: {
+              convenioId,
+              version: newVersionNum,
+              createdBy: req.user!.id,
+              snapshotData: { ...conv, tableData: conv.tableData } as any,
+              changeNote: changeNote || `Tabla guardada v${newVersionNum}`,
+            },
+          }),
+          prisma.convenio.update({
+            where: { id: convenioId },
+            data: { tableData: tableData as any, version: newVersionNum },
+          }),
+        ]);
+
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'CONVENIO_VERSION_CREATED' as any,
+            entityType: 'convenio',
+            entityId: convenioId,
+            entityName: conv.numero,
+            description: `Tabla guardada con nueva versión (v${newVersionNum})`,
+            metadata: { version: newVersionNum, changeNote },
+          },
+        });
+
+        res.json({ ok: true, version: newVersionNum, versionId: version.id });
+      } else {
+        await prisma.convenio.update({
+          where: { id: convenioId },
+          data: { tableData: tableData as any },
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'CONVENIO_UPDATED' as any,
+            entityType: 'convenio',
+            entityId: convenioId,
+            entityName: conv.numero,
+            description: 'Tabla actualizada',
+          },
+        });
+
+        res.json({ ok: true, version: conv.version });
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/convenios/:id/export-xlsx ──────────────────────────────────────
+conveniosRouter.get(
+  '/:id/export-xlsx',
+  validateParams(uuidParam),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const conv = await prisma.convenio.findUniqueOrThrow({
+        where: { id: req.params.id },
+        select: { numero: true, institucion: true, tableData: true },
+      });
+
+      const tableData = conv.tableData as any;
+      if (!tableData?.columns || !tableData?.rows) {
+        res.status(400).json({ error: 'Este convenio no tiene datos de tabla' });
+        return;
+      }
+
+      const headers = tableData.columns.map((c: any) => c.name);
+      const rows = tableData.rows.map((row: any) =>
+        tableData.columns.map((col: any) => row.cells[col.id] || ''),
+      );
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Convenio');
+
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const filename = `${conv.numero}_${conv.institucion}.xlsx`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(Buffer.from(buf));
     } catch (error) {
       next(error);
     }

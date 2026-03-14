@@ -15,6 +15,7 @@ import { requirePermission, getEffectivePermission } from '../middleware/checkPe
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import * as Diff from 'diff';
 import * as pdfParseModule from 'pdf-parse';
+import * as XLSX from 'xlsx';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { syncDocumentToDrive } from './drive.routes.js';
 import { verifyCredentials } from '../lib/googleDrive.js';
@@ -1543,6 +1544,181 @@ documentsRouter.post(
         fixed,
         total: orphanDocs.length,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/xlsx-data ────────────────────────────────────────
+// Parsea un archivo XLSX y devuelve los datos como JSON (columnas + filas)
+documentsRouter.get(
+  '/:id/xlsx-data',
+  validateParams(uuidParam),
+  requirePermission('read'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: paramId(req) },
+        select: { id: true, localPath: true, type: true },
+      });
+
+      const t = doc.type?.toUpperCase();
+      if (t !== 'XLSX' && t !== 'XLS') {
+        res.status(400).json({ error: 'El documento no es un archivo Excel' });
+        return;
+      }
+
+      if (!doc.localPath) {
+        res.status(404).json({ error: 'Archivo no disponible' });
+        return;
+      }
+
+      const filePath = resolveFilePath(doc.localPath);
+      if (!fs.existsSync(filePath)) {
+        res.status(404).json({ error: 'Archivo no encontrado en disco' });
+        return;
+      }
+
+      const wb = XLSX.readFile(filePath);
+      const sheetName = wb.SheetNames[0];
+      if (!sheetName) {
+        res.json({ columns: [], rows: [], sheetNames: wb.SheetNames });
+        return;
+      }
+
+      const ws = wb.Sheets[sheetName];
+      const rawData: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      if (rawData.length === 0) {
+        res.json({ columns: [], rows: [], sheetNames: wb.SheetNames });
+        return;
+      }
+
+      const headerRow = rawData[0];
+      const columns = headerRow.map((name: string, idx: number) => ({
+        id: `col_${idx}`,
+        name: String(name || `Columna ${idx + 1}`),
+        type: 'text' as const,
+      }));
+
+      const rows = rawData.slice(1).map((row, rowIdx) => {
+        const cells: Record<string, string> = {};
+        columns.forEach((col, colIdx) => {
+          cells[col.id] = String(row[colIdx] ?? '');
+        });
+        return { id: `row_${rowIdx}`, cells };
+      });
+
+      res.json({ columns, rows, sheetNames: wb.SheetNames });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/:id/save-xlsx ───────────────────────────────────────
+// Recibe datos de tabla JSON, genera XLSX, lo guarda en disco y actualiza el documento
+const saveXlsxSchema = z.object({
+  tableData: z.object({
+    columns: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      type: z.string().default('text'),
+    })),
+    rows: z.array(z.object({
+      id: z.string(),
+      cells: z.record(z.string(), z.string()),
+    })),
+  }),
+  changeNote: z.string().optional(),
+  createVersion: z.boolean().default(false),
+});
+
+documentsRouter.post(
+  '/:id/save-xlsx',
+  validateParams(uuidParam),
+  requirePermission('write'),
+  validate(saveXlsxSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { tableData, changeNote, createVersion } = req.body;
+
+      const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: docId },
+        select: { id: true, name: true, type: true, localPath: true, version: true, ownerId: true },
+      });
+
+      const headers = tableData.columns.map((c: any) => c.name);
+      const dataRows = tableData.rows.map((row: any) =>
+        tableData.columns.map((col: any) => row.cells[col.id] || ''),
+      );
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+
+      const uploadDir = path.join(process.cwd(), 'uploads');
+      await mkdir(uploadDir, { recursive: true });
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      const filePath = path.join(uploadDir, `${uniqueSuffix}.xlsx`);
+      XLSX.writeFile(wb, filePath);
+
+      const fileSize = fs.statSync(filePath).size;
+
+      if (createVersion) {
+        const newVersion = doc.version + 1;
+        await prisma.$transaction([
+          prisma.document.update({
+            where: { id: docId },
+            data: { localPath: filePath, size: BigInt(fileSize), version: newVersion, updatedAt: new Date() },
+          }),
+          prisma.documentVersion.create({
+            data: {
+              documentId: docId, version: newVersion, localPath: filePath,
+              size: BigInt(fileSize), changeNote: changeNote || `Tabla guardada v${newVersion}`,
+              createdBy: req.user!.id,
+            } as any,
+          }),
+          prisma.activityLog.create({
+            data: {
+              userId: req.user!.id, activity: 'DOCUMENT_VERSION_CREATED',
+              entityType: 'document', entityId: docId, entityName: doc.name,
+              description: `Tabla Excel guardada con nueva versión v${newVersion}`,
+            },
+          }),
+        ]);
+
+        let syncResult = null;
+        try {
+          const driveReady = await verifyCredentials();
+          if (driveReady) syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
+        } catch (e) { syncResult = { ok: false, error: (e as Error).message }; }
+
+        res.json(serializeBigInt({ ok: true, version: newVersion, size: fileSize, syncResult }));
+      } else {
+        await prisma.document.update({
+          where: { id: docId },
+          data: { localPath: filePath, size: BigInt(fileSize), updatedAt: new Date() },
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id, activity: 'DOCUMENT_UPDATED',
+            entityType: 'document', entityId: docId, entityName: doc.name,
+            description: 'Tabla Excel actualizada',
+          },
+        });
+
+        let syncResult = null;
+        try {
+          const driveReady = await verifyCredentials();
+          if (driveReady) syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
+        } catch (e) { syncResult = { ok: false, error: (e as Error).message }; }
+
+        res.json(serializeBigInt({ ok: true, version: doc.version, size: fileSize, syncResult }));
+      }
     } catch (error) {
       next(error);
     }
