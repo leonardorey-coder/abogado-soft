@@ -19,3 +19,9 @@ export const ROUTES: Record<ViewState, string> = {
     [ViewState.PRIVACY]: '/privacidad',
     [ViewState.SECURITY_INFO]: '/informacion-seguridad',
 };
+
+export function getDocumentRoute(docId: string, docType?: string): string {
+    const t = docType?.toUpperCase();
+    if (t === 'XLSX' || t === 'XLS') return `/documento/${docId}/excel`;
+    return `/documento/${docId}`;
+}

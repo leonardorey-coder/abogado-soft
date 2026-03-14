@@ -296,6 +296,7 @@ export interface ApiConvenioVersion {
   version: number;
   size: number;
   changeNote: string | null;
+  snapshotData?: any;
   createdAt: string;
   creator?: { id: string; name: string } | null;
 }
@@ -307,6 +308,11 @@ export interface ApiConvenioComment {
   createdAt: string;
   user: { id: string; name: string; avatarUrl: string | null };
   replies?: ApiConvenioComment[];
+}
+
+export interface TableData {
+  columns: { id: string; name: string; type: 'text' | 'date' | 'status' | 'number' }[];
+  rows: { id: string; cells: Record<string, string> }[];
 }
 
 export interface ApiConvenio {
@@ -321,6 +327,8 @@ export interface ApiConvenio {
   estado: string;
   notas: string | null;
   monto: string | null;
+  version: number;
+  tableData: TableData | null;
   createdAt: string;
   updatedAt: string;
   responsable?: { id: string; name: string; email: string } | null;
@@ -564,6 +572,15 @@ export const documentsApi = {
       syncResult: { ok: boolean; driveFileId?: string; error?: string } | null;
     }>(`/documents/${id}/save`, formData);
   },
+
+  getXlsxData: (id: string) =>
+    apiFetch<{ columns: TableData['columns']; rows: TableData['rows']; sheetNames: string[] }>(`/documents/${id}/xlsx-data`),
+
+  saveXlsx: (id: string, tableData: TableData, changeNote?: string, createVersion = false) =>
+    apiFetch<{ ok: boolean; version: number; size: number; syncResult: any }>(`/documents/${id}/save-xlsx`, {
+      method: 'POST',
+      body: JSON.stringify({ tableData, changeNote, createVersion }),
+    }),
 };
 
 // ─── PERMISOS DE DOCUMENTOS ─────────────────────────────────────────────
@@ -693,6 +710,35 @@ export const conveniosApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  saveTable: (id: string, tableData: TableData, changeNote?: string, createVersion = false) =>
+    apiFetch<{ ok: boolean; version: number; versionId?: string }>(`/convenios/${id}/save-table`, {
+      method: 'POST',
+      body: JSON.stringify({ tableData, changeNote, createVersion }),
+    }),
+
+  createVersion: (id: string, changeNote?: string) =>
+    apiFetch<ApiConvenioVersion>(`/convenios/${id}/versions`, {
+      method: 'POST',
+      body: JSON.stringify({ changeNote }),
+    }),
+
+  exportXlsx: async (id: string, filename: string) => {
+    const { supabase } = await import('./supabaseAuth');
+    const session = (await supabase.auth.getSession()).data.session;
+    const token = session?.access_token;
+    const res = await fetch(`${API_URL}/convenios/${id}/export-xlsx`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Error al exportar XLSX');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ─── CASOS / EXPEDIENTES ────────────────────────────────────────────────

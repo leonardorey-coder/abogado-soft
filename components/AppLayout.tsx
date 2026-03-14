@@ -641,14 +641,9 @@ export const AppLayout: React.FC = () => {
       closeUploadModal();
       await refreshDocuments();
       if (modal.files.length === 1 && lastDoc?.id) {
-        const isExcel =
-          lastDoc.type?.toUpperCase() === "XLSX" ||
-          lastDoc.type?.toUpperCase() === "XLS";
-        navigate(
-          isExcel
-            ? `/documento/${lastDoc.id}/excel`
-            : `/documento/${lastDoc.id}`
-        );
+        const t = lastDoc.type?.toUpperCase();
+        const isExcel = t === "XLSX" || t === "XLS";
+        navigate(isExcel ? `/documento/${lastDoc.id}/excel` : `/documento/${lastDoc.id}`);
       }
     } catch (err: any) {
       setModal((prev) => ({

@@ -18,6 +18,7 @@ const ConvenioDetails = lazy(() => import("./components/ConvenioDetails").then(m
 const TeamPage = lazy(() => import("./components/TeamPage").then(m => ({ default: m.TeamPage })));
 const DocumentEditor = lazy(() => import("./components/DocumentEditor").then(m => ({ default: m.DocumentEditor })));
 const ExcelEditor = lazy(() => import("./components/ExcelEditor").then(m => ({ default: m.ExcelEditor })));
+const DocumentXlsxEditor = lazy(() => import("./components/DocumentXlsxEditor").then(m => ({ default: m.DocumentXlsxEditor })));
 const ActivityLog = lazy(() => import("./components/ActivityLog").then(m => ({ default: m.ActivityLog })));
 const SecurityPage = lazy(() => import("./components/SecurityPage").then(m => ({ default: m.SecurityPage })));
 const TrashPage = lazy(() => import("./components/TrashPage").then(m => ({ default: m.TrashPage })));
@@ -59,9 +60,10 @@ export default function App() {
                 <Route path="/convenio/nuevo" element={<ConvenioForm />} />
                 <Route path="/convenio/:id" element={<ConvenioDetails />} />
                 <Route path="/convenio/:id/editar" element={<ConvenioForm />} />
+                <Route path="/convenio/:id/tabla" element={<ExcelEditor />} />
                 <Route path="/equipo" element={<TeamPage />} />
                 <Route path="/documento/:id" element={<DocumentEditor />} />
-                <Route path="/documento/:id/excel" element={<ExcelEditor />} />
+                <Route path="/documento/:id/excel" element={<DocumentXlsxEditor />} />
                 <Route path="/actividad" element={<ActivityLog />} />
                 <Route path="/seguridad" element={<SecurityPage />} />
                 <Route path="/papelera" element={<TrashPage />} />
