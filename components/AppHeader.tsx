@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
+import { UserAvatar } from "./UserAvatar";
 
 interface AppHeaderProps {
   onUploadClick?: () => void;
@@ -168,13 +169,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-[2px] border-white dark:border-slate-700 shadow-sm overflow-hidden focus:ring-2 focus:ring-primary focus:outline-none transition-transform hover:scale-105 active:scale-95"
             aria-label="Menú de usuario"
           >
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white font-black text-lg">
-                {(user?.name ?? 'U').charAt(0).toUpperCase()}
-              </div>
-            )}
+            <UserAvatar
+              name={user?.name}
+              avatarUrl={user?.avatarUrl}
+              className="w-full h-full object-cover"
+            />
           </button>
 
           {showUserMenu && (

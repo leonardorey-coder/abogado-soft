@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Document } from "../types";
 import { usersApi, assignmentsApi, ApiUser } from "../lib/api";
+import { UserAvatar } from "./UserAvatar";
 
 interface AssignModalProps {
     document: Document;
@@ -86,16 +87,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({ document, onClose }) =
                                                 : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/50 bg-white dark:bg-[#1a212f]"
                                             }`}
                                     >
-                                        {u.avatarUrl ? (
-                                            <img src={u.avatarUrl} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
-                                        ) : (
-                                            <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-xs uppercase ${isSelected
-                                                    ? "bg-primary text-white"
-                                                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                                                }`}>
-                                                {u.name.substring(0, 2)}
-                                            </div>
-                                        )}
+                                        <UserAvatar
+                                            name={u.name}
+                                            avatarUrl={u.avatarUrl}
+                                            className="w-8 h-8 rounded-full object-cover shrink-0"
+                                        />
                                         <div className="flex flex-col min-w-0">
                                             <span className={`text-xs font-bold leading-tight truncate ${isSelected ? "text-primary dark:text-primary" : "text-[#111318] dark:text-white"
                                                 }`}>

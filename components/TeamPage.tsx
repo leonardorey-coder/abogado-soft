@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
+import { UserAvatar } from "./UserAvatar";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -338,11 +339,11 @@ export const TeamPage: React.FC = () => {
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="size-9 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
-                              {u.avatarUrl ? (
-                                <img src={u.avatarUrl} alt={u.name} className="size-full object-cover" />
-                              ) : (
-                                <span className="text-primary text-sm font-bold">{(u.name || "?").charAt(0).toUpperCase()}</span>
-                              )}
+                              <UserAvatar
+                                name={u.name}
+                                avatarUrl={u.avatarUrl}
+                                className="size-full object-cover"
+                              />
                             </div>
                             <div className="min-w-0">
                               <p className="font-semibold text-[#111318] dark:text-white truncate">{u.name}</p>
@@ -435,11 +436,11 @@ export const TeamPage: React.FC = () => {
                   <div key={u.id} className={`p-4 flex flex-col gap-3 transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}>
                     <div className="flex items-center gap-3">
                       <div className="size-10 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
-                        {u.avatarUrl ? (
-                          <img src={u.avatarUrl} alt={u.name} className="size-full object-cover" />
-                        ) : (
-                          <span className="text-primary text-base font-bold">{(u.name || "?").charAt(0).toUpperCase()}</span>
-                        )}
+                        <UserAvatar
+                          name={u.name}
+                          avatarUrl={u.avatarUrl}
+                          className="size-full object-cover"
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#111318] dark:text-white text-base truncate">{u.name}</p>

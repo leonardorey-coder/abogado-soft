@@ -20,6 +20,7 @@ import { getRoleLabel } from "../lib/constants";
 import { documentsApi, backupsApi } from "../lib/api";
 import { useDocuments } from "../lib/useDocuments";
 import { ModalFrame } from "./ui/index";
+import { UserAvatar } from "./UserAvatar";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Types
@@ -41,16 +42,6 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function getUserInitials(name?: string | null): string {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -186,17 +177,11 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
         <div className="shrink-0 border-t border-slate-200 dark:border-slate-700/60 px-3 py-3">
           <div className="flex items-center gap-2.5">
             {/* Avatar */}
-            {user?.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.name}
-                className="w-8 h-8 rounded-full object-cover shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-                {getUserInitials(user?.name)}
-              </div>
-            )}
+            <UserAvatar
+              name={user?.name}
+              avatarUrl={user?.avatarUrl}
+              className="w-8 h-8 rounded-full object-cover shrink-0"
+            />
             {/* Info */}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, createContext, useContext } from "react";
+import React, { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X, ChevronLeft, ChevronRight, MoreVertical, Loader2, AlertCircle, FolderOpen, CheckCircle2 } from "lucide-react";
 
@@ -189,22 +189,29 @@ export interface ActionMenuItem {
   danger?: boolean;
   disabled?: boolean;
   separator?: boolean;
+  closeOnClick?: boolean;
 }
 
 interface ActionMenuProps {
   items: ActionMenuItem[];
+  onClose?: () => void;
 }
 
-export const ActionMenu: React.FC<ActionMenuProps> = ({ items }) => {
+export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const closeMenu = useCallback(() => {
+    onClose?.();
+    setOpen(false);
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) closeMenu(); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
-  }, [open]);
+  }, [open, closeMenu]);
 
   return (
     <div className="relative" ref={ref}>
@@ -224,7 +231,11 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items }) => {
               <button
                 type="button"
                 disabled={item.disabled}
-                onClick={(e) => { e.stopPropagation(); item.onClick(); setOpen(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  item.onClick();
+                  if (item.closeOnClick !== false) closeMenu();
+                }}
                 className={`w-full text-left px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium flex items-center gap-3 sm:gap-2.5 transition-colors disabled:opacity-50 ${
                   item.danger
                     ? "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"

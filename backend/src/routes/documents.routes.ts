@@ -902,16 +902,39 @@ documentsRouter.get(
         const ext = path.extname(ver.localPath).toLowerCase();
 
         if (ext === '.txt' || ext === '.rtf') {
-          return `<p>${fs.readFileSync(ver.localPath, 'utf-8')}</p>`;
+          const raw = fs.readFileSync(ver.localPath, 'utf-8');
+          return raw.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
         }
         if (ext === '.docx' || ext === '.doc') {
-          const result = await mammoth.convertToHtml({ path: ver.localPath });
+          const result = await mammoth.convertToHtml(
+            { path: ver.localPath },
+            {
+              convertImage: mammoth.images.imgElement(async (image: any) => {
+                const buf = await image.read();
+                const base64 = Buffer.from(buf).toString('base64');
+                const mime = image.contentType || 'image/png';
+                return { src: `data:${mime};base64,${base64}` };
+              }),
+              styleMap: [
+                "p[style-name='Title'] => h1:fresh",
+                "p[style-name='Heading 1'] => h1:fresh",
+                "p[style-name='Heading 2'] => h2:fresh",
+                "p[style-name='Heading 3'] => h3:fresh",
+                "p[style-name='Subtitle'] => h2:fresh",
+                "b => strong",
+                "i => em",
+                "u => u",
+                "strike => s",
+              ],
+            },
+          );
           return result.value || '';
         }
         if (ext === '.pdf') {
           const dataBuffer = fs.readFileSync(ver.localPath);
           const data = await pdfParse(dataBuffer);
-          return `<p>${data.text.replace(/\\n/g, '<br/>')}</p>`;
+          const raw = data.text || '';
+          return raw.split(/\n\n+/).map((p: string) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
         }
         return '';
       };

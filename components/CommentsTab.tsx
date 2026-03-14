@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { formatDate, formatTimeAgo } from '../lib/formatters';
+import { formatDate } from '../lib/formatters';
+import { UserAvatar } from './UserAvatar';
 
 export interface GenericComment {
     id: string;
@@ -84,13 +85,11 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                             <div key={comment.id} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${comment.isResolved ? 'border-gray-100 dark:border-gray-800 opacity-60' : 'border-blue-100 dark:border-primary/20 ring-1 ring-blue-500/10'}`}>
                                 <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                        {comment.user.avatarUrl ? (
-                                            <img src={comment.user.avatarUrl} alt={comment.user.name} className="size-8 rounded-full" />
-                                        ) : (
-                                            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                {comment.user.name.charAt(0)}
-                                            </div>
-                                        )}
+                                        <UserAvatar
+                                            name={comment.user.name}
+                                            avatarUrl={comment.user.avatarUrl}
+                                            className="size-8 rounded-full object-cover"
+                                        />
                                         <div>
                                             <h4 className="font-bold text-[#0e0e1b] dark:text-white text-xs">{comment.user.name}</h4>
                                             <p className="text-[10px] text-gray-500">{formatDate(comment.createdAt)}</p>

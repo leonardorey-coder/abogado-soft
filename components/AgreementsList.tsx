@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { conveniosApi, ApiConvenio } from "../lib/api";
+import { useFileDragDrop } from "../lib/useFileDragDrop";
+import { Upload } from "lucide-react";
 
 
 
@@ -27,6 +29,10 @@ function formatFecha(iso: string): string {
 
 export const AgreementsList: React.FC = () => {
   const navigate = useNavigate();
+  const { openUploadModal } = useOutletContext<{ openUploadModal: (files?: File[]) => void }>();
+  const { isDraggingOver } = useFileDragDrop({
+    onDrop: (files) => openUploadModal(files),
+  });
   const [convenios, setConvenios] = useState<ApiConvenio[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -63,6 +69,22 @@ export const AgreementsList: React.FC = () => {
   const to = Math.min(page * PER_PAGE, total);
 
   return (
+    <>
+      {isDraggingOver && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary pointer-events-none">
+          <div className="flex flex-col items-center gap-4 p-10 rounded-2xl bg-white/90 dark:bg-slate-900/90 shadow-2xl border-2 border-primary">
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+              <Upload className="w-8 h-8 text-primary" />
+            </div>
+            <p className="text-xl font-bold text-slate-900 dark:text-white">
+              Suelta el archivo aquí
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Se abrirá el modal de subida para adjuntar tu documento
+            </p>
+          </div>
+        </div>
+      )}
     <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
       <div className="flex flex-wrap justify-between items-end gap-4">
         <div className="flex flex-col gap-2">
@@ -244,5 +266,6 @@ export const AgreementsList: React.FC = () => {
         </button>
       </div>
     </main>
+    </>
   );
 };

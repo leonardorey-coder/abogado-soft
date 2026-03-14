@@ -178,7 +178,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
     }
 
     return (
-      <div className="flex-1 flex flex-col relative">
+      <div className="flex-1 flex flex-col relative isolate">
         {!isReady && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 dark:bg-gray-900/90 z-10">
             <div className="animate-spin size-12 border-4 border-primary border-t-transparent rounded-full mb-4" />
@@ -188,7 +188,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         <div
           ref={containerRef}
           className="superdoc-container flex-1 min-h-[600px]"
-          style={{ height: '100%' }}
+          style={{ height: '100%', contain: 'layout style' }}
         />
       </div>
     );
@@ -621,29 +621,86 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   const renderEditorContent = () => {
     if (showDiff) {
-      const v1 = selectedVersions[0] === 'current' ? doc : versions.find(v => v.id === selectedVersions[0]);
-      const v2 = selectedVersions[1] === 'current' ? doc : versions.find(v => v.id === selectedVersions[1]);
-
       return (
-        <div className="w-full h-full flex flex-col p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-[#0a0a10]">
-          {/* Contenedor que simula una hoja A4 de documento */}
-          <div className="mx-auto w-full max-w-[850px] min-h-[1100px] bg-white dark:bg-[#121212] px-16 py-24 sm:px-20 shadow-md border border-gray-200 dark:border-white/10 mb-16 text-base text-gray-900 dark:text-gray-100 leading-relaxed text-justify">
-            {loadingDiff ? (
-              <div className="flex flex-col items-center justify-center pt-32">
-                <div className="animate-spin size-12 border-4 border-primary border-t-transparent rounded-full mb-4" />
-                <p className="text-gray-500 font-medium">Renderizando diferencias del documento...</p>
-              </div>
-            ) : diffHtml ? (
+        <div className="w-full h-full flex flex-col p-4 sm:p-6 lg:p-8 bg-gray-100 dark:bg-[#0a0a10]">
+          {loadingDiff ? (
+            <div className="mx-auto w-full max-w-[850px] min-h-[600px] bg-white dark:bg-[#121212] shadow-md border border-gray-200 dark:border-white/10 flex flex-col items-center justify-center">
+              <div className="animate-spin size-12 border-4 border-primary border-t-transparent rounded-full mb-4" />
+              <p className="text-gray-500 font-medium">Renderizando diferencias del documento...</p>
+            </div>
+          ) : diffHtml ? (
+            <div className="mx-auto w-full max-w-[850px] bg-white dark:bg-[#121212] shadow-md border border-gray-200 dark:border-white/10 mb-16">
+              <style>{`
+                .diff-doc-container {
+                  padding: 72px 80px;
+                  font-family: 'Times New Roman', 'Cambria', Georgia, serif;
+                  font-size: 12pt;
+                  line-height: 1.5;
+                  color: #1a1a1a;
+                  word-wrap: break-word;
+                  overflow-wrap: break-word;
+                }
+                @media (max-width: 640px) {
+                  .diff-doc-container { padding: 40px 24px; }
+                }
+                .dark .diff-doc-container { color: #e5e5e5; }
+                .diff-doc-container h1 { font-size: 20pt; font-weight: 700; margin: 24px 0 8px; }
+                .diff-doc-container h2 { font-size: 16pt; font-weight: 700; margin: 20px 0 6px; }
+                .diff-doc-container h3 { font-size: 13pt; font-weight: 700; margin: 16px 0 4px; }
+                .diff-doc-container p { margin: 0 0 8px; text-align: justify; }
+                .diff-doc-container ul, .diff-doc-container ol { margin: 8px 0; padding-left: 28px; }
+                .diff-doc-container li { margin-bottom: 4px; }
+                .diff-doc-container img { max-width: 100%; height: auto; margin: 12px 0; }
+                .diff-doc-container table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 12px 0;
+                  font-size: 11pt;
+                }
+                .diff-doc-container th,
+                .diff-doc-container td {
+                  border: 1px solid #666;
+                  padding: 6px 10px;
+                  text-align: left;
+                  vertical-align: top;
+                }
+                .diff-doc-container th {
+                  font-weight: 700;
+                  background: #f3f4f6;
+                }
+                .dark .diff-doc-container th { background: #1e293b; }
+                .dark .diff-doc-container th,
+                .dark .diff-doc-container td { border-color: #475569; }
+                .diff-doc-container a { color: #2563eb; text-decoration: underline; }
+                .diff-doc-container ins {
+                  background: #bbf7d0;
+                  color: #14532d;
+                  text-decoration: none;
+                  padding: 1px 2px;
+                  border-radius: 2px;
+                }
+                .diff-doc-container del {
+                  background: #fecaca;
+                  color: #7f1d1d;
+                  text-decoration: line-through;
+                  padding: 1px 2px;
+                  border-radius: 2px;
+                }
+                .dark .diff-doc-container ins { background: #166534; color: #bbf7d0; }
+                .dark .diff-doc-container del { background: #991b1b; color: #fecaca; }
+              `}</style>
               <div
-                className="diff-html-container font-sans"
+                className="diff-doc-container"
                 dangerouslySetInnerHTML={{ __html: diffHtml }}
               />
-            ) : (
-              <div className="text-center pt-32 text-gray-500 font-sans">
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-[850px] min-h-[400px] bg-white dark:bg-[#121212] shadow-md border border-gray-200 dark:border-white/10 flex items-center justify-center">
+              <p className="text-gray-500 font-sans">
                 No se encontraron diferencias textuales o el documento no pudo ser procesado.
-              </div>
-            )}
-          </div>
+              </p>
+            </div>
+          )}
         </div>
       );
     }
@@ -917,10 +974,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         </aside>
 
         {/* Main Content (Always shows editor + toolbar) */}
-        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-visible lg:ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'lg:mr-80' : ''}`}>
+        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden lg:ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'lg:mr-80' : ''}`}>
           <>
             {/* Toolbar */}
-            <div className={`fixed left-0 lg:left-64 top-16 z-20 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-4 lg:px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-0 lg:right-80' : 'right-0'} overflow-x-auto no-scrollbar`}>
+            <div className={`fixed left-0 lg:left-64 top-16 z-30 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-4 lg:px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-0 lg:right-80' : 'right-0'} overflow-x-auto no-scrollbar`}>
               <div className="flex items-center gap-3">
                 {showDiff ? (
                   <button onClick={exitCompare} className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-gray-800 text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg hover:bg-gray-700 transition-colors shrink-0">
@@ -979,7 +1036,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             </div>
 
             {/* Document area */}
-            <div className="flex-1 overflow-y-auto pt-[87px] pb-24 lg:pb-0 flex flex-col">
+            <div className="flex-1 overflow-y-auto pt-[87px] pb-24 lg:pb-0 flex flex-col isolate">
               {renderEditorContent()}
             </div>
           </>

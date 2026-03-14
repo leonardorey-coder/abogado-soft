@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Document, DocumentPermissionLevel } from "../types";
-import { permissionsApi, usersApi, ApiUser, ApiDocumentPermission, SetPermissionPayload } from "../lib/api";
+import { permissionsApi, usersApi, ApiUser, SetPermissionPayload } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { UserAvatar } from "./UserAvatar";
 
 const PERMISSION_LABELS: Record<DocumentPermissionLevel, string> = {
   none: "Sin Acceso",
@@ -19,25 +20,7 @@ const PERMISSION_DESCRIPTIONS: Record<DocumentPermissionLevel, string> = {
   admin: "Control total, incluyendo gestión de permisos",
 };
 
-const AVATAR_COLORS = [
-  "bg-primary/10 text-primary",
-  "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
-  "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
-  "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
-  "bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400",
-  "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400",
-];
-
 const LEVEL_ORDER: DocumentPermissionLevel[] = ["none", "download", "read", "write", "admin"];
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .filter((w) => w.length > 0)
-    .map((w) => w[0].toUpperCase())
-    .slice(0, 2)
-    .join("");
-}
 
 function getLevelBadgeClass(level: DocumentPermissionLevel): string {
   const base = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors border";
@@ -53,9 +36,7 @@ interface MemberRow {
   name: string;
   email: string;
   avatarUrl: string | null;
-  initials: string;
   level: DocumentPermissionLevel;
-  colorClass: string;
   isOwner: boolean;
 }
 
@@ -100,7 +81,6 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
 
       const users: ApiUser[] = Array.isArray(usersRaw) ? usersRaw : (usersRaw as any).data ?? [];
       const existingPerms = permsRes.permissions ?? [];
-      const effectivePermission = permsRes.effectivePermission ?? "none";
 
       // Solo el abogado (admin) puede gestionar permisos
       // Se ignora effectivePermission para esta decisión
@@ -118,14 +98,12 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
       const ownerId = document.ownerId ?? (document as any).owner?.id ?? null;
 
       // Construir filas de miembros
-      const rows: MemberRow[] = users.map((u, i) => ({
+      const rows: MemberRow[] = users.map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
         avatarUrl: u.avatarUrl,
-        initials: getInitials(u.name),
         level: u.id === ownerId ? "admin" : (permMap.get(u.id) ?? "none"),
-        colorClass: AVATAR_COLORS[i % AVATAR_COLORS.length],
         isOwner: u.id === ownerId,
       }));
 
@@ -254,17 +232,11 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
                   <div className="space-y-1">
                     {activeMembers.map((member) => (
                       <div key={member.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                        {member.avatarUrl ? (
-                          <img
-                            src={member.avatarUrl}
-                            alt={member.name}
-                            className="shrink-0 w-10 h-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${member.colorClass}`}>
-                            {member.initials}
-                          </div>
-                        )}
+                        <UserAvatar
+                          name={member.name}
+                          avatarUrl={member.avatarUrl}
+                          className="shrink-0 w-10 h-10 rounded-full object-cover"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900 dark:text-white truncate flex items-center gap-2">
                             {member.name}
@@ -344,17 +316,11 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
                   <div className="space-y-1">
                     {inactiveMembers.map((member) => (
                       <div key={member.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                        {member.avatarUrl ? (
-                          <img
-                            src={member.avatarUrl}
-                            alt={member.name}
-                            className="shrink-0 w-10 h-10 rounded-full object-cover opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all"
-                          />
-                        ) : (
-                          <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all ${member.colorClass}`}>
-                            {member.initials}
-                          </div>
-                        )}
+                        <UserAvatar
+                          name={member.name}
+                          avatarUrl={member.avatarUrl}
+                          className="shrink-0 w-10 h-10 rounded-full object-cover opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all"
+                        />
                         <div className="flex-1 min-w-0 opacity-70 group-hover:opacity-100 transition-opacity">
                           <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{member.name}</p>
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>

@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Document, FileStatus } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
+import { useFileDragDrop } from "../lib/useFileDragDrop";
 import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
 import { AssignModal } from "./AssignModal";
 import { useAuth } from "../contexts/AuthContext";
-import { getRoleLabel } from "../lib/constants";
+import { UserAvatar } from "./UserAvatar";
 import {
   PageHeader,
   StatCard,
@@ -28,7 +29,6 @@ import {
   CheckCircle,
   FileUp,
   Users,
-  User,
   ArrowRight,
   MoreVertical,
   Calendar,
@@ -134,70 +134,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [adminAccessDocument, setAdminAccessDocument] = useState<Document | null>(null);
   const [adminUnlockedForSession, setAdminUnlockedForSession] = useState(false);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
   const [assignmentsReceived, setAssignmentsReceived] = useState<ApiDocumentAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const deleteConfirmTimerRef = useRef<number | null>(null);
 
-  // Drag-and-drop state
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const dragCounterRef = useRef(0);
-
-  // ─── Drag-and-drop handlers ───────────────────────────────────────────
-
-  const handleWindowDragEnter = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      dragCounterRef.current++;
-      if (e.dataTransfer?.types.includes("Files") && !isUploadModalOpen) {
-        setIsDraggingOver(true);
-      }
-    },
-    [isUploadModalOpen]
-  );
-
-  const handleWindowDragLeave = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer?.types.includes("Files")) {
-      dragCounterRef.current--;
-      if (dragCounterRef.current === 0) {
-        setIsDraggingOver(false);
-      }
-    }
-  }, []);
-
-  const handleWindowDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault();
-  }, []);
-
-  const handleWindowDrop = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      dragCounterRef.current = 0;
-      setIsDraggingOver(false);
-      if (e.dataTransfer?.files.length) {
-        const files = Array.from(e.dataTransfer.files);
-        onOpenUploadModal?.(files);
-      }
-    },
-    [onOpenUploadModal]
-  );
-
-  useEffect(() => {
-    window.addEventListener("dragenter", handleWindowDragEnter);
-    window.addEventListener("dragleave", handleWindowDragLeave);
-    window.addEventListener("dragover", handleWindowDragOver);
-    window.addEventListener("drop", handleWindowDrop);
-    return () => {
-      window.removeEventListener("dragenter", handleWindowDragEnter);
-      window.removeEventListener("dragleave", handleWindowDragLeave);
-      window.removeEventListener("dragover", handleWindowDragOver);
-      window.removeEventListener("drop", handleWindowDrop);
-    };
-  }, [handleWindowDragEnter, handleWindowDragLeave, handleWindowDragOver, handleWindowDrop]);
+  const { isDraggingOver } = useFileDragDrop({
+    onDrop: (files) => onOpenUploadModal?.(files),
+    disabled: isUploadModalOpen,
+  });
 
   const refreshAssignments = useCallback(() => {
     setAssignmentsLoading(true);
     assignmentsApi
-      .listReceived({ limit: 30 })
+      .listReceived({ limit: 30, status: "pendiente" })
       .then((res) => setAssignmentsReceived(res.data ?? []))
       .catch(() => setAssignmentsReceived([]))
       .finally(() => setAssignmentsLoading(false));
@@ -237,14 +187,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDelete = (doc: Document) => {
     if (confirmDeleteDocId === doc.id) {
+      if (confirmDeleteSecondsLeft > 0) {
+        return;
+      }
+      if (deleteConfirmTimerRef.current) {
+        window.clearInterval(deleteConfirmTimerRef.current);
+        deleteConfirmTimerRef.current = null;
+      }
       setConfirmDeleteDocId(null);
+      setConfirmDeleteSecondsLeft(0);
       handleDeleteDoc(doc.id);
     } else {
       setConfirmDeleteDocId(doc.id);
-      // Auto-clear confirmation after 3 seconds
-      setTimeout(() => setConfirmDeleteDocId((prev) => (prev === doc.id ? null : prev)), 3000);
+      setConfirmDeleteSecondsLeft(3);
+      if (deleteConfirmTimerRef.current) {
+        window.clearInterval(deleteConfirmTimerRef.current);
+      }
+      deleteConfirmTimerRef.current = window.setInterval(() => {
+        setConfirmDeleteSecondsLeft((prev) => {
+          if (prev <= 1) {
+            if (deleteConfirmTimerRef.current) {
+              window.clearInterval(deleteConfirmTimerRef.current);
+              deleteConfirmTimerRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimerRef.current) {
+        window.clearInterval(deleteConfirmTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleAdminAccessSuccess = () => {
     setAdminUnlockedForSession(true);
@@ -282,11 +262,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onClick: () => handleArchive(doc),
       },
       {
-        label: confirmDeleteDocId === doc.id ? "Confirmar eliminación" : "Eliminar",
+        label:
+          confirmDeleteDocId === doc.id
+            ? confirmDeleteSecondsLeft > 0
+              ? `Habilitar confirmar (${confirmDeleteSecondsLeft}s)`
+              : "Click para confirmar"
+            : "Eliminar",
         icon: Trash2,
         onClick: () => handleDelete(doc),
         danger: true,
         separator: true,
+        closeOnClick: confirmDeleteDocId === doc.id && confirmDeleteSecondsLeft === 0,
       },
     ];
     return items;
@@ -294,9 +280,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Computed data ────────────────────────────────────────────────────
 
+  const pendingAssignments = assignmentsReceived.filter(
+    (assignment) => assignment.status === "pendiente" && Boolean(assignment.document)
+  );
+
   const counts = {
     activos: documents.filter((d) => d.fileStatus === "ACTIVO").length,
-    pendientes: documents.filter((d) => d.fileStatus === "PENDIENTE").length,
+    pendientes:
+      documents.filter((d) => d.fileStatus === "PENDIENTE").length +
+      pendingAssignments.length,
     inactivos: documents.filter((d) => d.fileStatus === "INACTIVO").length,
     total: documents.length,
   };
@@ -406,6 +398,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             value={counts.total}
             icon={FileText}
             variant="primary"
+            onClick={() => setFilter("TODOS")}
           />
         </div>
 
@@ -517,17 +510,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 max-w-full"
                                       title={`${a.assignee.name} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
                                     >
-                                      {a.assignee.avatarUrl ? (
-                                        <img
-                                          src={a.assignee.avatarUrl}
-                                          alt=""
-                                          className="w-4 h-4 rounded-full object-cover shrink-0"
-                                        />
-                                      ) : (
-                                        <span className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                                          <User className="w-2.5 h-2.5 text-primary" />
-                                        </span>
-                                      )}
+                                      <UserAvatar
+                                        name={a.assignee.name}
+                                        avatarUrl={a.assignee.avatarUrl}
+                                        className="w-4 h-4 rounded-full object-cover shrink-0"
+                                      />
                                       <span className="font-medium truncate">{a.assignee.name}</span>
                                       <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0">
                                         {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
@@ -571,7 +558,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               className="shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <ActionMenu items={buildMenuItems(doc)} />
+                              <ActionMenu
+                                items={buildMenuItems(doc)}
+                                onClose={() => {
+                                  if (confirmDeleteDocId === doc.id) {
+                                    setConfirmDeleteDocId(null);
+                                    setConfirmDeleteSecondsLeft(0);
+                                    if (deleteConfirmTimerRef.current) {
+                                      window.clearInterval(deleteConfirmTimerRef.current);
+                                      deleteConfirmTimerRef.current = null;
+                                    }
+                                  }
+                                }}
+                              />
                             </div>
                           </div>
                         </div>
@@ -625,7 +624,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                   ))}
                 </div>
-              ) : pendingDocuments.length === 0 && assignmentsReceived.length === 0 ? (
+              ) : pendingDocuments.length === 0 && pendingAssignments.length === 0 ? (
                 <div className="py-10 px-6 text-center">
                   <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -684,14 +683,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       })}
                     </>
                   )}
-                  {assignmentsReceived.length > 0 && (
+                  {pendingAssignments.length > 0 && (
                     <>
                       <div className="px-5 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/60">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                           Asignados a ti
                         </p>
                       </div>
-                      {assignmentsReceived.map((a) => {
+                      {pendingAssignments.map((a) => {
                         const doc = a.document;
                         if (!doc) return null;
                         const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type ?? "DOCX");
