@@ -4,6 +4,7 @@ import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
 import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
+import { getDocumentRoute } from "../lib/routes";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
@@ -163,7 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (onOpenDocument) {
       onOpenDocument(doc.id, doc.type);
     } else {
-      navigate(`/documento/${doc.id}`);
+      navigate(getDocumentRoute(doc.id, doc.type));
     }
   };
 
@@ -698,14 +699,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         return (
                           <div
                             key={`assign-${a.id}`}
-                            onClick={() => navigate(`/documento/${doc.id}`)}
+                            onClick={() => navigate(getDocumentRoute(doc.id, doc.type))}
                             className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
                             role="button"
                             tabIndex={0}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
-                                navigate(`/documento/${doc.id}`);
+                                navigate(getDocumentRoute(doc.id, doc.type));
                               }
                             }}
                           >

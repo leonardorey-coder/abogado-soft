@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { conveniosApi, ApiConvenio, documentsApi, ApiDocument } from "../lib/api";
+import { conveniosApi, activityApi, ApiConvenio, ApiActivityLog, documentsApi, ApiDocument } from "../lib/api";
 import { HistoryTab } from "./HistoryTab";
 import { CommentsTab } from "./CommentsTab";
+import { getDocumentRoute } from "../lib/routes";
 
 type ConvenioTab = 'DETAILS' | 'HISTORY' | 'COMMENTS';
 
@@ -40,6 +41,7 @@ export const ConvenioDetails: React.FC = () => {
 
     // Tab state
     const [activeTab, setActiveTab] = useState<ConvenioTab>('DETAILS');
+    const [activityLogs, setActivityLogs] = useState<ApiActivityLog[]>([]);
 
     const fetchConvenio = async () => {
         if (!id) return;
@@ -56,6 +58,13 @@ export const ConvenioDetails: React.FC = () => {
 
     useEffect(() => {
         fetchConvenio();
+    }, [id]);
+
+    useEffect(() => {
+        if (!id) return;
+        activityApi.list({ page: 1, limit: 100, entityType: 'convenio', entityId: id })
+            .then(res => setActivityLogs(res.data ?? []))
+            .catch(() => setActivityLogs([]));
     }, [id]);
 
     const fetchAvailableDocs = async () => {
@@ -162,6 +171,12 @@ export const ConvenioDetails: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => navigate(`/convenio/${convenio.id}/tabla`)}
+                        className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-sm transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-sm">table_view</span> Editor de Tabla
+                    </button>
                     <button
                         onClick={() => navigate(`/convenio/${convenio.id}/editar`)}
                         className="flex items-center gap-2 bg-white dark:bg-[#1a212f] hover:bg-gray-50 dark:hover:bg-[#2d3748] border border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white px-5 py-2.5 rounded-xl font-bold shadow-sm transition-colors"
@@ -304,7 +319,7 @@ export const ConvenioDetails: React.FC = () => {
                                                             <td className="px-4 py-3 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <button
-                                                                        onClick={() => navigate(`/documento/${doc.id}`)}
+                                                                        onClick={() => navigate(getDocumentRoute(doc.id, doc.type))}
                                                                         title="Ver Documento"
                                                                         className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
                                                                     >
@@ -356,7 +371,7 @@ export const ConvenioDetails: React.FC = () => {
                                                     
                                                     <div className="flex items-center justify-end gap-2 mt-1">
                                                         <button
-                                                            onClick={() => navigate(`/documento/${doc.id}`)}
+                                                            onClick={() => navigate(getDocumentRoute(doc.id, doc.type))}
                                                             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg font-bold text-xs transition-colors"
                                                         >
                                                             <span className="material-symbols-outlined text-[18px]">visibility</span> Ver
@@ -380,7 +395,7 @@ export const ConvenioDetails: React.FC = () => {
             )}
 
             {activeTab === 'HISTORY' && (
-                <HistoryTab versions={convenio.versions as any || []} />
+                <HistoryTab versions={convenio.versions as any || []} activityLogs={activityLogs} />
             )}
 
             {activeTab === 'COMMENTS' && (

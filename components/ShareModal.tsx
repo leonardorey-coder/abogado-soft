@@ -12,7 +12,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/doc/${document.id}` : "";
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/documento/${document.id}` : "";
 
   const handleCopyUrl = async () => {
     try {

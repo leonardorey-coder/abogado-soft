@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { assignmentsApi, ApiDocumentAssignment } from "../lib/api";
+import { getDocumentRoute } from "../lib/routes";
 
 const getStatusStyle = (status: string) => {
   switch (status) {
@@ -113,8 +114,8 @@ export const AssignedList: React.FC = () => {
   };
 
   const handleDocumentClick = (a: ApiDocumentAssignment) => {
-    const docId = a.document?.id;
-    if (docId) navigate(`/documento/${docId}`);
+    const doc = a.document;
+    if (doc?.id) navigate(getDocumentRoute(doc.id, doc.type));
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {

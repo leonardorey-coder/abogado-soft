@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { documentsApi, ApiDocument } from "../lib/api";
+import { getDocumentRoute } from "../lib/routes";
 
 const getFileIcon = (type: string) => {
   switch (type?.toUpperCase()) {
@@ -71,7 +72,7 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onRefreshDocuments }) => {
   };
 
   const handleOpenDocument = (doc: ApiDocument) => {
-    navigate(`/documento/${doc.id}`);
+    navigate(getDocumentRoute(doc.id, doc.type));
   };
 
   return (

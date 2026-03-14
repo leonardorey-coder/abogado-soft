@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { conveniosApi, ApiConvenio } from "../lib/api";
-import { downloadLocalJSON } from "../lib/download";
 
 const inputClass =
     "w-full bg-background-light dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl px-4 py-3 text-[#111318] dark:text-white font-medium focus:border-primary focus:ring-0 transition-all";
@@ -78,19 +77,14 @@ export const ConvenioForm: React.FC = () => {
 
                     delete payload.numero;
                     await conveniosApi.update(id, payload);
-
-                    // Force local download of JSON
-                    downloadLocalJSON(formDataRef.current, `convenio_${formDataRef.current.numero}_auto.json`);
-
                     setHasChanges(false);
-                    console.log('Auto-guardado local/cloud exitoso para convenio.');
                 } catch (err) {
                     console.error('Error en auto-guardado de convenio:', err);
                 } finally {
                     setIsAutoSaving(false);
                 }
             }
-        }, 60000); // 1 minuto
+        }, 60000);
 
         return () => clearInterval(autoSaveInterval);
     }, [hasChanges, isAutoSaving, isEditing, id]);
@@ -109,13 +103,11 @@ export const ConvenioForm: React.FC = () => {
             else payload.monto = Number(payload.monto);
 
             if (isEditing && id) {
-                delete payload.numero; // No se actualiza si no es soportado, pero partial lo permite. Dejemoslo si se ocupa. En schema de Prisma si, pero req.body partial.
+                delete payload.numero;
                 const res = await conveniosApi.update(id, payload);
-                downloadLocalJSON(formData, `convenio_${formData.numero}.json`);
                 navigate(`/convenio/${res.id}`);
             } else {
                 const res = await conveniosApi.create(payload);
-                downloadLocalJSON(formData, `convenio_${formData.numero}.json`);
                 navigate(`/convenio/${res.id}`);
             }
         } catch (err: any) {

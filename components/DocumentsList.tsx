@@ -4,6 +4,7 @@ import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { documentsApi } from "../lib/api";
 import { apiDocToFrontend } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
+import { getDocumentRoute } from "../lib/routes";
 import { Upload } from "lucide-react";
 
 interface DocumentsListProps {
@@ -82,7 +83,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
 
   const handleVer = (doc: Document) => {
     if (onOpenDocument) { onOpenDocument(doc.id, doc.type); }
-    else { navigate(`/documento/${doc.id}`); }
+    else { navigate(getDocumentRoute(doc.id, doc.type)); }
   };
 
   const handleEliminar = async (doc: Document) => {
