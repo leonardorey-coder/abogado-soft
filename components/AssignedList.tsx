@@ -79,6 +79,7 @@ export const AssignedList: React.FC = () => {
   const [filter, setFilter] = useState<FilterAssigned>("TODOS");
   const [tab, setTab] = useState<TabAssigned>("RECIBIDOS");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const fetchAssignments = useCallback(async () => {
     try {
@@ -115,7 +116,12 @@ export const AssignedList: React.FC = () => {
 
   const handleDocumentClick = (a: ApiDocumentAssignment) => {
     const doc = a.document;
-    if (doc?.id) navigate(getDocumentRoute(doc.id, doc.type));
+    if (doc?.id) {
+      setOpeningId(a.id);
+      setTimeout(() => {
+        navigate(getDocumentRoute(doc.id, doc.type));
+      }, 400);
+    }
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
@@ -163,7 +169,7 @@ export const AssignedList: React.FC = () => {
   return (
     <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
       <div className="flex flex-col gap-2">
-        <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">
+        <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
           <Link to="/" className="hover:text-primary">Inicio</Link>
           <span>/</span><span className="text-[#111318] dark:text-white">Asignados</span>
         </nav>
@@ -171,49 +177,29 @@ export const AssignedList: React.FC = () => {
         <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Gestiona las asignaciones de documentos.</p>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
-        {[
-          { label: "Pendientes", count: counts.pendientes, icon: "schedule", color: "text-amber-500" },
-          { label: "Vistos", count: counts.vistos, icon: "visibility", color: "text-blue-500" },
-          { label: "Editados", count: counts.editados, icon: "edit_note", color: "text-indigo-500" },
-          { label: "Completados", count: counts.completados, icon: "check_circle", color: "text-green-500" },
-          { label: "Rechazados", count: counts.rechazados, icon: "cancel", color: "text-red-500" },
-          { label: "Total", count: counts.todos, icon: "description", color: "text-primary" },
-        ].map(card => (
-          <div key={card.label} className="bg-white dark:bg-[#1a212f] p-2.5 sm:p-3 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-            <div className="flex items-center justify-between mb-0.5 sm:mb-1">
-              <p className="text-[#616f89] dark:text-[#a0aec0] text-[10px] sm:text-xs font-medium truncate pr-1">{card.label}</p>
-              <span className={`material-symbols-outlined text-sm sm:text-base shrink-0 ${card.color}`}>{card.icon}</span>
-            </div>
-            <p className="text-lg sm:text-xl font-bold dark:text-white leading-none">{card.count}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Tab selector */}
-      <div className="pt-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-        <h3 className="text-2xl font-bold flex items-center gap-2 dark:text-white">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#dbdfe6] dark:border-[#2d3748] pb-4">
+        <h3 className="text-2xl font-bold flex items-center gap-2 text-[#111318] dark:text-white">
           <span className="material-symbols-outlined text-primary">assignment</span>Listado de Asignaciones
         </h3>
 
-        <div className="relative isolate flex p-1 bg-slate-200/60 dark:bg-slate-800/80 rounded-xl">
+        <div className="relative isolate flex p-1 bg-[#e2e6eb] dark:bg-[#101622] rounded-xl">
           {/* Sliding background pill */}
           <div
-            className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white dark:bg-slate-700 rounded-lg shadow-sm transition-transform duration-300 ease-out z-[-1]"
+            className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white dark:bg-[#1a212f] rounded-lg shadow-sm transition-transform duration-300 ease-out z-[-1]"
             style={{
               transform: `translateX(${tab === "RECIBIDOS" ? "0%" : "100%"})`
             }}
           />
           <button
             onClick={() => { setTab("RECIBIDOS"); setFilter("TODOS"); }}
-            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "RECIBIDOS" ? "text-primary" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "RECIBIDOS" ? "text-primary" : "text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white"}`}
           >
             Mis Asignaciones
           </button>
           <button
             onClick={() => { setTab("ENVIADOS"); setFilter("TODOS"); }}
-            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "ENVIADOS" ? "text-primary" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "ENVIADOS" ? "text-primary" : "text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white"}`}
           >
             Enviados
           </button>
@@ -221,10 +207,10 @@ export const AssignedList: React.FC = () => {
       </div>
 
       {/* Filter pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
         {pills.map(pill => (
-          <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-1 sm:gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary"}`}>
-            <span className={`material-symbols-outlined text-[14px] sm:text-[16px] ${filter === pill.key ? "text-white" : pill.color}`}>{pill.icon}</span>
+          <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"}`}>
+            <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "" : pill.color}`}>{pill.icon}</span>
             {pill.label} ({pill.count})
           </button>
         ))}
@@ -234,7 +220,7 @@ export const AssignedList: React.FC = () => {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="animate-pulse bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
+            <div key={i} className="animate-pulse bg-white dark:bg-[#1a212f] p-4 sm:p-6 rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
               <div className="flex items-start justify-between mb-4"><div className="h-12 w-12 sm:h-16 sm:w-16 bg-slate-200 dark:bg-slate-700 rounded-xl" /><div className="h-6 w-20 bg-slate-200 dark:bg-slate-700 rounded" /></div>
               <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3" />
               <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4" />
@@ -243,9 +229,9 @@ export const AssignedList: React.FC = () => {
           ))}
         </div>
       ) : assignments.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-8 sm:p-12 text-center">
-          <span className="material-symbols-outlined text-4xl text-slate-400 block mb-2">folder_off</span>
-          <p className="text-slate-600 dark:text-slate-400 font-medium">No hay documentos asignados en esta categoría.</p>
+        <div className="rounded-2xl border border-dashed border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] p-8 sm:p-12 text-center shadow-sm">
+          <span className="material-symbols-outlined text-4xl text-[#616f89] dark:text-[#a0aec0] block mb-2">folder_off</span>
+          <p className="text-[#616f89] dark:text-[#a0aec0] font-medium">No hay documentos asignados en esta categoría.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" role="list">
@@ -256,7 +242,14 @@ export const AssignedList: React.FC = () => {
             const isUpdating = updatingId === a.id;
 
             return (
-              <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className={`min-w-0 bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl border-2 transition-all cursor-pointer group shadow-sm relative flex flex-col h-full ${overdue ? "border-red-300 dark:border-red-800" : "border-slate-100 dark:border-slate-700 hover:border-primary"}`}>
+              <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className={`min-w-0 bg-white dark:bg-[#1a212f] p-4 sm:p-6 rounded-2xl border transition-all cursor-pointer group shadow-sm relative flex flex-col h-full overflow-hidden ${overdue ? "border-red-300 dark:border-red-800" : openingId === a.id ? "border-primary ring-2 ring-primary/20 bg-slate-50 dark:bg-[#101622]" : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary"}`}>
+                {openingId === a.id && (
+                  <div className="absolute inset-0 z-10 bg-white/60 dark:bg-[#1a212f]/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 animate-pulse">
+                    <div className="w-10 h-10 rounded-full border-4 border-primary border-t-transparent animate-spin mb-3"></div>
+                    <div className="h-3 bg-slate-300 dark:bg-slate-600 rounded w-3/4 mb-2"></div>
+                    <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded w-1/2"></div>
+                  </div>
+                )}
                 <header className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
                   <div className={`p-3 sm:p-4 ${color} rounded-xl shrink-0`} aria-hidden><span className="material-symbols-outlined text-[24px] sm:text-[32px] font-bold">{icon}</span></div>
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -271,14 +264,14 @@ export const AssignedList: React.FC = () => {
                     )}
                   </div>
                 </header>
-                <h3 className="text-lg sm:text-xl font-extrabold mb-2 sm:mb-3 text-slate-900 dark:text-white break-normal leading-tight flex-grow min-w-0">
+                <h3 className="text-lg sm:text-xl font-extrabold mb-2 sm:mb-3 text-[#111318] dark:text-white break-normal leading-tight flex-grow min-w-0">
                   {(a.document?.name || "Documento").split("_").map((part, i) => i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>)}
                 </h3>
-                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm mb-1">
+                <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-1">
                   <span className="material-symbols-outlined text-base sm:text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
                   <span>{tab === "RECIBIDOS" ? `De: ${a.assigner?.name || "Desconocido"}` : `Para: ${a.assignee?.name || "Desconocido"}`}</span>
                 </p>
-                <p className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm mb-2 sm:mb-3">
+                <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-2 sm:mb-3">
                   <span className="material-symbols-outlined text-base sm:text-lg shrink-0">calendar_today</span>
                   <span>{formatTimeAgo(a.createdAt)} · {formatDate(a.createdAt)}</span>
                 </p>
@@ -288,9 +281,9 @@ export const AssignedList: React.FC = () => {
                     <span>{overdue ? "Venció" : "Vence"} el {formatDate(a.dueDate)}</span>
                   </div>
                 )}
-                {a.notes && <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-2 sm:mb-3 italic line-clamp-2">"{a.notes}"</p>}
+                {a.notes && <p className="text-xs sm:text-sm text-[#616f89] dark:text-[#a0aec0] mb-2 sm:mb-3 italic line-clamp-2">"{a.notes}"</p>}
 
-                <footer className="mt-auto pt-3 sm:pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <footer className="mt-auto pt-3 sm:pt-4 border-t border-[#dbdfe6] dark:border-[#2d3748] flex gap-2">
                   {/* View button – always available */}
                   <button type="button" onClick={(e) => { e.stopPropagation(); handleDocumentClick(a); }} className="flex-1 min-h-[36px] sm:min-h-[44px] py-2 sm:py-3 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 sm:gap-2">
                     <span className="material-symbols-outlined text-base sm:text-lg">visibility</span>Ver
