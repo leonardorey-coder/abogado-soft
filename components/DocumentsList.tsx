@@ -53,6 +53,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
   const [total, setTotal] = useState(0);
   const [counts, setCounts] = useState({ todos: 0, activos: 0, pendientes: 0, inactivos: 0 });
   const [statusDropdownDocId, setStatusDropdownDocId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [lastClickedRowId, setLastClickedRowId] = useState<string | null>(null);
   const [lastClickAt, setLastClickAt] = useState(0);
   const perPage = 10;
@@ -82,8 +83,13 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
   useEffect(() => { setPage(1); }, [searchQuery, filter]);
 
   const handleVer = (doc: Document) => {
-    if (onOpenDocument) { onOpenDocument(doc.id, doc.type); }
-    else { navigate(getDocumentRoute(doc.id, doc.type)); }
+    if (openingId) return;
+    setOpeningId(doc.id);
+    setTimeout(() => {
+      if (onOpenDocument) { onOpenDocument(doc.id, doc.type); }
+      else { navigate(getDocumentRoute(doc.id, doc.type)); }
+      setOpeningId(null);
+    }, 400);
   };
 
   const handleEliminar = async (doc: Document) => {
@@ -147,23 +153,6 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
         </button>
       </div>
 
-      <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-6">
-          <div className="flex flex-col gap-2 min-w-[200px]">
-            <label className="text-[#111318] dark:text-white font-bold text-sm px-1">Filtrar por Estado</label>
-            <div className="relative">
-              <select value={filter} onChange={(e) => { setFilter(e.target.value as "TODOS" | FileStatus); setPage(1); }} className="appearance-none w-full bg-background-light dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl px-4 py-3 text-[#111318] dark:text-white font-medium focus:border-primary focus:ring-0 cursor-pointer pr-10">
-                <option value="TODOS">Todos los estados</option><option value="ACTIVO">Activo</option><option value="PENDIENTE">Pendiente</option><option value="INACTIVO">Inactivo</option>
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#616f89]">expand_more</span>
-            </div>
-          </div>
-          <div className="flex items-end gap-3 mt-auto h-[72px] pb-1">
-            <button type="button" onClick={() => setFilter("TODOS")} className="bg-[#e2e6eb] dark:bg-[#2d3748] hover:bg-[#dbdfe6] dark:hover:bg-[#374151] text-[#111318] dark:text-white px-5 py-3 rounded-xl font-bold text-sm transition-colors">Limpiar Filtros</button>
-          </div>
-        </div>
-      </div>
-
       <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
         {([
           { key: "TODOS" as const, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
@@ -206,8 +195,15 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
                   <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron documentos
                 </td></tr>
               ) : documents.map((doc) => (
-                <tr key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`transition-colors cursor-pointer ${lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
-                  <td className="px-6 py-4"><div className="flex items-center gap-3"><span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0]">{getTypeIcon(doc.type)}</span><span className="text-[#111318] dark:text-white font-bold text-base truncate max-w-[240px]">{doc.name}</span></div></td>
+                <tr key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`transition-colors cursor-pointer relative ${openingId === doc.id ? "bg-slate-50 dark:bg-[#101622] opacity-70" : lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
+                  <td className="px-6 py-4 relative">
+                    {openingId === doc.id && (
+                      <div className="absolute inset-0 z-10 flex items-center pl-4">
+                        <div className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                      </div>
+                    )}
+                    <div className={`flex items-center gap-3 ${openingId === doc.id ? 'pl-8' : ''} transition-all`}><span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0]">{getTypeIcon(doc.type)}</span><span className="text-[#111318] dark:text-white font-bold text-base truncate max-w-[240px]">{doc.name}</span></div>
+                  </td>
                   <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] font-medium text-sm">{doc.type}</td>
                   <td className="px-6 py-4 text-[#616f89] dark:text-[#a0aec0] text-sm">{doc.lastModified}</td>
                   <td className="px-6 py-4 text-center">
@@ -270,7 +266,12 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
               <span className="material-symbols-outlined text-4xl block mb-2">folder_off</span>No se encontraron documentos
             </div>
           ) : documents.map((doc) => (
-            <div key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`p-4 flex flex-col gap-3 transition-colors cursor-pointer ${lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
+            <div key={doc.id} onClick={(e) => handleRowClick(e, doc)} className={`p-4 flex flex-col gap-3 transition-colors cursor-pointer relative overflow-hidden ${openingId === doc.id ? "bg-slate-50 dark:bg-[#101622] ring-1 ring-primary/30" : lastClickedRowId === doc.id ? "bg-[#e2e6eb] dark:bg-[#2d3748]" : "hover:bg-background-light dark:hover:bg-[#101622]/50"}`}>
+              {openingId === doc.id && (
+                <div className="absolute inset-0 z-10 bg-white/60 dark:bg-[#1a212f]/60 backdrop-blur-[1px] flex flex-col items-center justify-center animate-pulse">
+                  <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+                </div>
+              )}
               <div className="flex items-start gap-3 mb-1">
                 <span className="material-symbols-outlined text-[#616f89] dark:text-[#a0aec0] text-3xl shrink-0">{getTypeIcon(doc.type)}</span>
                 <div className="flex-1 min-w-0">
@@ -349,9 +350,6 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({ searchQuery = "", 
 
       <div className="flex flex-wrap justify-between items-center gap-4 text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">
         <p>Mostrando {documents.length} de {total} documentos{filter !== "TODOS" ? " (filtrado)" : ""}.</p>
-        <button type="button" className="flex items-center gap-2 hover:text-primary font-bold transition-colors">
-          <span className="material-symbols-outlined text-lg">download</span>Exportar lista a PDF/Excel
-        </button>
       </div>
     </main>
     </>

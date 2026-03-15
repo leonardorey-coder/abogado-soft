@@ -39,6 +39,7 @@ export const AgreementsList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<FilterEstado>("TODOS");
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [counts, setCounts] = useState({ todos: 0, activos: 0, pendientes: 0, expirados: 0 });
 
   const fetchConvenios = useCallback(async () => {
@@ -67,6 +68,15 @@ export const AgreementsList: React.FC = () => {
 
   const from = (page - 1) * PER_PAGE + 1;
   const to = Math.min(page * PER_PAGE, total);
+
+  const handleOpenConvenio = (id: string) => {
+    if (openingId) return;
+    setOpeningId(id);
+    setTimeout(() => {
+      navigate(`/convenio/${id}`);
+      setOpeningId(null);
+    }, 400);
+  };
 
   return (
     <>
@@ -98,23 +108,6 @@ export const AgreementsList: React.FC = () => {
         <button type="button" onClick={() => navigate("/convenio/nuevo")} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors">
           <span className="material-symbols-outlined">add_circle</span>Nuevo Convenio
         </button>
-      </div>
-
-      <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-6">
-          <div className="flex flex-col gap-2 min-w-[200px]">
-            <label className="text-[#111318] dark:text-white font-bold text-sm px-1">Filtrar por Estado</label>
-            <div className="relative">
-              <select value={filter} onChange={(e) => setFilter(e.target.value as FilterEstado)} className="appearance-none w-full bg-background-light dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl px-4 py-3 text-[#111318] dark:text-white font-medium focus:border-primary focus:ring-0 cursor-pointer pr-10">
-                <option value="TODOS">Todos los estados</option><option value="ACTIVO">Activo</option><option value="PENDIENTE">Pendiente</option><option value="EXPIRADO">Expirado</option>
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#616f89]">expand_more</span>
-            </div>
-          </div>
-          <div className="flex items-end gap-3 mt-auto h-[72px] pb-1">
-            <button type="button" onClick={() => setFilter("TODOS")} className="bg-[#e2e6eb] dark:bg-[#2d3748] hover:bg-[#dbdfe6] dark:hover:bg-[#374151] text-[#111318] dark:text-white px-5 py-3 rounded-xl font-bold text-sm transition-colors">Limpiar Filtros</button>
-          </div>
-        </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
@@ -179,8 +172,15 @@ export const AgreementsList: React.FC = () => {
                   {convenios.map((c) => {
                     const estado = (c.estado as EstadoConvenio) || "PENDIENTE";
                     return (
-                      <tr key={c.id} className="hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50 transition-colors">
-                        <td className="px-6 py-5 text-[#111318] dark:text-white font-bold">{c.numero}</td>
+                      <tr key={c.id} onClick={() => handleOpenConvenio(c.id)} className={`transition-colors cursor-pointer relative ${openingId === c.id ? "bg-slate-50 dark:bg-[#101622] opacity-70" : "hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50"}`}>
+                        <td className="px-6 py-5 text-[#111318] dark:text-white font-bold relative">
+                          {openingId === c.id && (
+                            <div className="absolute inset-0 z-10 flex items-center pl-4">
+                              <div className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                            </div>
+                          )}
+                          <div className={`${openingId === c.id ? 'pl-8' : ''} transition-all`}>{c.numero}</div>
+                        </td>
                         <td className="px-6 py-5">
                           <div className="flex flex-col">
                             <span className="text-[#111318] dark:text-white font-bold">{c.institucion}</span>
@@ -193,8 +193,8 @@ export const AgreementsList: React.FC = () => {
                             <span className={`size-2 rounded-full ${estadoDot[estado] || estadoDot.PENDIENTE}`} /> {estado === "ACTIVO" ? "Activo" : estado === "PENDIENTE" ? "Pendiente" : "Expirado"}
                           </span>
                         </td>
-                        <td className="px-6 py-5 text-right">
-                          <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
+                        <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={() => handleOpenConvenio(c.id)} className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 ml-auto">
                             <span className="material-symbols-outlined text-lg">visibility</span>Ver
                           </button>
                         </td>
@@ -210,7 +210,12 @@ export const AgreementsList: React.FC = () => {
               {convenios.map((c) => {
                 const estado = (c.estado as EstadoConvenio) || "PENDIENTE";
                 return (
-                  <div key={c.id} className="p-4 flex flex-col gap-3 hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50 transition-colors">
+                  <div key={c.id} onClick={() => handleOpenConvenio(c.id)} className={`p-4 flex flex-col gap-3 transition-colors cursor-pointer relative overflow-hidden ${openingId === c.id ? "bg-slate-50 dark:bg-[#101622] ring-1 ring-primary/30" : "hover:bg-[#f6f6f8] dark:hover:bg-[#101622]/50"}`}>
+                    {openingId === c.id && (
+                      <div className="absolute inset-0 z-10 bg-white/60 dark:bg-[#1a212f]/60 backdrop-blur-[1px] flex flex-col items-center justify-center animate-pulse">
+                        <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+                      </div>
+                    )}
                     <div className="flex justify-between items-start gap-2 mb-1">
                       <div className="flex flex-col min-w-0">
                         <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider mb-0.5">Institución Colaboradora</span>
@@ -236,8 +241,8 @@ export const AgreementsList: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="mt-1 flex justify-end">
-                      <button type="button" onClick={() => navigate(`/convenio/${c.id}`)} className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                    <div className="mt-1 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" onClick={() => handleOpenConvenio(c.id)} className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2">
                         <span className="material-symbols-outlined text-[18px]">visibility</span>Ver Detalles
                       </button>
                     </div>
@@ -261,9 +266,6 @@ export const AgreementsList: React.FC = () => {
 
       <div className="flex flex-wrap justify-between items-center gap-4 text-[#616f89] dark:text-[#a0aec0] text-sm p-2">
         <p>Mostrando {total > 0 ? `${from}-${to}` : 0} de {total} convenios totales registrados en el sistema.</p>
-        <button type="button" className="flex items-center gap-2 hover:text-primary font-bold transition-colors">
-          <span className="material-symbols-outlined">download</span>Exportar lista a PDF/Excel
-        </button>
       </div>
     </main>
     </>
