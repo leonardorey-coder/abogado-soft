@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { backupsApi, downloadBackup, ApiBackup } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { Toast } from "./ui";
 
 export const SecurityPage: React.FC = () => {
   const { user } = useAuth();
@@ -9,6 +10,14 @@ export const SecurityPage: React.FC = () => {
   const [backups, setBackups] = useState<ApiBackup[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error"; visible: boolean }>({ message: "", type: "success", visible: false });
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type, visible: true });
+    toastTimer.current = setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 4000);
+  };
 
   useEffect(() => {
     fetchBackups();
@@ -42,17 +51,15 @@ export const SecurityPage: React.FC = () => {
     try {
       setGenerating(true);
       await backupsApi.create({ name: "Manual Backup", type: "full" });
-      alert(
-        "Respaldo iniciado correctamente. Dependiendo del tamaño, puede tardar unos segundos o minutos."
-      );
+      showToast("Respaldo iniciado. Puede tardar unos minutos.", "success");
       fetchBackups();
     } catch (err: any) {
       console.error("Error generating backup:", err);
       const msg =
         err?.status === 403
-          ? "No tienes permisos para generar respaldos. Solo administradores pueden hacerlo."
-          : "Error al intentar generar el respaldo. Intenta de nuevo más tarde.";
-      alert(msg);
+          ? "No tienes permisos para generar respaldos."
+          : "Error al generar el respaldo. Intenta más tarde.";
+      showToast(msg, "error");
     } finally {
       setGenerating(false);
     }
@@ -63,7 +70,7 @@ export const SecurityPage: React.FC = () => {
       (b) => b.status === "completed" && b.filePath
     );
     if (!latestCompleted) {
-      alert("No hay respaldos completados recientes para descargar.");
+      showToast("No hay respaldos completados para descargar.", "error");
       return;
     }
     try {
@@ -73,7 +80,7 @@ export const SecurityPage: React.FC = () => {
       );
     } catch (err) {
       console.error("Error downloading:", err);
-      alert("Error al descargar el archivo físico.");
+      showToast("Error al descargar el archivo.", "error");
     }
   };
 
@@ -85,7 +92,7 @@ export const SecurityPage: React.FC = () => {
       );
     } catch (err) {
       console.error("Error downloading:", err);
-      alert("Error al descargar el archivo.");
+      showToast("Error al descargar el archivo.", "error");
     }
   };
 
@@ -436,6 +443,7 @@ export const SecurityPage: React.FC = () => {
           </section>
         </main>
       </div>
+      <Toast message={toast.message} type={toast.type} visible={toast.visible} />
     </div>
   );
 };

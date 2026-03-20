@@ -24,3 +24,8 @@ Thumbs.db
 
 # Storage local
 storage/
+
+# Google Service Account credentials
+*.json
+!package.json
+!tsconfig.json

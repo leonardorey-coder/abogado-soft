@@ -1,25 +1,55 @@
 // ============================================================================
 // Google Drive Service — Integración con Google Drive API v3
-// Almacenamiento en nube sin VPS: upload/download/versiones via OAuth2
+// Almacenamiento en nube sin VPS: upload/download/versiones via Service Account
 // ============================================================================
 
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 import fs from 'fs';
+import path from 'path';
 
-// ─── OAuth2 Client ──────────────────────────────────────────────────────────
+// ─── Service Account Client ─────────────────────────────────────────────────
 
 let driveClient: drive_v3.Drive | null = null;
 
 export function getDriveClient(): drive_v3.Drive {
     if (driveClient) return driveClient;
 
+    // Prioridad: Service Account > OAuth2
+    const serviceAccountPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
+
+    if (serviceAccountPath) {
+        // ─── Service Account Auth (recomendado para servidores) ─────────────
+        const absolutePath = path.isAbsolute(serviceAccountPath)
+            ? serviceAccountPath
+            : path.join(process.cwd(), serviceAccountPath);
+
+        if (!fs.existsSync(absolutePath)) {
+            throw new Error(`[GoogleDrive] Archivo de Service Account no encontrado: ${absolutePath}`);
+        }
+
+        const credentials = JSON.parse(fs.readFileSync(absolutePath, 'utf-8'));
+
+        const auth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: ['https://www.googleapis.com/auth/drive'],
+        });
+
+        driveClient = google.drive({ version: 'v3', auth });
+        console.log('[GoogleDrive] Autenticado con Service Account:', credentials.client_email);
+        return driveClient;
+    }
+
+    // ─── Fallback: OAuth2 (legacy) ──────────────────────────────────────────
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
     if (!clientId || !clientSecret || !refreshToken) {
-        throw new Error('[GoogleDrive] Faltan variables de entorno: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN');
+        throw new Error(
+            '[GoogleDrive] Configura GOOGLE_SERVICE_ACCOUNT_PATH o las variables OAuth2: ' +
+            'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN'
+        );
     }
 
     const auth = new google.auth.OAuth2(
@@ -31,7 +61,15 @@ export function getDriveClient(): drive_v3.Drive {
     auth.setCredentials({ refresh_token: refreshToken });
 
     driveClient = google.drive({ version: 'v3', auth });
+    console.log('[GoogleDrive] Autenticado con OAuth2');
     return driveClient;
+}
+
+// ─── Reset del cliente (útil para testing o cambio de credenciales) ─────────
+
+export function resetDriveClient(): void {
+    driveClient = null;
+    cachedFolderId = null;
 }
 
 // ─── Obtener/crear carpeta base de AbogadoSoft ──────────────────────────────
