@@ -1,5 +1,5 @@
 // Bun carga .env automáticamente desde el cwd. En dev, el backend corre desde /backend,
-// así que también intentamos cargar el .env de la raíz si faltan variables.
+// así que fusionamos el .env de la raíz del repo para completar (p. ej. GOOGLE_SERVICE_ACCOUNT_PATH).
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -42,21 +42,15 @@ function parseDotEnv(contents: string): Record<string, string> {
   return out;
 }
 
+/** Fusiona `../.env` (raíz del monorepo) con el entorno del proceso solo para claves ausentes o vacías. */
 function loadRootEnvIfNeeded() {
-  const needsRootEnv =
-    !process.env.GOOGLE_CLIENT_ID ||
-    !process.env.GOOGLE_CLIENT_SECRET ||
-    !process.env.GOOGLE_REFRESH_TOKEN ||
-    !process.env.GOOGLE_DRIVE_FOLDER_BACKUPS;
-
-  if (!needsRootEnv) return;
-
   try {
     const rootEnvPath = path.resolve(process.cwd(), '..', '.env');
     if (!fs.existsSync(rootEnvPath)) return;
     const parsed = parseDotEnv(fs.readFileSync(rootEnvPath, 'utf8'));
     for (const [k, v] of Object.entries(parsed)) {
-      if (!process.env[k] && v !== undefined) process.env[k] = v;
+      const cur = process.env[k];
+      if ((cur === undefined || cur === '') && v !== undefined) process.env[k] = v;
     }
   } catch {
     // Si falla, seguimos con el entorno actual.
