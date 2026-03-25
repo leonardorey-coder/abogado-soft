@@ -12,21 +12,51 @@ import path from 'path';
 
 let driveClient: drive_v3.Drive | null = null;
 
+function usingServiceAccount(): boolean {
+    return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim());
+}
+
+async function resolveUploadParent(folderId?: string): Promise<string> {
+    const trimmed = folderId?.trim();
+    if (trimmed) return trimmed;
+    if (usingServiceAccount()) {
+        throw new Error(
+            '[GoogleDrive] Con cuenta de servicio no hay cuota en el Drive de la SA. ' +
+                'Define GOOGLE_DRIVE_FOLDER_DOCUMENTS, CONTRACTS y BACKUPS (IDs de carpetas en una unidad compartida o carpetas ' +
+                'compartidas con el client_email del JSON). No uses el fallback sin carpeta.',
+        );
+    }
+    return getOrCreateFolder();
+}
+
+function resolveServiceAccountFilePath(serviceAccountPath: string): string {
+    const trimmed = serviceAccountPath.trim();
+    if (!trimmed) {
+        throw new Error('[GoogleDrive] GOOGLE_SERVICE_ACCOUNT_PATH está vacío.');
+    }
+    if (path.isAbsolute(trimmed)) {
+        if (!fs.existsSync(trimmed)) {
+            throw new Error(`[GoogleDrive] Archivo de Service Account no encontrado: ${trimmed}`);
+        }
+        return trimmed;
+    }
+    const inBackend = path.join(process.cwd(), trimmed);
+    const inRepoRoot = path.join(process.cwd(), '..', trimmed);
+    if (fs.existsSync(inBackend)) return inBackend;
+    if (fs.existsSync(inRepoRoot)) return inRepoRoot;
+    throw new Error(
+        `[GoogleDrive] Archivo de Service Account no encontrado. Probado: ${inBackend} y ${inRepoRoot}`,
+    );
+}
+
 export function getDriveClient(): drive_v3.Drive {
     if (driveClient) return driveClient;
 
     // Prioridad: Service Account > OAuth2
     const serviceAccountPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
 
-    if (serviceAccountPath) {
-        // ─── Service Account Auth (recomendado para servidores) ─────────────
-        const absolutePath = path.isAbsolute(serviceAccountPath)
-            ? serviceAccountPath
-            : path.join(process.cwd(), serviceAccountPath);
-
-        if (!fs.existsSync(absolutePath)) {
-            throw new Error(`[GoogleDrive] Archivo de Service Account no encontrado: ${absolutePath}`);
-        }
+    if (serviceAccountPath?.trim()) {
+        const absolutePath = resolveServiceAccountFilePath(serviceAccountPath);
 
         const credentials = JSON.parse(fs.readFileSync(absolutePath, 'utf-8'));
 
@@ -84,6 +114,8 @@ export async function getOrCreateFolder(name = 'AbogadoSoft'): Promise<string> {
     const res = await drive.files.list({
         q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
         fields: 'files(id, name)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
     });
 
     if (res.data.files && res.data.files.length > 0) {
@@ -97,6 +129,7 @@ export async function getOrCreateFolder(name = 'AbogadoSoft'): Promise<string> {
             mimeType: 'application/vnd.google-apps.folder',
         },
         fields: 'id',
+        supportsAllDrives: true,
     });
 
     cachedFolderId = folder.data.id!;
@@ -118,7 +151,7 @@ export async function uploadFile(
     folderId?: string,
 ): Promise<DriveUploadResult> {
     const drive = getDriveClient();
-    const folder = folderId ?? (await getOrCreateFolder());
+    const folder = await resolveUploadParent(folderId);
 
     const res = await drive.files.create({
         requestBody: {
@@ -130,6 +163,7 @@ export async function uploadFile(
             body: Readable.from(content),
         },
         fields: 'id, webViewLink, headRevisionId',
+        supportsAllDrives: true,
     });
 
     return {
@@ -148,7 +182,7 @@ export async function uploadFileStream(
     folderId?: string,
 ): Promise<DriveUploadResult> {
     const drive = getDriveClient();
-    const folder = folderId ?? (await getOrCreateFolder());
+    const folder = await resolveUploadParent(folderId);
 
     const res = await drive.files.create({
         requestBody: {
@@ -160,6 +194,7 @@ export async function uploadFileStream(
             body: fs.createReadStream(filePath),
         },
         fields: 'id, webViewLink, headRevisionId',
+        supportsAllDrives: true,
     });
 
     return {
@@ -185,6 +220,7 @@ export async function updateFile(
             body: Readable.from(content),
         },
         fields: 'id, headRevisionId',
+        supportsAllDrives: true,
     });
 
     return { driveRevisionId: res.data.headRevisionId ?? null };
@@ -196,7 +232,7 @@ export async function downloadFile(driveFileId: string): Promise<Buffer> {
     const drive = getDriveClient();
 
     const res = await drive.files.get(
-        { fileId: driveFileId, alt: 'media' },
+        { fileId: driveFileId, alt: 'media', supportsAllDrives: true },
         { responseType: 'arraybuffer' },
     );
 
@@ -209,7 +245,7 @@ export async function downloadFileStream(driveFileId: string): Promise<Readable>
     const drive = getDriveClient();
 
     const res = await drive.files.get(
-        { fileId: driveFileId, alt: 'media' },
+        { fileId: driveFileId, alt: 'media', supportsAllDrives: true },
         { responseType: 'stream' },
     );
 
@@ -249,7 +285,7 @@ export async function downloadRevision(driveFileId: string, revisionId: string):
     // NOTE: La API de revisiones no tiene alt:media en el cliente oficial de google.
     // Se usa el endpoint de export/download directo via HTTP.
     const res = await drive.revisions.get(
-        { fileId: driveFileId, revisionId, alt: 'media' } as any,
+        { fileId: driveFileId, revisionId, alt: 'media', supportsAllDrives: true } as any,
         { responseType: 'arraybuffer' },
     );
 
@@ -260,7 +296,7 @@ export async function downloadRevision(driveFileId: string, revisionId: string):
 
 export async function deleteFile(driveFileId: string): Promise<void> {
     const drive = getDriveClient();
-    await drive.files.delete({ fileId: driveFileId });
+    await drive.files.delete({ fileId: driveFileId, supportsAllDrives: true });
 }
 
 // ─── Verificar si las credenciales son válidas ──────────────────────────────
@@ -268,7 +304,12 @@ export async function deleteFile(driveFileId: string): Promise<void> {
 export async function verifyCredentials(): Promise<boolean> {
     try {
         const drive = getDriveClient();
-        await drive.about.get({ fields: 'user' });
+        await drive.files.list({
+            pageSize: 1,
+            fields: 'files(id)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+        });
         return true;
     } catch {
         return false;

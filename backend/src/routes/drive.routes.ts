@@ -40,24 +40,39 @@ function getOAuthClient() {
     return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-driveRouter.get('/auth', authenticate, (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const oauth2Client = getOAuthClient();
-        const state = crypto.randomUUID();
-        oauthStateMap.set(state, req.user!.id);
+driveRouter.get(
+    '/auth',
+    (req: Request, res: Response, next: NextFunction) => {
+        if (process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim()) {
+            res.status(400).json({
+                error:
+                    'Google Drive está configurado con cuenta de servicio (GOOGLE_SERVICE_ACCOUNT_PATH). ' +
+                    'No uses el flujo OAuth; comparte las carpetas de Drive con el client_email del JSON.',
+            });
+            return;
+        }
+        next();
+    },
+    authenticate,
+    (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const oauth2Client = getOAuthClient();
+            const state = crypto.randomUUID();
+            oauthStateMap.set(state, req.user!.id);
 
-        const url = oauth2Client.generateAuthUrl({
-            access_type: 'offline',
-            prompt: 'consent',
-            scope: ['https://www.googleapis.com/auth/drive'],
-            state,
-        });
+            const url = oauth2Client.generateAuthUrl({
+                access_type: 'offline',
+                prompt: 'consent',
+                scope: ['https://www.googleapis.com/auth/drive'],
+                state,
+            });
 
-        res.redirect(url);
-    } catch (error) {
-        next(error);
-    }
-});
+            res.redirect(url);
+        } catch (error) {
+            next(error);
+        }
+    },
+);
 
 driveRouter.get('/auth/callback', async (req: Request, res: Response, next: NextFunction) => {
     try {
