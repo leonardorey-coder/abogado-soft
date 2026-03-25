@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatDate } from '../lib/formatters';
+import { formatDateTime } from '../lib/formatters';
 import { UserAvatar } from './UserAvatar';
 
 export interface GenericComment {
@@ -39,9 +39,9 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 text-sm bg-white dark:bg-[#0a0a10]">
+        <div className="flex-1 overflow-y-auto p-3 md:p-4 text-sm bg-white dark:bg-[#0a0a10]">
             <div className="w-full">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-4">
                     <div>
                         <h2 className="text-xl font-bold text-[#0e0e1b] dark:text-white mb-1">Comentarios</h2>
                         <p className="text-xs text-gray-500">Discusión activa del documento.</p>
@@ -49,7 +49,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                 </div>
 
                 {/* New comment form */}
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm mb-6">
+                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 shadow-sm mb-4">
                     <textarea
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
@@ -57,7 +57,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                         className="w-full bg-transparent border-b border-gray-200 dark:border-gray-700 py-2 text-sm text-[#0e0e1b] dark:text-white placeholder-gray-400 resize-none focus:outline-none focus:border-primary"
                         rows={2}
                     />
-                    <div className="flex justify-end mt-3">
+                    <div className="flex justify-end mt-2">
                         <button
                             onClick={handleSubmit}
                             disabled={!newComment.trim() || submitting}
@@ -80,10 +80,10 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                         <p className="text-sm font-medium">No hay comentarios.</p>
                     </div>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {comments.map((comment) => (
-                            <div key={comment.id} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${comment.isResolved ? 'border-gray-100 dark:border-gray-800 opacity-60' : 'border-blue-100 dark:border-primary/20 ring-1 ring-blue-500/10'}`}>
-                                <div className="flex items-start justify-between mb-3">
+                            <div key={comment.id} className={`bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border ${comment.isResolved ? 'border-gray-100 dark:border-gray-800 opacity-60' : 'border-blue-100 dark:border-primary/20 ring-1 ring-blue-500/10'}`}>
+                                <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                         <UserAvatar
                                             name={comment.user.name}
@@ -92,18 +92,18 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                                         />
                                         <div>
                                             <h4 className="font-bold text-[#0e0e1b] dark:text-white text-xs">{comment.user.name}</h4>
-                                            <p className="text-[10px] text-gray-500">{formatDate(comment.createdAt)}</p>
+                                            <p className="text-[10px] text-gray-500">{formatDateTime(comment.createdAt)}</p>
                                         </div>
                                     </div>
                                 </div>
-                                <p className="text-gray-800 dark:text-gray-200 mb-2 pl-10 text-xs leading-relaxed">{comment.content}</p>
+                                <p className="text-gray-800 dark:text-gray-200 mb-1.5 pl-9 text-xs leading-relaxed">{comment.content}</p>
 
                                 {/* Replies */}
                                 {comment.replies && comment.replies.map(reply => (
-                                    <div key={reply.id} className="ml-10 mt-3 pl-3 border-l-2 border-gray-100 dark:border-gray-700">
+                                    <div key={reply.id} className="ml-9 mt-2 pl-2.5 border-l-2 border-gray-100 dark:border-gray-700">
                                         <div className="flex items-center gap-2 mb-0.5">
                                             <span className="font-bold text-xs dark:text-white">{reply.user.name}</span>
-                                            <span className="text-[10px] text-gray-400">{formatDate(reply.createdAt)}</span>
+                                            <span className="text-[10px] text-gray-400">{formatDateTime(reply.createdAt)}</span>
                                         </div>
                                         <p className="text-xs text-gray-600 dark:text-gray-400">{reply.content}</p>
                                     </div>

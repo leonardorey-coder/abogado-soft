@@ -10,6 +10,19 @@ export function formatDate(iso: string | Date): string {
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+export function formatDateTime(iso: string | Date): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
 export function formatFileSize(bytes: number | bigint | string): string {
     if (bytes === null || bytes === undefined) return '0 B';
     let b: number;

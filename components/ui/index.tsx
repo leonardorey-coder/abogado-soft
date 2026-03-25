@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X, ChevronLeft, ChevronRight, MoreVertical, Loader2, AlertCircle, FolderOpen, CheckCircle2 } from "lucide-react";
 
@@ -199,12 +199,57 @@ interface ActionMenuProps {
 
 export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
   const [open, setOpen] = useState(false);
+  const [placeAbove, setPlaceAbove] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const closeMenu = useCallback(() => {
     onClose?.();
     setOpen(false);
   }, [onClose]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const trigger = triggerRef.current;
+    if (!menu || !trigger) return;
+
+    const margin = 6;
+    const compute = () => {
+      const m = menuRef.current;
+      const t = triggerRef.current;
+      if (!m || !t) return;
+      const menuH = m.offsetHeight;
+      const rect = t.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const viewTop = vv?.offsetTop ?? 0;
+      const viewBottom = viewTop + (vv?.height ?? window.innerHeight);
+      const spaceBelow = viewBottom - rect.bottom - margin;
+      const spaceAbove = rect.top - viewTop - margin;
+      let above: boolean;
+      if (menuH <= spaceBelow) above = false;
+      else if (menuH <= spaceAbove) above = true;
+      else above = spaceAbove >= spaceBelow;
+      setPlaceAbove(above);
+    };
+
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(menu);
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", compute);
+    vv?.addEventListener("scroll", compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+      vv?.removeEventListener("resize", compute);
+      vv?.removeEventListener("scroll", compute);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -216,6 +261,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
         className="w-10 h-10 sm:w-8 sm:h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
@@ -224,7 +270,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
         <MoreVertical className="w-5 h-5 sm:w-4 sm:h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 animate-in fade-in slide-in-from-top-1">
+        <div
+          ref={menuRef}
+          className={`absolute right-0 z-30 min-w-[180px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 animate-in fade-in ${
+            placeAbove
+              ? "bottom-full mb-1 slide-in-from-bottom-1"
+              : "top-full mt-1 slide-in-from-top-1"
+          }`}
+        >
           {items.map((item, i) => (
             <React.Fragment key={i}>
               {item.separator && <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />}

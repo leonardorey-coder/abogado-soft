@@ -193,7 +193,7 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     { name: "Drive: Pull Doc (Prueba)", group: "Google Drive", path: "/drive/sync/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
     { name: "Drive: Revisiones (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
     { name: "Drive: Descargar Revisión (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000/test", expectedStatus: [404] },
-    { name: "Drive: URL de Auth", group: "Google Drive", path: "/drive/auth/url" },
+    { name: "Drive: OAuth Auth (legacy)", group: "Google Drive", path: "/drive/auth", expectedStatus: [400, 401] },
 ];
 
 export const HealthCheck: React.FC = () => {
