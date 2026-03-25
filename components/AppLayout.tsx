@@ -212,12 +212,26 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
    Top Bar
    ═══════════════════════════════════════════════════════════════════════════ */
 
+export type EditorTopBarSlots = {
+  left: React.ReactNode;
+  center: React.ReactNode;
+  right: React.ReactNode;
+};
+
+export type AppLayoutOutletContext = {
+  searchQuery: string;
+  openUploadModal: (files?: File[]) => void;
+  refreshDocuments: () => Promise<void>;
+  setEditorTopBar: (slots: EditorTopBarSlots | null) => void;
+};
+
 interface TopBarProps {
   onMenuClick: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onUploadClick: () => void;
   isEditorRoute: boolean;
+  editorTopBar: EditorTopBarSlots | null;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -226,22 +240,13 @@ const TopBar: React.FC<TopBarProps> = ({
   onSearchChange,
   onUploadClick,
   isEditorRoute,
+  editorTopBar,
 }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-2 px-3 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
-      {/* Left: hamburger (mobile) or back button (editor) */}
-      {isEditorRoute ? (
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
-          aria-label="Regresar"
-        >
-          <ChevronLeft className="w-6 h-6 sm:w-5 sm:h-5" />
-        </button>
-      ) : (
+    <header className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-1 px-2 sm:gap-2 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
+      {!isEditorRoute && (
         <button
           type="button"
           onClick={onMenuClick}
@@ -252,32 +257,54 @@ const TopBar: React.FC<TopBarProps> = ({
         </button>
       )}
 
-      {/* Search */}
-      <div className="flex-1 max-w-md ml-1 sm:ml-0">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Buscar…"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-10 sm:h-9 pl-9 pr-3 rounded-lg text-sm sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-          />
-        </div>
-      </div>
-
-      {/* Right actions */}
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={onUploadClick}
-          className="inline-flex items-center justify-center gap-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-blue-700 shadow-sm transition-colors"
-          aria-label="Nuevo documento"
+      {isEditorRoute && editorTopBar != null ? (
+        <>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white sm:w-10"
+            aria-label="Regresar"
+          >
+            <ChevronLeft className="size-6 sm:size-5" />
+          </button>
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
+            <div className="flex h-10 w-9 shrink-0 items-center justify-center sm:w-10">{editorTopBar.left}</div>
+            <div className="flex min-w-0 flex-1 justify-center overflow-x-auto overflow-y-hidden py-1 no-scrollbar">
+              <div className="mx-auto flex w-max max-w-full justify-center">{editorTopBar.center}</div>
+            </div>
+            <div className="flex h-10 w-9 shrink-0 items-center justify-center sm:w-10">{editorTopBar.right}</div>
+          </div>
+        </>
+      ) : (
+        <div
+          className={`flex-1 min-w-0 ${isEditorRoute ? 'max-w-none' : 'max-w-md ml-1 sm:ml-0'}`}
         >
-          <Upload className="w-5 h-5 sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline">Nuevo documento</span>
-        </button>
-      </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar…"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full h-10 sm:h-9 pl-9 pr-3 rounded-lg text-sm sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            />
+          </div>
+        </div>
+      )}
+
+      {!isEditorRoute && (
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onUploadClick}
+            className="inline-flex items-center justify-center gap-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-blue-700 shadow-sm transition-colors"
+            aria-label="Nuevo documento"
+          >
+            <Upload className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Nuevo documento</span>
+          </button>
+        </div>
+      )}
     </header>
   );
 };
@@ -643,7 +670,9 @@ export const AppLayout: React.FC = () => {
       if (modal.files.length === 1 && lastDoc?.id) {
         const t = lastDoc.type?.toUpperCase();
         const isExcel = t === "XLSX" || t === "XLS";
-        navigate(isExcel ? `/documento/${lastDoc.id}/excel` : `/documento/${lastDoc.id}`);
+        navigate(isExcel ? `/documento/${lastDoc.id}/excel` : `/documento/${lastDoc.id}`, {
+          state: { seededDocument: lastDoc },
+        });
       }
     } catch (err: any) {
       setModal((prev) => ({
@@ -658,6 +687,12 @@ export const AppLayout: React.FC = () => {
     await logout();
     navigate("/login");
   }, [logout, navigate]);
+
+  const [editorTopBar, setEditorTopBar] = useState<EditorTopBarSlots | null>(null);
+
+  useEffect(() => {
+    if (!isEditorRoute) setEditorTopBar(null);
+  }, [isEditorRoute]);
 
   /* ── Render ────────────────────────────────────────────────────────── */
   return (
@@ -681,11 +716,21 @@ export const AppLayout: React.FC = () => {
           onSearchChange={setSearchQuery}
           onUploadClick={() => openUploadModal()}
           isEditorRoute={isEditorRoute}
+          editorTopBar={editorTopBar}
         />
 
         {/* Content area */}
         <main id="main-content" className="flex-1 overflow-y-auto pb-24 lg:pb-0">
-          <Outlet context={{ searchQuery, openUploadModal, refreshDocuments }} />
+          <Outlet
+            context={
+              {
+                searchQuery,
+                openUploadModal,
+                refreshDocuments,
+                setEditorTopBar,
+              } satisfies AppLayoutOutletContext
+            }
+          />
         </main>
       </div>
 

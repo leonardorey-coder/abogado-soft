@@ -1,9 +1,11 @@
 import React, { lazy, Suspense } from "react";
+import { EditorRouteErrorBoundary } from "./components/EditorRouteErrorBoundary";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { GuestRoute } from "./components/GuestRoute";
 import { AppLayout } from "./components/AppLayout";
+import { DocumentEditor } from "./components/DocumentEditor";
 
 // Pages (lazy-loaded for code splitting)
 const LoginPage = lazy(() => import("./components/LoginPage").then(m => ({ default: m.LoginPage })));
@@ -16,7 +18,6 @@ const AgreementsList = lazy(() => import("./components/AgreementsList").then(m =
 const ConvenioForm = lazy(() => import("./components/ConvenioForm").then(m => ({ default: m.ConvenioForm })));
 const ConvenioDetails = lazy(() => import("./components/ConvenioDetails").then(m => ({ default: m.ConvenioDetails })));
 const TeamPage = lazy(() => import("./components/TeamPage").then(m => ({ default: m.TeamPage })));
-const DocumentEditor = lazy(() => import("./components/DocumentEditor").then(m => ({ default: m.DocumentEditor })));
 const ExcelEditor = lazy(() => import("./components/ExcelEditor").then(m => ({ default: m.ExcelEditor })));
 const DocumentXlsxEditor = lazy(() => import("./components/DocumentXlsxEditor").then(m => ({ default: m.DocumentXlsxEditor })));
 const ActivityLog = lazy(() => import("./components/ActivityLog").then(m => ({ default: m.ActivityLog })));
@@ -62,8 +63,22 @@ export default function App() {
                 <Route path="/convenio/:id/editar" element={<ConvenioForm />} />
                 <Route path="/convenio/:id/tabla" element={<ExcelEditor />} />
                 <Route path="/equipo" element={<TeamPage />} />
-                <Route path="/documento/:id" element={<DocumentEditor />} />
-                <Route path="/documento/:id/excel" element={<DocumentXlsxEditor />} />
+                <Route
+                  path="/documento/:id"
+                  element={
+                    <EditorRouteErrorBoundary>
+                      <DocumentEditor />
+                    </EditorRouteErrorBoundary>
+                  }
+                />
+                <Route
+                  path="/documento/:id/excel"
+                  element={
+                    <EditorRouteErrorBoundary>
+                      <DocumentXlsxEditor />
+                    </EditorRouteErrorBoundary>
+                  }
+                />
                 <Route path="/actividad" element={<ActivityLog />} />
                 <Route path="/seguridad" element={<SecurityPage />} />
                 <Route path="/papelera" element={<TrashPage />} />

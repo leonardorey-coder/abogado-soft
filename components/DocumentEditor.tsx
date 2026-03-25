@@ -4,9 +4,10 @@
 // URL única: #/document/:id
 // ============================================================================
 
-import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useImperativeHandle, forwardRef, useId } from 'react';
 import { Document } from '../types';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useOutletContext, useLocation } from 'react-router-dom';
+import type { AppLayoutOutletContext } from './AppLayout';
 import { documentsApi, activityApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, ApiActivityLog, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
@@ -16,6 +17,8 @@ import { HistoryTab } from './HistoryTab';
 import { CommentsTab } from './CommentsTab';
 import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
 import { ShareModal } from './ShareModal';
+import { SuperDocPageStrip } from './SuperDocPageStrip';
+import { SuperDocPageSetupModal } from './SuperDocPageSetupModal';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -44,6 +47,19 @@ function getShareUrl(documentId: string): string {
   return `${window.location.origin}/documento/${documentId}`;
 }
 
+function EditorPanelToggleIcon({ side }: { side: 'left' | 'right' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-5 shrink-0 text-current" aria-hidden>
+      <rect x="4" y="5" width="16" height="14" rx="2" className="stroke-current" strokeWidth="1.75" />
+      {side === 'left' ? (
+        <rect x="7" y="8" width="3.5" height="8" rx="0.5" className="fill-current opacity-90" />
+      ) : (
+        <rect x="13.5" y="8" width="3.5" height="8" rx="0.5" className="fill-current opacity-90" />
+      )}
+    </svg>
+  );
+}
+
 // ─── Active Users Component ──────────────────────────────────────────────────
 
 interface ActiveUser {
@@ -66,7 +82,7 @@ const ActiveUsersIndicator: React.FC<{ users: ActiveUser[] }> = ({ users }) => {
             style={{ backgroundColor: user.color || '#6366f1' }}
             title={user.name}
           >
-            {user.name.charAt(0).toUpperCase()}
+            {(user.name || '?').charAt(0).toUpperCase()}
           </div>
         ))}
         {users.length > 5 && (
@@ -88,6 +104,8 @@ interface SuperDocEditorProps {
   userName: string;
   userEmail: string;
   initialMode?: 'editing' | 'viewing' | 'suggesting';
+  superdocRole?: 'editor' | 'viewer' | 'suggester';
+  editorMountRef?: React.RefObject<HTMLDivElement | null>;
   onReady?: (editor: SuperDoc) => void;
   onUpdate?: () => void;
   onActiveUsersChange?: (users: ActiveUser[]) => void;
@@ -97,14 +115,41 @@ interface SuperDocEditorRef {
   export: (options?: SuperDocExportOptions) => Promise<Blob | null>;
   setMode: (mode: 'editing' | 'viewing' | 'suggesting') => void;
   getHTML: () => string[];
+  getSuperDoc: () => SuperDoc | null;
 }
 
+const TOOLBAR_FONTS = [
+  { label: 'Arial', key: 'Arial, Helvetica, sans-serif' },
+  { label: 'Times New Roman', key: '"Times New Roman", Times, serif' },
+  { label: 'Calibri', key: 'Calibri, "Segoe UI", sans-serif' },
+  { label: 'Georgia', key: 'Georgia, serif' },
+  { label: 'Courier New', key: '"Courier New", Courier, monospace' },
+  { label: 'Garamond', key: 'Garamond, "Times New Roman", serif' },
+];
+
 const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
-  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', onReady, onUpdate, onActiveUsersChange }, ref) => {
+  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', superdocRole = 'editor', editorMountRef, onReady, onUpdate, onActiveUsersChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const reactId = useId();
+    const toolbarDomId = `sd-toolbar-${reactId.replace(/:/g, '')}`;
+
+    const setEditorMountRef = useCallback(
+      (el: HTMLDivElement | null) => {
+        (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        if (editorMountRef && 'current' in editorMountRef) {
+          (editorMountRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }
+      },
+      [editorMountRef]
+    );
+
+    const onReadyRef = useRef(onReady);
+    const onUpdateRef = useRef(onUpdate);
+    onReadyRef.current = onReady;
+    onUpdateRef.current = onUpdate;
 
     useImperativeHandle(ref, () => ({
       export: async (options?: SuperDocExportOptions): Promise<Blob | null> => {
@@ -113,11 +158,16 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         return result instanceof Blob ? result : null;
       },
       setMode: (mode) => {
-        superdocRef.current?.setDocumentMode(mode);
+        try {
+          superdocRef.current?.setDocumentMode?.(mode);
+        } catch (e) {
+          console.warn('[SuperDoc] setDocumentMode', e);
+        }
       },
       getHTML: () => {
         return superdocRef.current?.getHTML() || [];
-      }
+      },
+      getSuperDoc: () => superdocRef.current,
     }));
 
     useEffect(() => {
@@ -132,23 +182,40 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
           const superdocConfig: any = {
             selector: containerRef.current!,
             document: documentBlob,
+            title: documentName,
             user: { name: userName, email: userEmail },
+            role: superdocRole,
             documentMode: initialMode,
+            rulers: true,
+            toolbar: `#${toolbarDomId}`,
             viewOptions: { layout: 'print' },
             colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#6366f1', '#f59e0b'],
+            modules: {
+              toolbar: {
+                selector: `#${toolbarDomId}`,
+                hideButtons: false,
+                responsiveToContainer: true,
+                excludeItems: ['documentMode', 'export'],
+                fonts: TOOLBAR_FONTS,
+              },
+            },
             onReady: ({ superdoc }: { superdoc: SuperDoc }) => {
               if (destroyed) return;
+              superdocRef.current = superdoc;
               setIsReady(true);
-              onReady?.(superdoc);
+              onReadyRef.current?.(superdoc);
             },
-            onEditorUpdate: () => { onUpdate?.(); },
-            onException: ({ error }: { error: Error }) => {
-              console.error('SuperDoc error:', error);
+            onEditorUpdate: () => {
+              onUpdateRef.current?.();
+            },
+            onException: ({ error: ex }: { error: Error }) => {
+              console.error('SuperDoc error:', ex);
               setError('Error en el editor de documentos');
             },
           };
 
-          superdocRef.current = new SuperDoc(superdocConfig);
+          const instance = new SuperDoc(superdocConfig);
+          if (!destroyed) superdocRef.current = instance;
         } catch (err: any) {
           console.error('Error initializing SuperDoc:', err);
           setError(err.message || 'Error al inicializar el editor');
@@ -163,7 +230,16 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         superdocRef.current = null;
         setIsReady(false);
       };
-    }, [documentBlob, documentId, documentName, userName, userEmail]);
+    }, [documentBlob, documentId, documentName, userName, userEmail, superdocRole, toolbarDomId]);
+
+    useEffect(() => {
+      if (!isReady) return;
+      try {
+        superdocRef.current?.setDocumentMode?.(initialMode);
+      } catch (e) {
+        console.warn('[SuperDoc] setDocumentMode', e);
+      }
+    }, [initialMode, isReady]);
 
     if (error) {
       return (
@@ -178,7 +254,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
     }
 
     return (
-      <div className="flex-1 flex flex-col relative isolate">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 relative isolate overflow-hidden">
         {!isReady && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 dark:bg-gray-900/90 z-10">
             <div className="animate-spin size-12 border-4 border-primary border-t-transparent rounded-full mb-4" />
@@ -186,10 +262,15 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
           </div>
         )}
         <div
-          ref={containerRef}
-          className="superdoc-container flex-1 min-h-[600px]"
-          style={{ height: '100%', contain: 'layout style' }}
+          id={toolbarDomId}
+          className="superdoc-toolbar-host mt-3 shrink-0 z-20 min-h-[48px] w-full border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
         />
+        <div className="min-h-0 w-full flex-1 overflow-auto bg-white dark:bg-[#0f0f1a]">
+          <div
+            ref={setEditorMountRef}
+            className="superdoc-container mx-auto min-h-[480px] w-full max-w-[56rem] overflow-auto"
+          />
+        </div>
       </div>
     );
   }
@@ -202,8 +283,12 @@ SuperDocEditor.displayName = 'SuperDocEditor';
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTrash }) => {
   const { id: documentId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { setEditorTopBar } = useOutletContext<AppLayoutOutletContext>();
+  const lastSeededDocIdRef = useRef<string | null>(null);
   const { user: authUser } = useAuth();
   const [rightPanel, setRightPanel] = useState<RightPanel>('COMMENTS');
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [doc, setDoc] = useState<ApiDocument | null>(null);
   const [documentActivity, setDocumentActivity] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -215,6 +300,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   // SuperDoc ref
   const editorRef = useRef<SuperDocEditorRef>(null);
+  const superDocMountRef = useRef<HTMLDivElement>(null);
+  const [pageStripOpen, setPageStripOpen] = useState(false);
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [superdocInstance, setSuperdocInstance] = useState<SuperDoc | null>(null);
+  const [activePageIndex, setActivePageIndex] = useState(0);
 
   // Editor mode
   const [editorMode, setEditorMode] = useState<'editing' | 'viewing' | 'suggesting'>('editing');
@@ -252,10 +342,118 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [diffHtml, setDiffHtml] = useState<string | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
 
+  const [iframeUrl, setIframeUrl] = useState<string>('');
+
   // Effective permission level
   const [effectivePermission, setEffectivePermission] = useState<string>('admin');
   const canEdit = effectivePermission === 'write' || effectivePermission === 'admin';
   const canAdmin = effectivePermission === 'admin';
+  const superdocRole = canEdit ? 'editor' : 'viewer';
+
+  useEffect(() => {
+    setSuperdocInstance(null);
+    setActivePageIndex(0);
+    setLeftSidebarOpen(true);
+  }, [documentId]);
+
+  const [isEditingDocName, setIsEditingDocName] = useState(false);
+  const [docNameDraft, setDocNameDraft] = useState('');
+  const [docNameSaveError, setDocNameSaveError] = useState<string | null>(null);
+  const [isSavingDocName, setIsSavingDocName] = useState(false);
+  const docNameInputRef = useRef<HTMLInputElement>(null);
+  const [lgUp, setLgUp] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setLgUp(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const cancelDocNameEdit = useCallback(() => {
+    if (doc) setDocNameDraft(doc.name);
+    setIsEditingDocName(false);
+    setDocNameSaveError(null);
+  }, [doc]);
+
+  const startDocNameEdit = useCallback(() => {
+    if (!doc || !canEdit) return;
+    setDocNameDraft(doc.name);
+    setDocNameSaveError(null);
+    setIsEditingDocName(true);
+    requestAnimationFrame(() => {
+      docNameInputRef.current?.focus();
+      docNameInputRef.current?.select();
+    });
+  }, [doc, canEdit]);
+
+  const commitDocNameEdit = useCallback(async () => {
+    if (!documentId || !doc) {
+      setIsEditingDocName(false);
+      return;
+    }
+    let next = docNameDraft.trim();
+    if (!next) {
+      cancelDocNameEdit();
+      return;
+    }
+    if (next.length > 500) {
+      setDocNameSaveError('Máximo 500 caracteres');
+      return;
+    }
+    const t = doc.type?.toLowerCase();
+    if ((t === 'docx' || t === 'doc') && !/\.(docx|doc)$/i.test(next)) {
+      next = `${next}.docx`;
+    }
+    if (next === doc.name) {
+      setIsEditingDocName(false);
+      setDocNameSaveError(null);
+      return;
+    }
+    setDocNameSaveError(null);
+    setIsSavingDocName(true);
+    try {
+      const updated = await documentsApi.update(documentId, { name: next });
+      setDoc(updated);
+      setDocNameDraft(updated.name);
+      setIsEditingDocName(false);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar el nombre';
+      setDocNameSaveError(msg);
+    } finally {
+      setIsSavingDocName(false);
+    }
+  }, [documentId, doc, docNameDraft, cancelDocNameEdit]);
+
+  useEffect(() => {
+    setIsEditingDocName(false);
+    setDocNameSaveError(null);
+  }, [documentId]);
+
+  useLayoutEffect(() => {
+    if (!documentId) return;
+    const seeded = (location.state as { seededDocument?: ApiDocument } | null)?.seededDocument;
+    if (seeded?.id === documentId) {
+      lastSeededDocIdRef.current = documentId;
+      setDoc(seeded);
+      setLoading(false);
+      setError(null);
+      navigate(
+        { pathname: location.pathname, search: location.search, hash: location.hash },
+        { replace: true, state: {} }
+      );
+      return;
+    }
+    if (lastSeededDocIdRef.current === documentId) {
+      return;
+    }
+    lastSeededDocIdRef.current = null;
+    setDoc((d) => (d?.id === documentId ? d : null));
+    setLoading(true);
+  }, [documentId, location.state, location.pathname, location.search, location.hash, navigate]);
 
   // ─── Fetch document ──────────────────────────────────────────────────
   const fetchDocument = useCallback(async () => {
@@ -265,11 +463,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       return;
     }
     try {
-      // Solo mostrar loading en la carga inicial, no en refreshes
-      setLoading(prev => {
-        if (!doc) return true;
-        return prev;
-      });
       setError(null);
       const data = await documentsApi.get(documentId);
       setDoc(data);
@@ -364,6 +557,25 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       setError('Error al cargar el archivo para edición');
     });
   }, [docId, docLocalPath, docType, loadDocumentBlobFromUrl]);
+
+  useEffect(() => {
+    if (!doc) {
+      setIframeUrl('');
+      return;
+    }
+    let cancelled = false;
+    import('../lib/supabaseAuth').then(({ supabase }) => {
+      supabase.auth.getSession().then(({ data }) => {
+        if (cancelled) return;
+        const token = data.session?.access_token;
+        const url = getDocumentFileUrl(doc.id);
+        setIframeUrl(token ? `${url}?token=${token}` : url);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc]);
 
   // ─── Save Handlers ───────────────────────────────────────────────────
 
@@ -526,12 +738,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
   };
 
-  const exitCompare = () => {
+  const exitCompare = useCallback(() => {
     setShowDiff(false);
     setIsCompareMode(false);
     setSelectedVersions([]);
     setDiffHtml(null);
-  };
+  }, []);
 
   const handleAddComment = async (content: string) => {
     if (!documentId) return;
@@ -544,14 +756,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!documentId || !doc) return;
     try {
       await downloadDocument(documentId, doc.name);
     } catch (err) {
       console.error('Error al descargar:', err);
     }
-  };
+  }, [documentId, doc]);
 
 
 
@@ -565,21 +777,154 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const isPdf = doc?.mimeType === 'application/pdf';
   const isImage = doc?.mimeType?.startsWith('image/');
   const canUseSuperdoc = isDocx && doc?.localPath;
-  const [iframeUrl, setIframeUrl] = useState<string>('');
 
-  useEffect(() => {
-    if (doc) {
-      import('../lib/supabaseAuth').then(({ supabase }) => {
-        supabase.auth.getSession().then(({ data }) => {
-          const token = data.session?.access_token;
-          const url = getDocumentFileUrl(doc.id);
-          setIframeUrl(token ? `${url}?token=${token}` : url);
-        });
-      });
-    } else {
-      setIframeUrl('');
+  useLayoutEffect(() => {
+    if (loading || error || !doc) {
+      setEditorTopBar(null);
+      return;
     }
-  }, [doc]);
+
+    const headerBtn =
+      'inline-flex items-center justify-center gap-1.5 shrink-0 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg font-bold text-xs sm:text-sm border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors [&_.material-symbols-outlined]:text-current';
+    const headerBtnPrimary =
+      'inline-flex items-center justify-center gap-1.5 shrink-0 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg font-bold text-xs sm:text-sm bg-primary !text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:pointer-events-none transition-colors [&_.material-symbols-outlined]:!text-white';
+    const headerBtnExitCompare =
+      'inline-flex items-center justify-center gap-1.5 shrink-0 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg font-bold text-xs sm:text-sm border border-slate-700 bg-slate-800 !text-white shadow-sm hover:bg-slate-700 dark:border-slate-600 transition-colors [&_.material-symbols-outlined]:!text-white';
+
+    const panelToggleBtn = (active: boolean) =>
+      `inline-flex size-9 items-center justify-center rounded-lg border transition-colors ${
+        active
+          ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20'
+          : 'border-slate-200 dark:border-slate-600 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+      }`;
+
+    const rightPanelOpen = rightPanel !== 'NONE';
+
+    const leftSlot = (
+      <div className="flex w-full items-center justify-center">
+        <span className="inline-flex w-9 shrink-0 lg:hidden" aria-hidden />
+        <button
+          type="button"
+          className={`${panelToggleBtn(leftSidebarOpen)} hidden lg:inline-flex`}
+          aria-label={leftSidebarOpen ? 'Ocultar panel del documento' : 'Mostrar panel del documento'}
+          aria-pressed={leftSidebarOpen}
+          onClick={() => setLeftSidebarOpen((v) => !v)}
+        >
+          <EditorPanelToggleIcon side="left" />
+        </button>
+      </div>
+    );
+
+    const rightSlot = (
+      <button
+        type="button"
+        className={panelToggleBtn(rightPanelOpen)}
+        aria-label={rightPanelOpen ? 'Cerrar panel lateral' : 'Abrir panel lateral'}
+        aria-pressed={rightPanelOpen}
+        onClick={() => setRightPanel((p) => (p === 'NONE' ? 'COMMENTS' : 'NONE'))}
+      >
+        <EditorPanelToggleIcon side="right" />
+      </button>
+    );
+
+    setEditorTopBar({
+      left: leftSlot,
+      right: rightSlot,
+      center: (
+        <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+        {showDiff && (
+          <button type="button" onClick={exitCompare} className={headerBtnExitCompare}>
+            <span className="material-symbols-outlined text-lg sm:text-xl">close</span>
+            <span className="hidden sm:inline">Salir de comparación</span>
+          </button>
+        )}
+        {!showDiff && (
+          <>
+            {canUseSuperdoc && canEdit && (
+              <button
+                type="button"
+                onClick={() => handleSaveDocument()}
+                disabled={isSaving || (!hasChanges && !isSaving)}
+                className={headerBtnPrimary}
+              >
+                <span className={`material-symbols-outlined text-lg sm:text-xl ${isSaving ? 'animate-spin' : ''}`}>
+                  {isSaving ? 'progress_activity' : 'save'}
+                </span>
+                <span className="hidden sm:inline">{isSaving ? 'Guardando…' : 'Guardar'}</span>
+              </button>
+            )}
+            {canUseSuperdoc && !canEdit && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">
+                <span className="material-symbols-outlined text-sm">lock</span>
+                <span className="hidden sm:inline">Solo lectura</span>
+              </span>
+            )}
+          </>
+        )}
+        <button type="button" onClick={handleDownload} className={headerBtn}>
+          <span className="material-symbols-outlined text-lg sm:text-xl">download</span>
+          <span className="hidden sm:inline">Descargar</span>
+        </button>
+        <button type="button" onClick={() => setShowShareModal(true)} className={headerBtn}>
+          <span className="material-symbols-outlined text-lg sm:text-xl">share</span>
+          <span className="hidden sm:inline">Compartir</span>
+        </button>
+        {!showDiff && canUseSuperdoc && (
+          <>
+            <button
+              type="button"
+              onClick={() => setPageStripOpen((v) => !v)}
+              title={pageStripOpen ? 'Ocultar miniaturas' : 'Mostrar miniaturas'}
+              className={`${headerBtn} ${pageStripOpen ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20' : ''}`}
+            >
+              <span className="material-symbols-outlined text-lg sm:text-xl">view_carousel</span>
+              <span className="hidden lg:inline">Páginas</span>
+            </button>
+            {canEdit && (
+              <button type="button" onClick={() => setPageSetupOpen(true)} className={headerBtn}>
+                <span className="material-symbols-outlined text-lg sm:text-xl">settings</span>
+                <span className="hidden sm:inline">Página</span>
+              </button>
+            )}
+          </>
+        )}
+        {!showDiff && (
+          <div className="hidden md:flex items-center gap-2 sm:gap-3 ml-1 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs shrink-0">
+            {activeUsers.length > 0 && <ActiveUsersIndicator users={activeUsers} />}
+            <div className="flex items-center gap-1 min-w-0">
+              <span className={`material-symbols-outlined shrink-0 text-base ${hasChanges ? 'text-amber-500' : 'text-green-500'}`}>
+                {hasChanges ? 'sync_problem' : 'cloud_done'}
+              </span>
+              <span className="truncate max-w-[10rem] sm:max-w-[14rem]">
+                {hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}
+              </span>
+            </div>
+          </div>
+        )}
+        </div>
+      ),
+    });
+
+    return () => setEditorTopBar(null);
+  }, [
+    setEditorTopBar,
+    leftSidebarOpen,
+    rightPanel,
+    loading,
+    error,
+    doc,
+    showDiff,
+    canUseSuperdoc,
+    canEdit,
+    isSaving,
+    hasChanges,
+    handleSaveDocument,
+    handleDownload,
+    exitCompare,
+    pageStripOpen,
+    activeUsers,
+    setShowShareModal,
+  ]);
 
   // ─── Loading / Error states ──────────────────────────────────────────
 
@@ -616,6 +961,58 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const historicalVersions = versions.filter(v => v.version !== doc.version);
   const comments = doc.comments ?? [];
   const caseData = doc.case_ as any;
+
+  const renderDocNameControl = (layout: 'sidebar' | 'mobile') => {
+    const inputCls =
+      layout === 'sidebar'
+        ? 'w-full text-lg font-bold text-[#0e0e1b] dark:text-white leading-tight bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1'
+        : 'w-full min-w-0 text-sm font-semibold text-[#0e0e1b] dark:text-white bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1';
+    const btnCls =
+      layout === 'sidebar'
+        ? 'text-left w-full text-lg font-bold text-[#0e0e1b] dark:text-white leading-tight hover:text-primary rounded-lg -mx-1 px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30'
+        : 'text-left w-full min-w-0 truncate text-sm font-semibold text-[#0e0e1b] dark:text-white hover:text-primary rounded-lg px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30';
+
+    if (!canEdit) {
+      return layout === 'sidebar' ? (
+        <h1 className="text-lg font-bold text-[#0e0e1b] dark:text-white leading-tight">{doc.name}</h1>
+      ) : (
+        <span className="block truncate text-sm font-semibold text-[#0e0e1b] dark:text-white">{doc.name}</span>
+      );
+    }
+
+    if (isEditingDocName) {
+      return (
+        <div className="space-y-1 w-full min-w-0">
+          <input
+            ref={docNameInputRef}
+            value={docNameDraft}
+            onChange={(e) => setDocNameDraft(e.target.value)}
+            onBlur={() => { void commitDocNameEdit(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void commitDocNameEdit();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelDocNameEdit();
+              }
+            }}
+            disabled={isSavingDocName}
+            className={inputCls}
+            aria-label="Nombre del documento"
+          />
+          {docNameSaveError && <p className="text-xs text-red-600 dark:text-red-400">{docNameSaveError}</p>}
+        </div>
+      );
+    }
+
+    return (
+      <button type="button" onClick={startDocNameEdit} className={btnCls} title="Cambiar nombre">
+        {doc.name}
+      </button>
+    );
+  };
 
   // ─── Render sub-views ────────────────────────────────────────────────
 
@@ -708,48 +1105,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     // ── SuperDoc Editor for DOCX files ──
     return (
       <div className="w-full flex flex-col min-h-[800px]">
-        {/* Mode selector for DOCX */}
-        {canUseSuperdoc && (
-          <div className="flex items-center gap-1 px-4 py-2 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-xs text-gray-500 mr-3 font-medium">Modo:</span>
-            {canEdit ? (
-              <div className="relative isolate flex p-1 bg-gray-200/60 dark:bg-gray-800/80 rounded-xl">
-                {/* Sliding background pill */}
-                <div
-                  className="absolute inset-y-1 left-1 w-28 bg-primary rounded-lg shadow-md transition-transform duration-300 ease-out z-[-1]"
-                  style={{
-                    transform: `translateX(${editorMode === 'editing' ? '0%' : editorMode === 'suggesting' ? '100%' : '200%'
-                      })`
-                  }}
-                />
-
-                {(['editing', 'suggesting', 'viewing'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => handleModeChange(mode)}
-                    className={`flex items-center justify-center gap-1.5 w-28 py-1.5 rounded-lg text-sm font-semibold transition-colors duration-300 ${editorMode === mode
-                      ? 'text-white'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                      }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      {mode === 'editing' ? 'edit' : mode === 'suggesting' ? 'rate_review' : 'visibility'}
-                    </span>
-                    {mode === 'editing' ? 'Editar' : mode === 'suggesting' ? 'Sugerir' : 'Ver'}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <span className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                <span className="material-symbols-outlined text-base">visibility</span>
-                Solo lectura
-              </span>
-            )}
-          </div>
-        )}
-
         {/* Editor area */}
-        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-sm">
+        <div className="flex-1 bg-white dark:bg-[#0f0f1a] rounded-b-lg shadow-sm min-h-0 flex flex-col">
           {canUseSuperdoc ? (
             loadingBlob ? (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">
@@ -757,17 +1114,32 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 <p className="text-gray-500 font-medium">Cargando documento...</p>
               </div>
             ) : documentBlob ? (
-              <SuperDocEditor
-                ref={editorRef}
-                documentId={doc.id}
-                documentBlob={documentBlob}
-                documentName={doc.name}
-                userName={authUser?.name ?? 'Usuario'}
-                userEmail={authUser?.email ?? 'usuario@example.com'}
-                onReady={() => console.log('[SuperDoc] Editor ready')}
-                onUpdate={() => setHasChanges(true)}
-                onActiveUsersChange={setActiveUsers}
-              />
+              <div className="flex flex-1 min-h-[560px] min-w-0 flex-col lg:flex-row overflow-hidden">
+                <SuperDocPageStrip
+                  editorMountRef={superDocMountRef}
+                  activePageIndex={activePageIndex}
+                  onActiveChange={setActivePageIndex}
+                  collapsed={!pageStripOpen}
+                />
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                  <SuperDocEditor
+                    ref={editorRef}
+                    documentId={doc.id}
+                    documentBlob={documentBlob}
+                    documentName={doc.name}
+                    userName={authUser?.name ?? 'Usuario'}
+                    userEmail={authUser?.email ?? 'usuario@example.com'}
+                    initialMode={editorMode}
+                    superdocRole={superdocRole}
+                    editorMountRef={superDocMountRef}
+                    onReady={(sd) => {
+                      setSuperdocInstance(sd);
+                    }}
+                    onUpdate={() => setHasChanges(true)}
+                    onActiveUsersChange={setActiveUsers}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[600px]">
                 <span className="material-symbols-outlined text-5xl text-gray-400 mb-4">description</span>
@@ -828,7 +1200,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Tipo</label>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{doc.type.toUpperCase()}</p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{(doc.type ?? '').toUpperCase() || '—'}</p>
           </div>
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Tamaño</label>
@@ -934,7 +1306,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
       <div className="flex grow min-h-0 overflow-hidden relative">
         {/* Left Sidebar */}
-        <aside className="hidden lg:flex w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto">
+        <aside
+          className={`hidden w-64 shrink-0 border-r border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark flex-col p-4 fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto ${
+            leftSidebarOpen ? 'lg:flex' : 'lg:hidden'
+          }`}
+        >
           <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
             <span className="material-symbols-outlined text-xl">arrow_back</span>
             Atrás
@@ -942,12 +1318,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
               <span className={`material-symbols-outlined text-primary`}>{getTypeIcon(doc.type)}</span>
-              <span className="text-xs font-bold text-gray-400 uppercase">{doc.type.toUpperCase()}</span>
+              <span className="text-xs font-bold text-gray-400 uppercase">{(doc.type ?? '').toUpperCase() || '—'}</span>
               {canUseSuperdoc && (
                 <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">SuperDoc</span>
               )}
             </div>
-            <h1 className="text-lg font-bold text-[#0e0e1b] dark:text-white leading-tight">{doc.name}</h1>
+            {lgUp ? renderDocNameControl('sidebar') : null}
             <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
             {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
           </div>
@@ -974,69 +1350,67 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         </aside>
 
         {/* Main Content (Always shows editor + toolbar) */}
-        <main className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden lg:ml-64 min-w-0 transition-all duration-300 ${rightPanel !== 'NONE' ? 'lg:mr-80' : ''}`}>
+        <main
+          className={`flex-1 flex flex-col bg-background-light dark:bg-[#0a0a14] overflow-hidden min-w-0 transition-[margin] duration-300 ${
+            leftSidebarOpen ? 'lg:ml-64' : 'lg:ml-0'
+          } ${rightPanel !== 'NONE' ? 'lg:mr-80' : ''}`}
+        >
           <>
-            {/* Toolbar */}
-            <div className={`fixed left-0 lg:left-64 top-16 z-30 h-[87px] flex items-center justify-between bg-white dark:bg-background-dark border-b border-[#e7e7f3] dark:border-white/10 px-4 lg:px-6 py-4 transition-all duration-300 ${rightPanel !== 'NONE' ? 'right-0 lg:right-80' : 'right-0'} overflow-x-auto no-scrollbar`}>
-              <div className="flex items-center gap-3">
-                {showDiff ? (
-                  <button onClick={exitCompare} className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-gray-800 text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg hover:bg-gray-700 transition-colors shrink-0">
-                    <span className="material-symbols-outlined text-xl sm:text-2xl">close</span>
-                    <span className="hidden sm:inline">Salir de Comparación</span>
-                    <span className="sm:hidden">Salir</span>
-                  </button>
-                ) : (
-                  <>
-                    {canUseSuperdoc && canEdit && (
-                      <>
-                        <button
-                          onClick={() => handleSaveDocument()}
-                          disabled={isSaving || (!hasChanges && !isSaving)}
-                          className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-primary text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed shrink-0"
-                        >
-                          <span className={`material-symbols-outlined text-xl sm:text-2xl ${isSaving ? 'animate-spin' : ''}`}>
-                            {isSaving ? 'progress_activity' : 'save'}
-                          </span>
-                          <span className="hidden sm:inline">{isSaving ? 'Guardando...' : 'Guardar'}</span>
-                        </button>
-                      </>
-                    )}
-                    {canUseSuperdoc && !canEdit && (
-                      <span className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 shrink-0">
-                        <span className="material-symbols-outlined text-base">lock</span>
-                        <span className="hidden sm:inline">Solo lectura</span>
-                      </span>
-                    )}
-                    <button onClick={handleDownload} className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-sm sm:text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors shrink-0">
-                      <span className="material-symbols-outlined text-xl sm:text-2xl">download</span>
-                      <span className="hidden sm:inline">Descargar</span>
-                    </button>
-                  </>
-                )}
-                <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white dark:bg-white/5 border border-[#d0d0e7] dark:border-white/10 text-[#0e0e1b] dark:text-white rounded-xl font-bold text-sm sm:text-base hover:bg-background-light dark:hover:bg-white/10 transition-colors shrink-0">
-                  <span className="material-symbols-outlined text-xl sm:text-2xl">share</span>
-                  <span className="hidden sm:inline">Compartir</span>
-                </button>
+            {!lgUp && (
+              <div className="fixed left-0 right-0 top-16 z-[31] h-11 flex items-center px-4 border-b border-[#e7e7f3] dark:border-white/10 bg-white dark:bg-background-dark min-w-0">
+                {renderDocNameControl('mobile')}
               </div>
-              {!showDiff && (
-                <div className="flex items-center gap-4 text-sm text-gray-500">
-                  {/* Active users indicator */}
-                  {activeUsers.length > 0 && (
-                    <ActiveUsersIndicator users={activeUsers} />
-                  )}
+            )}
 
-                  <div className="flex items-center gap-2">
-                    <span className={`material-symbols-outlined ${hasChanges ? 'text-amber-500' : 'text-green-500'} text-lg`}>
-                      {hasChanges ? 'sync_problem' : 'cloud_done'}
-                    </span>
-                    <span>{hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}</span>
+            {canUseSuperdoc && !showDiff && (
+              <div
+                className={`fixed z-[29] min-h-12 flex items-center gap-1 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-[left,right] duration-300 top-[6.75rem] lg:top-16 left-0 right-0 ${
+                  leftSidebarOpen ? 'lg:left-64' : 'lg:left-0'
+                } ${rightPanel !== 'NONE' ? 'lg:right-80' : ''}`}
+              >
+                <span className="text-xs text-gray-500 mr-3 font-medium">Modo:</span>
+                {canEdit ? (
+                  <div className="relative isolate flex p-1 bg-gray-200/60 dark:bg-gray-800/80 rounded-xl">
+                    <div
+                      className="absolute inset-y-1 left-1 w-28 bg-primary rounded-lg shadow-md transition-transform duration-300 ease-out z-[-1]"
+                      style={{
+                        transform: `translateX(${editorMode === 'editing' ? '0%' : editorMode === 'suggesting' ? '100%' : '200%'})`,
+                      }}
+                    />
+                    {(['editing', 'suggesting', 'viewing'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => handleModeChange(mode)}
+                        className={`flex items-center justify-center gap-1.5 w-28 py-1.5 rounded-lg text-sm font-semibold transition-colors duration-300 ${editorMode === mode
+                          ? 'text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          {mode === 'editing' ? 'edit' : mode === 'suggesting' ? 'rate_review' : 'visibility'}
+                        </span>
+                        {mode === 'editing' ? 'Editar' : mode === 'suggesting' ? 'Sugerir' : 'Ver'}
+                      </button>
+                    ))}
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <span className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    <span className="material-symbols-outlined text-base">visibility</span>
+                    Solo lectura
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Document area */}
-            <div className="flex-1 overflow-y-auto pt-[87px] pb-24 lg:pb-0 flex flex-col isolate">
+            <div
+              className={`flex-1 overflow-y-auto pb-24 lg:pb-0 flex flex-col isolate ${
+                canUseSuperdoc && !showDiff
+                  ? 'pt-[calc(2.75rem+3rem)] lg:pt-[3rem]'
+                  : 'pt-[2.75rem] lg:pt-0'
+              }`}
+            >
               {renderEditorContent()}
             </div>
           </>
@@ -1261,6 +1635,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       {showShareModal && doc && (
         <ShareModal document={doc as any} onClose={() => setShowShareModal(false)} />
       )}
+
+      <SuperDocPageSetupModal
+        open={pageSetupOpen}
+        superdoc={superdocInstance}
+        onClose={() => setPageSetupOpen(false)}
+      />
 
       {/* Mobile Editor Bottom Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border-t border-slate-200 dark:border-slate-800 pb-safe flex items-center justify-around h-16 px-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
