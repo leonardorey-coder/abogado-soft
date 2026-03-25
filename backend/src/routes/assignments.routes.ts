@@ -21,6 +21,8 @@ const updateAssignmentSchema = z.object({
 
 const assignmentsQuerySchema = paginationQuery.extend({
   status: z.enum(['pendiente', 'visto', 'editado', 'revisado', 'completado', 'rechazado']).optional(),
+  /** Si true: asignaciones recibidas aún no marcadas como completadas (incl. visto, editado, revisado, rechazado). */
+  pendingWork: z.coerce.boolean().optional(),
 });
 
 const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
@@ -38,11 +40,15 @@ assignmentsRouter.get(
   validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, status } = req.query as any;
+      const { page, limit, sortOrder, status, pendingWork } = req.query as any;
       const skip = (page - 1) * limit;
 
       const where: any = { assignedTo: req.user!.id };
-      if (status) where.status = status;
+      if (pendingWork) {
+        where.status = { not: 'completado' };
+      } else if (status) {
+        where.status = status;
+      }
 
       const [assignments, total] = await Promise.all([
         prisma.documentAssignment.findMany({

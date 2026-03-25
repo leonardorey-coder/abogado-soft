@@ -806,11 +806,18 @@ export const casesApi = {
 // ─── ASIGNACIONES ───────────────────────────────────────────────────────
 
 export const assignmentsApi = {
-  listReceived: (params?: { page?: number; limit?: number; status?: string }) => {
+  listReceived: (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    /** Asignaciones no completadas (pendiente, visto, editado, revisado, etc.) */
+    pendingWork?: boolean;
+  }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.status) query.set('status', params.status);
+    if (params?.pendingWork) query.set('pendingWork', 'true');
     const qs = query.toString();
     return apiFetch<PaginatedResponse<ApiDocumentAssignment>>(`/assignments${qs ? `?${qs}` : ''}`);
   },
