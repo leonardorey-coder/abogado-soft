@@ -3,7 +3,7 @@ import { Document, FileStatus } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
-import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
+import { assignmentsApi, documentsApi, type ApiDocumentAssignment } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
@@ -28,13 +28,11 @@ import {
   Clock,
   AlertCircle,
   CheckCircle,
-  FileUp,
   Users,
   ArrowRight,
   MoreVertical,
   Calendar,
   Edit3,
-  Archive,
   Share2,
   UserPlus,
   Shield,
@@ -44,7 +42,6 @@ import {
   Table,
   FolderOpen,
   Upload,
-  ArchiveRestore,
   Search,
 } from "lucide-react";
 
@@ -93,6 +90,10 @@ const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
   rechazado: "Rechazado",
 };
 
+const NEW_DOC_FROM_QUICK_DEFAULT_NAME = "Documento sin título.docx";
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 const matchesSearch = (doc: Document, q: string): boolean => {
   if (!q.trim()) return true;
   const term = q.trim().toLowerCase();
@@ -138,6 +139,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
   const [assignmentsReceived, setAssignmentsReceived] = useState<ApiDocumentAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [quickNewDocLoading, setQuickNewDocLoading] = useState(false);
+  const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
   const { isDraggingOver } = useFileDragDrop({
@@ -148,7 +151,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const refreshAssignments = useCallback(() => {
     setAssignmentsLoading(true);
     assignmentsApi
-      .listReceived({ limit: 30, status: "pendiente" })
+      .listReceived({ limit: 40, pendingWork: true })
       .then((res) => setAssignmentsReceived(res.data ?? []))
       .catch(() => setAssignmentsReceived([]))
       .finally(() => setAssignmentsLoading(false));
@@ -168,14 +171,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleArchive = async (doc: Document) => {
-    const nextStatus: FileStatus = doc.fileStatus === "INACTIVO" ? "ACTIVO" : "INACTIVO";
+  const handleNewDocumentFromQuickActions = useCallback(async () => {
+    setQuickNewDocError(null);
+    setQuickNewDocLoading(true);
     try {
-      await onStatusChange(doc.id, nextStatus);
-    } catch (err) {
-      console.error("Error archivando:", err);
+      const base = import.meta.env.BASE_URL || "/";
+      const res = await fetch(new URL("blank.docx", window.location.origin + base).href);
+      if (!res.ok) throw new Error("No se pudo cargar la plantilla del documento");
+      const blob = await res.blob();
+      const file = new File([blob], NEW_DOC_FROM_QUICK_DEFAULT_NAME, { type: DOCX_MIME });
+      const created = await documentsApi.upload(file, { name: NEW_DOC_FROM_QUICK_DEFAULT_NAME });
+      await onRefresh();
+      if (onOpenDocument) onOpenDocument(created.id, created.type);
+      else
+        navigate(getDocumentRoute(created.id, created.type), {
+          state: { seededDocument: created },
+        });
+    } catch (e) {
+      console.error(e);
+      setQuickNewDocError(e instanceof Error ? e.message : "Error al crear el documento");
+    } finally {
+      setQuickNewDocLoading(false);
     }
-  };
+  }, [onRefresh, navigate, onOpenDocument]);
 
   const handleSetFileStatus = async (doc: Document, status: FileStatus) => {
     if (doc.fileStatus === status) return;
@@ -258,11 +276,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onClick: () => setPermissionsDocument(doc),
       },
       {
-        label: doc.fileStatus === "INACTIVO" ? "Desarchivar" : "Archivar",
-        icon: doc.fileStatus === "INACTIVO" ? ArchiveRestore : Archive,
-        onClick: () => handleArchive(doc),
-      },
-      {
         label:
           confirmDeleteDocId === doc.id
             ? confirmDeleteSecondsLeft > 0
@@ -281,9 +294,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Computed data ────────────────────────────────────────────────────
 
-  const pendingAssignments = assignmentsReceived.filter(
-    (assignment) => assignment.status === "pendiente" && Boolean(assignment.document)
-  );
+  const isAssignmentOpen = (s: string) => s !== "completado";
+  const assignmentPendingSortOrder: Record<string, number> = {
+    pendiente: 0,
+    visto: 1,
+    editado: 2,
+    revisado: 3,
+    rechazado: 4,
+  };
+
+  const pendingAssignments = assignmentsReceived
+    .filter((a) => isAssignmentOpen(a.status) && Boolean(a.document))
+    .sort(
+      (a, b) =>
+        (assignmentPendingSortOrder[a.status] ?? 99) - (assignmentPendingSortOrder[b.status] ?? 99),
+    );
 
   const counts = {
     activos: documents.filter((d) => d.fileStatus === "ACTIVO").length,
@@ -611,7 +636,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* ── Right Column (~40%) ────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Pendientes: estado pendiente + asignados al usuario */}
+            {/* Pendientes: fileStatus PENDIENTE + asignaciones sin completar */}
             <SectionCard title="Pendientes" noPadding>
               {loading || assignmentsLoading ? (
                 <div className="p-5 space-y-3">
@@ -695,7 +720,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         const doc = a.document;
                         if (!doc) return null;
                         const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type ?? "DOCX");
-                        const statusLabel = a.status === "pendiente" ? "Pendiente" : a.status === "visto" ? "Visto" : a.status === "editado" ? "Editado" : a.status;
+                        const statusLabel = ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status;
                         return (
                           <div
                             key={`assign-${a.id}`}
@@ -734,10 +759,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Acciones Rápidas section */}
             <SectionCard title="Acciones Rápidas">
               <div className="flex flex-col gap-2">
+                {quickNewDocError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 px-0.5">{quickNewDocError}</p>
+                )}
                 <Button
                   variant="primary"
-                  icon={FileUp}
-                  onClick={() => onOpenUploadModal?.()}
+                  icon={FileText}
+                  loading={quickNewDocLoading}
+                  onClick={() => void handleNewDocumentFromQuickActions()}
                   className="w-full justify-start"
                 >
                   Nuevo Documento
