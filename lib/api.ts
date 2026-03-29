@@ -205,6 +205,27 @@ export interface PaginatedResponse<T> {
   };
 }
 
+/** Backend devuelve `{ data, total, page, limit }` plano en varios listados. */
+function normalizeFlatPagination<T>(raw: {
+  data?: T[];
+  total?: number;
+  page?: number;
+  limit?: number;
+}): PaginatedResponse<T> {
+  const total = Number(raw.total) || 0;
+  const page = Number(raw.page) || 1;
+  const limit = Number(raw.limit) || 20;
+  return {
+    data: Array.isArray(raw.data) ? raw.data : [],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
 export interface ApiDocument {
   id: string;
   name: string;
@@ -233,6 +254,8 @@ export interface ApiDocument {
   syncStatus?: string;
   driveFileId?: string | null;
   lastSyncAt?: string | null;
+  // Permiso efectivo del usuario actual sobre este documento
+  effectivePermission?: 'none' | 'download' | 'read' | 'write' | 'admin';
   owner?: { id: string; name: string; email: string; avatarUrl: string | null } | null;
   group?: { id: string; name: string } | null;
   case_?: {
@@ -250,6 +273,7 @@ export interface ApiDocument {
   versions?: ApiDocumentVersion[];
   comments?: ApiDocumentComment[];
   assignments?: ApiDocumentAssignment[];
+  recentShares?: ApiDocumentShare[];
 }
 
 export interface ApiDocumentPermission {
@@ -289,6 +313,13 @@ export interface ApiDocumentAssignment {
   assignee: { id: string; name: string; email: string };
   assigner: { id: string; name: string; email: string };
   document?: { id: string; name: string; type: string };
+}
+
+export interface ApiDocumentShare {
+  sharedWith: string;
+  shareMethod: 'email' | 'whatsapp' | 'link' | 'system' | 'other';
+  sharedAt: string;
+  sharedBy: { id: string; name: string } | null;
 }
 
 export interface ApiConvenioVersion {
@@ -433,7 +464,7 @@ export interface ApiUser {
 // ─── DOCUMENTOS ─────────────────────────────────────────────────────────
 
 export const documentsApi = {
-  list: (params?: {
+  list: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
@@ -441,17 +472,23 @@ export const documentsApi = {
     fileStatus?: string;
     groupId?: string;
     caseId?: string;
-  }) => {
+  }): Promise<PaginatedResponse<ApiDocument>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.search) query.set('search', params.search);
     if (params?.type) query.set('type', params.type);
-    if (params?.fileStatus) query.set('fileStatus', params.fileStatus);
+    if (params?.fileStatus) query.set('status', params.fileStatus);
     if (params?.groupId) query.set('groupId', params.groupId);
     if (params?.caseId) query.set('caseId', params.caseId);
     const qs = query.toString();
-    return apiFetch<PaginatedResponse<ApiDocument>>(`/documents${qs ? `?${qs}` : ''}`);
+    const raw = await apiFetch<{
+      data: ApiDocument[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(`/documents${qs ? `?${qs}` : ''}`);
+    return normalizeFlatPagination(raw);
   },
 
   get: (id: string) => apiFetch<ApiDocument>(`/documents/${id}`),
@@ -581,6 +618,21 @@ export const documentsApi = {
       method: 'POST',
       body: JSON.stringify({ tableData, changeNote, createVersion }),
     }),
+
+  /** Registra que el documento fue compartido con un contacto */
+  share: (id: string, data: {
+    sharedWith: string;
+    shareMethod?: 'email' | 'whatsapp' | 'link' | 'system' | 'other';
+    note?: string;
+  }) =>
+    apiFetch<{ ok: boolean; sharedWith: string; shareMethod: string }>(`/documents/${id}/share`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Lista el historial de shares de un documento */
+  getShares: (id: string) =>
+    apiFetch<{ shares: ApiDocumentShare[] }>(`/documents/${id}/shares`),
 };
 
 // ─── PERMISOS DE DOCUMENTOS ─────────────────────────────────────────────
@@ -806,29 +858,45 @@ export const casesApi = {
 // ─── ASIGNACIONES ───────────────────────────────────────────────────────
 
 export const assignmentsApi = {
-  listReceived: (params?: {
+  listReceived: async (params?: {
     page?: number;
     limit?: number;
     status?: string;
     /** Asignaciones no completadas (pendiente, visto, editado, revisado, etc.) */
     pendingWork?: boolean;
-  }) => {
+  }): Promise<PaginatedResponse<ApiDocumentAssignment>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.status) query.set('status', params.status);
     if (params?.pendingWork) query.set('pendingWork', 'true');
     const qs = query.toString();
-    return apiFetch<PaginatedResponse<ApiDocumentAssignment>>(`/assignments${qs ? `?${qs}` : ''}`);
+    const raw = await apiFetch<{
+      data: ApiDocumentAssignment[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(`/assignments${qs ? `?${qs}` : ''}`);
+    return normalizeFlatPagination(raw);
   },
 
-  listSent: (params?: { page?: number; limit?: number; status?: string }) => {
+  listSent: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<PaginatedResponse<ApiDocumentAssignment>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.status) query.set('status', params.status);
     const qs = query.toString();
-    return apiFetch<PaginatedResponse<ApiDocumentAssignment>>(`/assignments/sent${qs ? `?${qs}` : ''}`);
+    const raw = await apiFetch<{
+      data: ApiDocumentAssignment[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(`/assignments/sent${qs ? `?${qs}` : ''}`);
+    return normalizeFlatPagination(raw);
   },
 
   create: (data: {
@@ -1036,6 +1104,26 @@ export const backupsApi = {
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
   }
+};
+
+// ─── ABIERTO RECIENTEMENTE ──────────────────────────────────────────────
+
+export interface RecentlyOpenedItem {
+  id: string;
+  name: string;
+  type?: string;
+  fileStatus?: string;
+  estado?: string;
+  updatedAt: string;
+  openedAt: string;
+  entityType: 'document' | 'convenio';
+  owner?: { id: string; name: string } | null;
+  responsable?: { id: string; name: string } | null;
+}
+
+export const recentlyOpenedApi = {
+  list: (limit = 8) =>
+    apiFetch<{ data: RecentlyOpenedItem[] }>(`/documents/recently-opened?limit=${limit}`),
 };
 
 // ─── GOOGLE DRIVE ───────────────────────────────────────────────────────

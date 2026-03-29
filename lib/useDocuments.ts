@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { documentsApi, type ApiDocument } from './api';
-import type { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel } from '../types';
+import type { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel, DocumentShare, ShareMethod } from '../types';
 
 // ─── Transformador: ApiDocument → Document (tipo del frontend) ──────────
 
@@ -44,6 +44,13 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function normalizeSyncStatus(raw: string | undefined | null): Document['syncStatus'] | undefined {
+  if (!raw) return undefined;
+  const s = String(raw).toLowerCase();
+  if (s === 'pending' || s === 'syncing' || s === 'completed' || s === 'failed') return s;
+  return undefined;
+}
+
 export function apiDocToFrontend(doc: ApiDocument): Document {
   const typeMap: Record<string, Document['type']> = {
     docx: 'DOCX', doc: 'DOCX', pdf: 'PDF', xlsx: 'XLSX', xls: 'XLSX', txt: 'DOCX', rtf: 'DOCX',
@@ -67,9 +74,12 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
       ? new Date(doc.expirationDate).toLocaleDateString('es-MX')
       : undefined,
     documentPermissions: permissions,
-    currentUserPermission: undefined, // se calcula por contexto
+    currentUserPermission: doc.effectivePermission as DocumentPermissionLevel | undefined,
     ownerId: doc.ownerId ?? undefined,
     lastEditor: doc.owner?.name ?? 'Juan Pérez', // Default mock if owner not found
+    syncStatus: normalizeSyncStatus(doc.syncStatus),
+    driveFileId: doc.driveFileId ?? null,
+    lastSyncAt: doc.lastSyncAt ?? null,
     assignments: doc.assignments?.map(a => ({
       id: a.id,
       status: a.status,
@@ -79,7 +89,13 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
         email: a.assignee.email,
         avatarUrl: (a.assignee as any).avatarUrl,
       }
-    }))
+    })),
+    recentShares: doc.recentShares?.map(s => ({
+      sharedWith: s.sharedWith,
+      shareMethod: s.shareMethod as ShareMethod,
+      sharedAt: s.sharedAt,
+      sharedBy: s.sharedBy,
+    })) as DocumentShare[] | undefined,
   };
 }
 

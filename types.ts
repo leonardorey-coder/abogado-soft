@@ -22,12 +22,20 @@ export type DocumentStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO' | 'VISTO' | 'ED
 export type FileStatus = 'ACTIVO' | 'PENDIENTE' | 'INACTIVO';
 export type CollaborationStatus = 'VISTO' | 'EDITADO' | 'COMENTADO' | 'REVISADO' | 'APROBADO' | 'PENDIENTE_REVISION' | 'RECHAZADO';
 export type SharingStatus = 'ENVIADO' | 'ASIGNADO';
+export type ShareMethod = 'email' | 'whatsapp' | 'link' | 'system' | 'other';
 
 export type DocumentPermissionLevel = 'none' | 'download' | 'read' | 'write' | 'admin';
 
 export interface DocumentPermissionEntry {
   userName: string;
   level: DocumentPermissionLevel;
+}
+
+export interface DocumentShare {
+  sharedWith: string;
+  shareMethod: ShareMethod;
+  sharedAt: string;
+  sharedBy: { id: string; name: string } | null;
 }
 
 export interface Agreement {
@@ -58,6 +66,8 @@ export interface Document {
   driveFileId?: string | null;
   lastSyncAt?: string | null;
   assignments?: { id: string; status: string; assignee: { id: string; name: string; email: string; avatarUrl?: string | null } }[];
+  // Historial de shares recientes
+  recentShares?: DocumentShare[];
 }
 
 export interface DocumentVersion {

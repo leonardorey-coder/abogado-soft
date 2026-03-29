@@ -34,30 +34,36 @@ export function useFileDragDrop({ onDrop, disabled = false }: UseFileDragDropOpt
     e.preventDefault();
   }, []);
 
+  const handleWindowDropReset = useCallback(() => {
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+  }, []);
+
   const handleWindowDrop = useCallback(
     (e: DragEvent) => {
       e.preventDefault();
-      dragCounterRef.current = 0;
-      setIsDraggingOver(false);
+      handleWindowDropReset();
       if (e.dataTransfer?.files.length) {
         onDrop(Array.from(e.dataTransfer.files));
       }
     },
-    [onDrop]
+    [onDrop, handleWindowDropReset]
   );
 
   useEffect(() => {
     window.addEventListener("dragenter", handleWindowDragEnter);
     window.addEventListener("dragleave", handleWindowDragLeave);
     window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("drop", handleWindowDropReset, true);
     window.addEventListener("drop", handleWindowDrop);
     return () => {
       window.removeEventListener("dragenter", handleWindowDragEnter);
       window.removeEventListener("dragleave", handleWindowDragLeave);
       window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("drop", handleWindowDropReset, true);
       window.removeEventListener("drop", handleWindowDrop);
     };
-  }, [handleWindowDragEnter, handleWindowDragLeave, handleWindowDragOver, handleWindowDrop]);
+  }, [handleWindowDragEnter, handleWindowDragLeave, handleWindowDragOver, handleWindowDrop, handleWindowDropReset]);
 
   return { isDraggingOver };
 }
