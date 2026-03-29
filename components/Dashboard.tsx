@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Document, FileStatus } from "../types";
+import { Document, FileStatus, ShareMethod } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
-import { assignmentsApi, documentsApi, type ApiDocumentAssignment } from "../lib/api";
+import { assignmentsApi, documentsApi, recentlyOpenedApi, type ApiDocumentAssignment, type RecentlyOpenedItem } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
+import { matchesSearch } from "../lib/documentSearch";
+import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
@@ -22,7 +24,7 @@ import {
   Skeleton,
   Button,
 } from "./ui";
-import type { FilterPill, ActionMenuItem, StatusTone } from "./ui";
+import type { FilterPill, StatusTone } from "./ui";
 import {
   FileText,
   Clock,
@@ -30,19 +32,19 @@ import {
   CheckCircle,
   Users,
   ArrowRight,
-  MoreVertical,
   Calendar,
   Edit3,
-  Share2,
-  UserPlus,
-  Shield,
-  Trash2,
-  Eye,
   Plus,
   Table,
   FolderOpen,
   Upload,
   Search,
+  History,
+  ScrollText,
+  Mail,
+  MessageCircle,
+  Link2,
+  Share2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -94,14 +96,94 @@ const NEW_DOC_FROM_QUICK_DEFAULT_NAME = "Documento sin título.docx";
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-const matchesSearch = (doc: Document, q: string): boolean => {
-  if (!q.trim()) return true;
-  const term = q.trim().toLowerCase();
-  return (
-    doc.name.toLowerCase().includes(term) ||
-    (doc.type && doc.type.toLowerCase().includes(term))
-  );
+// ─── Share badges helpers ──────────────────────────────────────────────────
+
+const shareMethodIconMap: Record<ShareMethod, React.ReactNode> = {
+  email: <Mail className="w-3 h-3" />,
+  whatsapp: <MessageCircle className="w-3 h-3" />,
+  link: <Link2 className="w-3 h-3" />,
+  system: <Share2 className="w-3 h-3" />,
+  other: <Share2 className="w-3 h-3" />,
 };
+
+const shareMethodColorMap: Record<ShareMethod, string> = {
+  email: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",
+  whatsapp: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800",
+  link: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800",
+  system: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+  other: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+};
+
+const shareMethodLabelMap: Record<ShareMethod, string> = {
+  email: "Email",
+  whatsapp: "WhatsApp",
+  link: "Enlace",
+  system: "Compartido",
+  other: "Compartido",
+};
+
+// Detecta si el contacto es genérico (no es un email/teléfono real)
+function isGenericContact(contact: string): boolean {
+  const genericPatterns = [
+    "compartido via",
+    "enlace copiado",
+    "compartido",
+    "via sistema",
+    "system",
+  ];
+  const lower = contact.toLowerCase();
+  return genericPatterns.some(p => lower.includes(p));
+}
+
+function truncateContact(contact: string, maxLen = 18): string {
+  if (contact.length <= maxLen) return contact;
+  if (contact.includes("@")) {
+    const [local, domain] = contact.split("@");
+    if (local.length > 8) {
+      return `${local.substring(0, 6)}...@${domain.substring(0, 8)}${domain.length > 8 ? "..." : ""}`;
+    }
+  }
+  return contact.substring(0, maxLen - 3) + "...";
+}
+
+function renderShareBadges(doc: Document) {
+  const shares = doc.recentShares;
+  if (!shares || shares.length === 0) return null;
+
+  const maxVisible = 2;
+  const visibleShares = shares.slice(0, maxVisible);
+  const remainingCount = shares.length - maxVisible;
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {visibleShares.map((share, idx) => {
+        const isGeneric = isGenericContact(share.sharedWith);
+        const displayText = isGeneric 
+          ? shareMethodLabelMap[share.shareMethod]
+          : truncateContact(share.sharedWith, 12);
+        const tooltipText = isGeneric
+          ? `Compartido via ${shareMethodLabelMap[share.shareMethod]}`
+          : `Compartido con ${share.sharedWith}`;
+
+        return (
+          <span
+            key={idx}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${shareMethodColorMap[share.shareMethod]}`}
+            title={tooltipText}
+          >
+            {shareMethodIconMap[share.shareMethod]}
+            <span className="max-w-[80px] truncate">{displayText}</span>
+          </span>
+        );
+      })}
+      {remainingCount > 0 && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+          +{remainingCount} más
+        </span>
+      )}
+    </div>
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────
 
@@ -141,6 +223,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [quickNewDocLoading, setQuickNewDocLoading] = useState(false);
   const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
+  const [recentlyOpened, setRecentlyOpened] = useState<RecentlyOpenedItem[]>([]);
+  const [recentlyOpenedLoading, setRecentlyOpenedLoading] = useState(false);
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
   const { isDraggingOver } = useFileDragDrop({
@@ -160,6 +244,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     refreshAssignments();
   }, [refreshAssignments, documents.length]);
+
+  // ── Abierto recientemente ──────────────────────────────────────────────
+  const refreshRecentlyOpened = useCallback(() => {
+    setRecentlyOpenedLoading(true);
+    recentlyOpenedApi
+      .list(8)
+      .then((res) => setRecentlyOpened(res.data ?? []))
+      .catch(() => setRecentlyOpened([]))
+      .finally(() => setRecentlyOpenedLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refreshRecentlyOpened();
+  }, [refreshRecentlyOpened]);
 
   // ─── Document action handlers ─────────────────────────────────────────
 
@@ -253,45 +351,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Build action menu items for a document ───────────────────────────
 
-  const buildMenuItems = (doc: Document): ActionMenuItem[] => {
-    const items: ActionMenuItem[] = [
-      {
-        label: "Abrir",
-        icon: Eye,
-        onClick: () => handleDocumentClick(doc),
-      },
-      {
-        label: "Compartir",
-        icon: Share2,
-        onClick: () => setShareDocument(doc),
-      },
-      {
-        label: "Asignar",
-        icon: UserPlus,
-        onClick: () => setAssignDocument(doc),
-      },
-      {
-        label: "Permisos",
-        icon: Shield,
-        onClick: () => setPermissionsDocument(doc),
-      },
-      {
-        label:
-          confirmDeleteDocId === doc.id
-            ? confirmDeleteSecondsLeft > 0
-              ? `Habilitar confirmar (${confirmDeleteSecondsLeft}s)`
-              : "Click para confirmar"
-            : "Eliminar",
-        icon: Trash2,
-        onClick: () => handleDelete(doc),
-        danger: true,
-        separator: true,
-        closeOnClick: confirmDeleteDocId === doc.id && confirmDeleteSecondsLeft === 0,
-      },
-    ];
-    return items;
-  };
-
   // ─── Computed data ────────────────────────────────────────────────────
 
   const isAssignmentOpen = (s: string) => s !== "completado";
@@ -332,6 +391,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return true;
     }
   });
+
+  const pendingAssignedDocuments: Document[] = pendingAssignments
+    .map((assignment) => {
+      const doc = assignment.document;
+      if (!doc) return null;
+      return {
+        id: doc.id,
+        name: doc.name,
+        type: (doc.type || "docx").toUpperCase() as Document["type"],
+        lastModified: new Date(assignment.createdAt).toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+        timeAgo: "Asignado",
+        fileStatus: "PENDIENTE",
+        lastEditor: assignment.assigner?.name ?? "Asignado",
+      } as Document;
+    })
+    .filter((doc): doc is Document => Boolean(doc));
+
+  const filteredDocumentsForList =
+    filter === "PENDIENTES"
+      ? [
+          ...filteredDocuments,
+          ...pendingAssignedDocuments.filter(
+            (assignedDoc) =>
+              !filteredDocuments.some((doc) => doc.id === assignedDoc.id) &&
+              matchesSearch(assignedDoc, searchQuery),
+          ),
+        ]
+      : filteredDocuments;
 
   const pendingDocuments = documents
     .filter((d) => d.fileStatus === "PENDIENTE")
@@ -380,16 +471,43 @@ export const Dashboard: React.FC<DashboardProps> = ({
           title={`Bienvenido, ${user?.name ?? "Usuario"}`}
           description="Resumen de su despacho al día de hoy"
           action={
-            user?.groupMemberships && user.groupMemberships.length > 0 ? (
-              <Link
-                to="/equipo"
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-              >
-                <Users className="w-3.5 h-3.5" />
-                {user.groupMemberships[0].group.name}
-                <ArrowRight className="w-3 h-3" />
-              </Link>
-            ) : undefined
+            <div className="flex flex-col gap-2 w-full sm:w-auto sm:items-end">
+              {quickNewDocError && (
+                <p className="text-xs text-red-600 dark:text-red-400 text-right sm:max-w-sm">
+                  {quickNewDocError}
+                </p>
+              )}
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
+                <Button
+                  variant="primary"
+                  icon={FileText}
+                  loading={quickNewDocLoading}
+                  onClick={() => void handleNewDocumentFromQuickActions()}
+                  className="w-full sm:w-auto justify-center"
+                >
+                  Nuevo Documento
+                </Button>
+                {user?.groupMemberships && user.groupMemberships.length > 0 ? (
+                  <Link
+                    to="/equipo"
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors w-full sm:w-auto"
+                  >
+                    <Users className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{user.groupMemberships[0].group.name}</span>
+                    <ArrowRight className="w-3 h-3 shrink-0" />
+                  </Link>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    icon={Users}
+                    onClick={() => navigate("/equipo")}
+                    className="w-full sm:w-auto justify-center"
+                  >
+                    Ver Equipo
+                  </Button>
+                )}
+              </div>
+            </div>
           }
         />
 
@@ -428,216 +546,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           />
         </div>
 
-        {/* ── Main 2-Column Layout ─────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* ── Left Column: Document List (~60%) ──────────────────────── */}
-          <div className="lg:col-span-3 space-y-4">
-            <SectionCard title="Documentos Recientes" noPadding>
-              {/* Filter pills */}
-              <div className="px-5 pt-4 pb-3">
-                <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
-              </div>
-
-              {/* Document list */}
-              <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                {loading ? (
-                  /* Skeleton rows */
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3 px-5 py-3.5">
-                      <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-3/4 rounded" />
-                        <Skeleton className="h-3 w-1/3 rounded" />
-                      </div>
-                      <Skeleton className="h-5 w-16 rounded" />
-                    </div>
-                  ))
-                ) : filteredDocuments.length === 0 ? (
-                  <EmptyState
-                    icon={searchQuery.trim() ? Search : FolderOpen}
-                    title={
-                      searchQuery.trim()
-                        ? "Sin resultados de búsqueda"
-                        : "No hay documentos"
-                    }
-                    description={
-                      searchQuery.trim()
-                        ? `No se encontraron documentos para "${searchQuery}"`
-                        : "Suba un documento para comenzar"
-                    }
-                    variant={searchQuery.trim() ? "search" : "empty"}
-                    action={
-                      !searchQuery.trim() ? (
-                        <Button
-                          icon={Plus}
-                          onClick={() => onOpenUploadModal?.()}
-                        >
-                          Nuevo Documento
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ) : (
-                  <>
-                    {filteredDocuments.map((doc) => {
-                      const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
-                      const isExpiring = doc.fileStatus === "PENDIENTE" && doc.expirationDate;
-
-                      return (
-                        <div
-                          key={doc.id}
-                          onClick={() => handleDocumentClick(doc)}
-                          className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 sm:px-5 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              handleDocumentClick(doc);
-                            }
-                          }}
-                        >
-                          <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                            {/* File type icon */}
-                            <div
-                              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${typeBg}`}
-                            >
-                              <TypeIcon className={`w-4.5 h-4.5 ${typeColor}`} />
-                            </div>
-
-                            {/* Name + meta */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                                {doc.name}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                                <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0">
-                                  <Calendar className="w-3 h-3" />
-                                  {doc.lastModified}
-                                </span>
-                                {doc.lastEditor && (
-                                  <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 min-w-0">
-                                    <Edit3 className="w-3 h-3 shrink-0" />
-                                    <span className="truncate">{doc.lastEditor}</span>
-                                  </span>
-                                )}
-                                {isExpiring && (
-                                  <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 font-medium shrink-0">
-                                    <AlertCircle className="w-3 h-3" />
-                                    Vence {doc.expirationDate}
-                                  </span>
-                                )}
-                              </div>
-                              {doc.assignments && doc.assignments.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-2 mt-2">
-                                  {doc.assignments.map((a) => (
-                                    <span
-                                      key={a.id}
-                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 max-w-full"
-                                      title={`${a.assignee.name} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
-                                    >
-                                      <UserAvatar
-                                        name={a.assignee.name}
-                                        avatarUrl={a.assignee.avatarUrl}
-                                        className="w-4 h-4 rounded-full object-cover shrink-0"
-                                      />
-                                      <span className="font-medium truncate">{a.assignee.name}</span>
-                                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0">
-                                        {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
-                                      </span>
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between sm:justify-end gap-2 pl-12 sm:pl-0 mt-2 sm:mt-0 shrink-0">
-                            {/* Estado (permiso): Activo / Pendiente / Inactivo */}
-                            <div
-                              className="flex items-center gap-1 sm:gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
-                                <button
-                                  key={status}
-                                  type="button"
-                                  onClick={() => handleSetFileStatus(doc, status)}
-                                  className={`px-2 py-1 sm:px-2 sm:py-1 rounded text-[10px] font-bold uppercase border transition-colors ${
-                                    doc.fileStatus === status
-                                      ? status === "ACTIVO"
-                                        ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
-                                        : status === "PENDIENTE"
-                                          ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
-                                          : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
-                                      : "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
-                                  }`}
-                                  title={status === "ACTIVO" ? "Marcar activo" : status === "PENDIENTE" ? "Marcar pendiente" : "Marcar inactivo"}
-                                >
-                                  {status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pend." : "Inact."}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Action menu */}
-                            <div
-                              className="shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ActionMenu
-                                items={buildMenuItems(doc)}
-                                onClose={() => {
-                                  if (confirmDeleteDocId === doc.id) {
-                                    setConfirmDeleteDocId(null);
-                                    setConfirmDeleteSecondsLeft(0);
-                                    if (deleteConfirmTimerRef.current) {
-                                      window.clearInterval(deleteConfirmTimerRef.current);
-                                      deleteConfirmTimerRef.current = null;
-                                    }
-                                  }
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* "Nuevo Documento" add row */}
-                    <div
-                      onClick={() => onOpenUploadModal?.()}
-                      className="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-t-2 border-dashed border-slate-200 dark:border-slate-700/60"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onOpenUploadModal?.();
-                        }
-                      }}
-                    >
-                      <div className="w-9 h-9 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
-                        <Plus className="w-4 h-4 text-slate-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                          Nuevo Documento
-                        </p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">
-                          Subir archivo o crear nuevo
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </SectionCard>
-          </div>
-
-          {/* ── Right Column (~40%) ────────────────────────────────────── */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Pendientes: fileStatus PENDIENTE + asignaciones sin completar */}
-            <SectionCard title="Pendientes" noPadding>
+        {/* ── Pendientes | Abierto recientemente (50/50) ───────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SectionCard title="Pendientes" noPadding className="min-h-[200px] flex flex-col">
               {loading || assignmentsLoading ? (
                 <div className="p-5 space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -756,33 +667,318 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </SectionCard>
 
-            {/* Acciones Rápidas section */}
-            <SectionCard title="Acciones Rápidas">
-              <div className="flex flex-col gap-2">
-                {quickNewDocError && (
-                  <p className="text-xs text-red-600 dark:text-red-400 px-0.5">{quickNewDocError}</p>
-                )}
-                <Button
-                  variant="primary"
-                  icon={FileText}
-                  loading={quickNewDocLoading}
-                  onClick={() => void handleNewDocumentFromQuickActions()}
-                  className="w-full justify-start"
-                >
-                  Nuevo Documento
-                </Button>
-                <Button
-                  variant="secondary"
-                  icon={Users}
-                  onClick={() => navigate("/equipo")}
-                  className="w-full justify-start"
-                >
-                  Ver Equipo
-                </Button>
-              </div>
+          <SectionCard
+            title="Abierto recientemente"
+            noPadding
+            className="min-h-[200px] flex flex-col"
+            action={
+              <button
+                type="button"
+                onClick={refreshRecentlyOpened}
+                className="text-xs text-slate-400 hover:text-primary transition-colors"
+                aria-label="Actualizar"
+              >
+                <History className="w-3.5 h-3.5" />
+              </button>
+            }
+          >
+              {recentlyOpenedLoading ? (
+                <div className="py-3 px-5 space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="w-7 h-7 rounded-md shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3 w-3/4 rounded" />
+                        <Skeleton className="h-2.5 w-1/3 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : recentlyOpened.length === 0 ? (
+                <div className="py-8 px-6 text-center">
+                  <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Ningún archivo abierto aún
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                  {recentlyOpened.map((item) => {
+                    const isConvenio = item.entityType === 'convenio';
+                    const { Icon: TypeIcon, color: typeColor, bg: typeBg } = isConvenio
+                      ? { Icon: ScrollText, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" }
+                      : getFileTypeIcon(item.type ?? 'docx');
+
+                    const openedAgo = (() => {
+                      const diff = Date.now() - new Date(item.openedAt).getTime();
+                      const mins = Math.floor(diff / 60000);
+                      const hrs = Math.floor(mins / 60);
+                      const days = Math.floor(hrs / 24);
+                      if (days > 0) return `Hace ${days}d`;
+                      if (hrs > 0) return `Hace ${hrs}h`;
+                      if (mins > 0) return `Hace ${mins}m`;
+                      return 'Ahora mismo';
+                    })();
+
+                    return (
+                      <div
+                        key={`recent-${item.id}`}
+                        onClick={() => {
+                          if (isConvenio) {
+                            navigate(`/convenios/${item.id}`);
+                          } else {
+                            navigate(getDocumentRoute(item.id, item.type));
+                          }
+                        }}
+                        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (isConvenio) navigate(`/convenios/${item.id}`);
+                            else navigate(getDocumentRoute(item.id, item.type));
+                          }
+                        }}
+                      >
+                        <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
+                          <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                            {openedAgo}
+                            <span className="text-slate-300 dark:text-slate-600">·</span>
+                            {new Date(item.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                            {isConvenio && (
+                              <span className="ml-1 px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-[9px] font-bold uppercase">
+                                Convenio
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </SectionCard>
-          </div>
         </div>
+
+        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
+          <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
+            <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
+          </div>
+
+          <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] gap-4 items-center px-5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/60">
+            <span>Documento</span>
+            <span className="text-center whitespace-nowrap">Estado</span>
+            <span className="sr-only">Acciones</span>
+          </div>
+
+          <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0 lg:col-span-1">
+                    <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
+                    <div className="flex-1 space-y-2 min-w-0">
+                      <Skeleton className="h-4 w-3/4 max-w-md rounded" />
+                      <Skeleton className="h-3 w-1/3 rounded" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-8 w-36 rounded-lg justify-self-end hidden lg:block" />
+                  <Skeleton className="h-8 w-8 rounded-lg justify-self-end hidden lg:block" />
+                </div>
+              ))
+            ) : filteredDocumentsForList.length === 0 ? (
+              <EmptyState
+                icon={searchQuery.trim() ? Search : FolderOpen}
+                title={
+                  searchQuery.trim()
+                    ? "Sin resultados de búsqueda"
+                    : "No hay documentos"
+                }
+                description={
+                  searchQuery.trim()
+                    ? `No se encontraron documentos para "${searchQuery}"`
+                    : "Suba un documento para comenzar"
+                }
+                variant={searchQuery.trim() ? "search" : "empty"}
+                action={
+                  !searchQuery.trim() ? (
+                    <Button
+                      icon={Plus}
+                      onClick={() => onOpenUploadModal?.()}
+                    >
+                      Nuevo Documento
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                {filteredDocumentsForList.map((doc) => {
+                  const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
+                  const isExpiring = doc.fileStatus === "PENDIENTE" && doc.expirationDate;
+
+                  return (
+                    <div
+                      key={doc.id}
+                      onClick={() => handleDocumentClick(doc)}
+                      className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors group lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4 lg:items-center"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleDocumentClick(doc);
+                        }
+                      }}
+                    >
+                      <div className="flex items-start sm:items-center gap-3 min-w-0">
+                        <div
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${typeBg}`}
+                        >
+                          <TypeIcon className={`w-4.5 h-4.5 ${typeColor}`} />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                            {doc.name}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                            <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0">
+                              <Calendar className="w-3 h-3" />
+                              {doc.lastModified}
+                            </span>
+                            {doc.lastEditor && (
+                              <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 min-w-0">
+                                <Edit3 className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{doc.lastEditor}</span>
+                              </span>
+                            )}
+                            {isExpiring && (
+                              <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 font-medium shrink-0">
+                                <AlertCircle className="w-3 h-3" />
+                                Vence {doc.expirationDate}
+                              </span>
+                            )}
+                          </div>
+                          {renderShareBadges(doc)}
+                          {doc.assignments && doc.assignments.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              {doc.assignments.map((a) => (
+                                <span
+                                  key={a.id}
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 max-w-full"
+                                  title={`${a.assignee.name} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
+                                >
+                                  <UserAvatar
+                                    name={a.assignee.name}
+                                    avatarUrl={a.assignee.avatarUrl}
+                                    className="w-4 h-4 rounded-full object-cover shrink-0"
+                                  />
+                                  <span className="font-medium truncate">{a.assignee.name}</span>
+                                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                                    {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pl-12 sm:pl-[3.25rem] lg:pl-0 lg:contents">
+                        <div
+                          className="flex items-center gap-1 sm:gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => handleSetFileStatus(doc, status)}
+                              className={`px-2 py-1 sm:px-2 sm:py-1 rounded text-[10px] font-bold uppercase border transition-colors ${
+                                doc.fileStatus === status
+                                  ? status === "ACTIVO"
+                                    ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
+                                    : status === "PENDIENTE"
+                                      ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
+                                      : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
+                                  : "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
+                              }`}
+                              title={status === "ACTIVO" ? "Marcar activo" : status === "PENDIENTE" ? "Marcar pendiente" : "Marcar inactivo"}
+                            >
+                              {status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pend." : "Inact."}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <ActionMenu
+                            items={buildDocumentActionMenuItems(doc, {
+                              onOpen: () => handleDocumentClick(doc),
+                              onShare: () => setShareDocument(doc),
+                              onAssign: () => setAssignDocument(doc),
+                              onPermissions: () => setPermissionsDocument(doc),
+                              onDelete: () => handleDelete(doc),
+                              confirmDeleteDocId,
+                              confirmDeleteSecondsLeft,
+                            })}
+                            onClose={() => {
+                              if (confirmDeleteDocId === doc.id) {
+                                setConfirmDeleteDocId(null);
+                                setConfirmDeleteSecondsLeft(0);
+                                if (deleteConfirmTimerRef.current) {
+                                  window.clearInterval(deleteConfirmTimerRef.current);
+                                  deleteConfirmTimerRef.current = null;
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div
+                  onClick={() => onOpenUploadModal?.()}
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-t-2 border-dashed border-slate-200 dark:border-slate-700/60"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpenUploadModal?.();
+                    }
+                  }}
+                >
+                  <div className="w-9 h-9 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
+                    <Plus className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      Nuevo Documento
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      Subir archivo o crear nuevo
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </SectionCard>
       </main>
 
       {/* ── Modals ──────────────────────────────────────────────────────── */}
@@ -791,6 +987,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <ShareModal
           document={shareDocument}
           onClose={() => setShareDocument(null)}
+          onShareLogged={() => void onRefresh()}
         />
       )}
 

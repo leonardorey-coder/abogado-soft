@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { activityApi, ApiActivityLog } from "../lib/api";
+import DiffSummaryPreview from "./DiffSummaryPreview";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   CASE_UPDATED: "Editó expediente",
   CASE_DOCUMENT_LINKED: "Vinculó documento a expediente",
   CASE_DOCUMENT_UNLINKED: "Desvinculó documento de expediente",
+  DOCUMENT_VIEWED: "Vio documento",
 };
 
 function getSpanishActivityName(activity: string): string {
@@ -259,7 +261,7 @@ export const ActivityLog: React.FC = () => {
     if (l.user && !acc.find(u => u.id === l.user!.id)) acc.push({ id: l.user!.id, name: l.user!.name });
     return acc;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
-  const uniqueActions = Array.from(new Set(logs.map(l => l.activity))).sort();
+  const uniqueActions: string[] = Array.from(new Set<string>(logs.map(l => l.activity))).sort();
 
   // Group by date
   const grouped = logs.reduce<{ key: string; label: string; entries: ApiActivityLog[] }[]>((acc, entry) => {
@@ -325,7 +327,16 @@ export const ActivityLog: React.FC = () => {
           {/* ── Stats Cards ── */}
           {stats && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-4 flex items-center gap-3 shadow-sm">
+              {/* Hoy */}
+              <button
+                type="button"
+                onClick={() => setPeriod("today")}
+                className={`bg-white dark:bg-[#1a212f] rounded-xl border p-4 flex items-center gap-3 shadow-sm text-left w-full transition-all hover:shadow-md ${
+                  period === "today"
+                    ? "border-primary ring-1 ring-primary/30"
+                    : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/40"
+                }`}
+              >
                 <div className="size-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
                   <span className="material-symbols-outlined text-primary text-xl">today</span>
                 </div>
@@ -333,8 +344,18 @@ export const ActivityLog: React.FC = () => {
                   <p className="text-2xl font-black text-[#111318] dark:text-white">{stats.todayCount}</p>
                   <p className="text-xs font-medium text-[#616f89] dark:text-[#64748b]">Acciones hoy</p>
                 </div>
-              </div>
-              <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-4 flex items-center gap-3 shadow-sm">
+              </button>
+
+              {/* Esta semana */}
+              <button
+                type="button"
+                onClick={() => setPeriod("week")}
+                className={`bg-white dark:bg-[#1a212f] rounded-xl border p-4 flex items-center gap-3 shadow-sm text-left w-full transition-all hover:shadow-md ${
+                  period === "week"
+                    ? "border-primary ring-1 ring-primary/30"
+                    : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/40"
+                }`}
+              >
                 <div className="size-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
                   <span className="material-symbols-outlined text-indigo-600 text-xl">date_range</span>
                 </div>
@@ -342,8 +363,18 @@ export const ActivityLog: React.FC = () => {
                   <p className="text-2xl font-black text-[#111318] dark:text-white">{stats.weekCount}</p>
                   <p className="text-xs font-medium text-[#616f89] dark:text-[#64748b]">Esta semana</p>
                 </div>
-              </div>
-              <div className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-4 flex items-center gap-3 shadow-sm">
+              </button>
+
+              {/* Total — limpia filtro de periodo (usa "month" para mostrar más) */}
+              <button
+                type="button"
+                onClick={() => setPeriod("month")}
+                className={`bg-white dark:bg-[#1a212f] rounded-xl border p-4 flex items-center gap-3 shadow-sm text-left w-full transition-all hover:shadow-md ${
+                  period === "month"
+                    ? "border-primary ring-1 ring-primary/30"
+                    : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/40"
+                }`}
+              >
                 <div className="size-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
                   <span className="material-symbols-outlined text-amber-600 text-xl">leaderboard</span>
                 </div>
@@ -351,7 +382,7 @@ export const ActivityLog: React.FC = () => {
                   <p className="text-2xl font-black text-[#111318] dark:text-white">{total}</p>
                   <p className="text-xs font-medium text-[#616f89] dark:text-[#64748b]">Total resultados</p>
                 </div>
-              </div>
+              </button>
             </div>
           )}
 
@@ -501,25 +532,19 @@ export const ActivityLog: React.FC = () => {
                               {formatTime(entry.createdAt)}
                             </span>
                           </div>
-                          {entry.description && (
+                          {entry.description && entry.entityName && !entry.description.includes(entry.entityName) && (
                             <p className="text-xs text-[#616f89] dark:text-[#64748b] mt-1 line-clamp-2">{entry.description}</p>
                           )}
+                          {/* Diff summary */}
+                          {(entry.metadata as any)?.diffSummary && (
+                            <DiffSummaryPreview diffSummary={(entry.metadata as any).diffSummary} />
+                          )}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            {/* Category badge */}
+                            {/* Solo el badge de categoría */}
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${catDef.badgeBg} ${catDef.colorClass}`}>
                               <span className="material-symbols-outlined text-[12px]">{catDef.icon}</span>
                               {catDef.label}
                             </span>
-                            {/* Activity type badge */}
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-primary">
-                              {getSpanishActivityName(entry.activity)}
-                            </span>
-                            {/* Entity type badge */}
-                            {entry.entityType && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-[#616f89] dark:text-gray-400">
-                                {entry.entityType}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </div>

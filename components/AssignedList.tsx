@@ -269,7 +269,23 @@ export const AssignedList: React.FC = () => {
                 </h3>
                 <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-1">
                   <span className="material-symbols-outlined text-base sm:text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
-                  <span>{tab === "RECIBIDOS" ? `De: ${a.assigner?.name || "Desconocido"}` : `Para: ${a.assignee?.name || "Desconocido"}`}</span>
+                  {tab === "RECIBIDOS" ? (
+                    <span>De: {a.assigner?.name || "Desconocido"}</span>
+                  ) : (
+                    <span>Para:{" "}
+                      {a.assignee?.id ? (
+                        <Link
+                          to={`/equipo/usuario/${a.assignee.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary hover:underline font-semibold transition-colors"
+                        >
+                          {a.assignee.name || "Desconocido"}
+                        </Link>
+                      ) : (
+                        <span>{a.assignee?.name || "Desconocido"}</span>
+                      )}
+                    </span>
+                  )}
                 </p>
                 <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-2 sm:mb-3">
                   <span className="material-symbols-outlined text-base sm:text-lg shrink-0">calendar_today</span>

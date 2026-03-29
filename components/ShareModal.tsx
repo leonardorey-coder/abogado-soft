@@ -1,24 +1,108 @@
-import React, { useState } from "react";
-import { Document } from "../types";
+import React, { useState, useEffect, useCallback } from "react";
+import { Document, DocumentShare, ShareMethod } from "../types";
+import { getShareableDocumentFile, documentsApi, ApiDocumentShare } from '../lib/api';
+import { Mail, MessageCircle, Link2, Share2, Clock, User, FileDown } from "lucide-react";
 
 interface ShareModalProps {
   document: Document;
   onClose: () => void;
+  onShareLogged?: () => void;
 }
 
-import { getShareableDocumentFile } from '../lib/api';
+const shareMethodIcons: Record<ShareMethod, React.ReactNode> = {
+  email: <Mail className="w-3.5 h-3.5" />,
+  whatsapp: <MessageCircle className="w-3.5 h-3.5" />,
+  link: <Link2 className="w-3.5 h-3.5" />,
+  system: <Share2 className="w-3.5 h-3.5" />,
+  other: <Share2 className="w-3.5 h-3.5" />,
+};
 
-export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => {
+const shareMethodLabels: Record<ShareMethod, string> = {
+  email: "Email",
+  whatsapp: "WhatsApp",
+  link: "Enlace",
+  system: "Sistema",
+  other: "Otro",
+};
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Justo ahora";
+  if (diffMins < 60) return `Hace ${diffMins} min`;
+  if (diffHours < 24) return `Hace ${diffHours}h`;
+  if (diffDays < 7) return `Hace ${diffDays}d`;
+  return date.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+// Tipos de documentos compatibles con la conversión a PDF via mammoth
+const PDF_COMPATIBLE_TYPES = ['docx', 'doc'];
+
+function isPdfCompatible(document: Document): boolean {
+  const type = document.type?.toLowerCase();
+  if (type && PDF_COMPATIBLE_TYPES.includes(type)) return true;
+  // También revisar extensión del nombre
+  const ext = document.name?.split('.').pop()?.toLowerCase();
+  return !!(ext && PDF_COMPATIBLE_TYPES.includes(ext));
+}
+
+export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onShareLogged }) => {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [sharingPdf, setSharingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [shareHistory, setShareHistory] = useState<DocumentShare[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [manualContact, setManualContact] = useState("");
+  const [savingManual, setSavingManual] = useState(false);
+
+  const canShareAsPdf = isPdfCompatible(document);
 
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/documento/${document.id}` : "";
+
+  const loadShareHistory = useCallback(async () => {
+    try {
+      setLoadingHistory(true);
+      const res = await documentsApi.getShares(document.id);
+      setShareHistory(res.shares.map((s: ApiDocumentShare) => ({
+        sharedWith: s.sharedWith,
+        shareMethod: s.shareMethod,
+        sharedAt: s.sharedAt,
+        sharedBy: s.sharedBy,
+      })));
+    } catch (err) {
+      console.error("Error cargando historial de shares:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [document.id]);
+
+  useEffect(() => {
+    void loadShareHistory();
+  }, [loadShareHistory]);
+
+  const logShare = async (sharedWith: string, method: ShareMethod) => {
+    try {
+      await documentsApi.share(document.id, { sharedWith, shareMethod: method });
+      await loadShareHistory();
+      onShareLogged?.();
+    } catch (err) {
+      console.error("Error registrando share:", err);
+    }
+  };
 
   const handleCopyUrl = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      // Registrar que se copió el enlace
+      await logShare("Enlace copiado", "link");
     } catch {
       setCopied(false);
     }
@@ -45,6 +129,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
         }
 
         await navigator.share(shareData);
+        // Registrar el share como método "system" (Web Share API)
+        await logShare("Compartido via sistema", "system");
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           alert("Error al compartir el archivo. Es posible que tu navegador no soporte compartir documentos.");
@@ -52,6 +138,107 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
       } finally {
         setSharing(false);
       }
+    }
+  };
+
+  const handleShareAsPdf = async () => {
+    if (sharingPdf) return;
+    setPdfError(null);
+    setSharingPdf(true);
+    try {
+      const { html } = await documentsApi.getContent(document.id);
+      const container = window.document.createElement('div');
+      container.style.cssText = [
+        'position:fixed', 'left:-9999px', 'top:0',
+        'width:794px', 'background:white', 'color:black',
+        'font-family:Georgia,serif', 'font-size:12pt',
+        'line-height:1.5', 'padding:48px', 'box-sizing:border-box',
+      ].join(';');
+      container.innerHTML = html;
+      window.document.body.appendChild(container);
+
+      const images = Array.from(container.querySelectorAll('img'));
+      await Promise.allSettled(images.map(img =>
+        img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+      ));
+
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(container, { scale: 1.5, useCORS: true, logging: false, windowWidth: 794 });
+      window.document.body.removeChild(container);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * pageWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const pdfBlob = pdf.output('blob');
+      const pdfName = document.name.replace(/\.(docx?|pdf)$/i, '') + '.pdf';
+      const pdfFile = new File([pdfBlob], pdfName, { type: 'application/pdf' });
+
+      // UNA sola acción: share nativo si el browser lo soporta con files, si no descarga directa
+      const supportsFileShare =
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [pdfFile] });
+
+      if (supportsFileShare) {
+        await navigator.share({ title: pdfName, text: `Compartir documento: ${pdfName}`, files: [pdfFile] });
+      } else {
+        const url = URL.createObjectURL(pdfBlob);
+        const a = window.document.createElement('a');
+        a.href = url;
+        a.download = pdfName;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // Registrar UNA sola vez al final
+      await logShare('Compartido como PDF', 'system');
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[ShareAsPdf]', err);
+        setPdfError('No se pudo generar el PDF. Inténtalo de nuevo.');
+      }
+    } finally {
+      setSharingPdf(false);
+    }
+  };
+
+  const handleManualShare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const contact = manualContact.trim();
+    if (!contact) return;
+
+    setSavingManual(true);
+    try {
+      // Detectar el método basado en el contenido
+      let method: ShareMethod = "other";
+      if (contact.includes("@")) {
+        method = "email";
+      } else if (/^\+?\d{10,}$/.test(contact.replace(/[\s-]/g, ""))) {
+        method = "whatsapp";
+      }
+
+      await logShare(contact, method);
+      setManualContact("");
+    } catch (err) {
+      console.error("Error registrando contacto:", err);
+    } finally {
+      setSavingManual(false);
     }
   };
 
@@ -67,7 +254,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
       }}
     >
       <div
-        className="bg-white dark:bg-[#1a212f] w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="bg-white dark:bg-[#1a212f] w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-[#dbdfe6] dark:border-[#2d3748]">
@@ -77,7 +264,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
           </p>
         </div>
 
-        <div className="p-6 flex flex-col gap-6">
+        <div className="p-6 flex flex-col gap-6 overflow-y-auto">
           <div>
             <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">Enlace del documento</label>
             <div className="flex gap-2 items-stretch">
@@ -111,6 +298,118 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose }) => 
               </span>
               {sharing ? 'Preparando archivo...' : 'Abrir menú de compartir'}
             </button>
+          </div>
+
+          {/* Compartir como PDF — solo visible para docx/doc */}
+          {canShareAsPdf && (
+            <div>
+              <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">
+                Compartir como PDF
+              </label>
+              <button
+                type="button"
+                onClick={handleShareAsPdf}
+                disabled={sharingPdf}
+                className={`w-full ${inputButtonClass} border-2 border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-400 ${sharingPdf ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                {sharingPdf ? (
+                  <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                ) : (
+                  <FileDown className="w-5 h-5" />
+                )}
+                {sharingPdf ? 'Generando PDF...' : 'Compartir como PDF'}
+              </button>
+              {pdfError && (
+                <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">error</span>
+                  {pdfError}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">
+              Registrar contacto manualmente
+            </label>
+            <form onSubmit={handleManualShare} className="flex gap-2 items-stretch">
+              <input
+                type="text"
+                placeholder="Email o teléfono del destinatario"
+                value={manualContact}
+                onChange={(e) => setManualContact(e.target.value)}
+                className={inputClass}
+              />
+              <button
+                type="submit"
+                disabled={!manualContact.trim() || savingManual}
+                className={buttonActionClass + " bg-emerald-600 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"}
+              >
+                {savingManual ? (
+                  <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                ) : (
+                  <span className="material-symbols-outlined text-lg">person_add</span>
+                )}
+                Agregar
+              </button>
+            </form>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Registra a quién compartiste este documento para tener un historial.
+            </p>
+          </div>
+
+          {/* Historial de shares */}
+          <div>
+            <label className="block text-sm font-bold text-[#111318] dark:text-white mb-2">
+              Historial de compartidos ({shareHistory.length})
+            </label>
+            <div className="border-2 border-[#dbdfe6] dark:border-[#2d3748] rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+              {loadingHistory ? (
+                <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+                  <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                  <p className="text-sm mt-1">Cargando historial...</p>
+                </div>
+              ) : shareHistory.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+                  <Share2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">Este documento no ha sido compartido aún.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-200 dark:divide-slate-700/60">
+                  {shareHistory.map((share, idx) => (
+                    <li key={idx} className="p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                        share.shareMethod === "email" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" :
+                        share.shareMethod === "whatsapp" ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" :
+                        share.shareMethod === "link" ? "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" :
+                        "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                      }`}>
+                        {shareMethodIcons[share.shareMethod]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                          {share.sharedWith}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatRelativeTime(share.sharedAt)}
+                          {share.sharedBy && (
+                            <>
+                              <span className="mx-1">•</span>
+                              <User className="w-3 h-3" />
+                              {share.sharedBy.name}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        {shareMethodLabels[share.shareMethod]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
 

@@ -18,6 +18,7 @@ const AgreementsList = lazy(() => import("./components/AgreementsList").then(m =
 const ConvenioForm = lazy(() => import("./components/ConvenioForm").then(m => ({ default: m.ConvenioForm })));
 const ConvenioDetails = lazy(() => import("./components/ConvenioDetails").then(m => ({ default: m.ConvenioDetails })));
 const TeamPage = lazy(() => import("./components/TeamPage").then(m => ({ default: m.TeamPage })));
+const UserProfilePage = lazy(() => import("./components/UserProfilePage").then(m => ({ default: m.UserProfilePage })));
 const ExcelEditor = lazy(() => import("./components/ExcelEditor").then(m => ({ default: m.ExcelEditor })));
 const DocumentXlsxEditor = lazy(() => import("./components/DocumentXlsxEditor").then(m => ({ default: m.DocumentXlsxEditor })));
 const ActivityLog = lazy(() => import("./components/ActivityLog").then(m => ({ default: m.ActivityLog })));
@@ -63,6 +64,7 @@ export default function App() {
                 <Route path="/convenio/:id/editar" element={<ConvenioForm />} />
                 <Route path="/convenio/:id/tabla" element={<ExcelEditor />} />
                 <Route path="/equipo" element={<TeamPage />} />
+                <Route path="/equipo/usuario/:id" element={<UserProfilePage />} />
                 <Route
                   path="/documento/:id"
                   element={

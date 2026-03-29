@@ -39,7 +39,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ title, description, acti
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{title}</h1>
       {description && <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>}
     </div>
-    {action && <div className="shrink-0">{action}</div>}
+    {action && (
+      <div className="basis-full sm:basis-auto shrink-0 w-full sm:w-auto">
+        {action}
+      </div>
+    )}
   </div>
 );
 
@@ -52,13 +56,15 @@ interface SectionCardProps {
   children: React.ReactNode;
   className?: string;
   noPadding?: boolean;
+  action?: React.ReactNode;
 }
 
-export const SectionCard: React.FC<SectionCardProps> = ({ title, children, className = "", noPadding }) => (
+export const SectionCard: React.FC<SectionCardProps> = ({ title, children, className = "", noPadding, action }) => (
   <div className={`bg-white dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700/60 shadow-sm ${className}`}>
     {title && (
-      <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/60">
+      <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     )}
     <div className={noPadding ? "" : "p-5"}>{children}</div>

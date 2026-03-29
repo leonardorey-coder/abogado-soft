@@ -262,9 +262,15 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
           </div>
         )}
         <div
-          id={toolbarDomId}
-          className="superdoc-toolbar-host mt-3 shrink-0 z-20 min-h-[48px] w-full border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-        />
+          role="region"
+          aria-label="Herramientas de formato del documento"
+          className="superdoc-toolbar-scroll shrink-0 z-20 min-w-0 w-full overflow-x-auto overflow-y-hidden overscroll-x-contain border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 [scrollbar-width:thin]"
+        >
+          <div
+            id={toolbarDomId}
+            className="superdoc-toolbar-host min-h-[48px] w-max min-w-full"
+          />
+        </div>
         <div className="min-h-0 w-full flex-1 overflow-auto bg-white dark:bg-[#0f0f1a]">
           <div
             ref={setEditorMountRef}
@@ -1114,14 +1120,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 <p className="text-gray-500 font-medium">Cargando documento...</p>
               </div>
             ) : documentBlob ? (
-              <div className="flex flex-1 min-h-[560px] min-w-0 flex-col lg:flex-row overflow-hidden">
+              <div className="flex flex-1 min-h-[560px] min-w-0 flex-col lg:flex-row">
                 <SuperDocPageStrip
                   editorMountRef={superDocMountRef}
                   activePageIndex={activePageIndex}
                   onActiveChange={setActivePageIndex}
                   collapsed={!pageStripOpen}
+                  leftDockOpen={leftSidebarOpen}
                 />
-                <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                <div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden">
                   <SuperDocEditor
                     ref={editorRef}
                     documentId={doc.id}
@@ -1407,7 +1414,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             <div
               className={`flex-1 overflow-y-auto pb-24 lg:pb-0 flex flex-col isolate ${
                 canUseSuperdoc && !showDiff
-                  ? 'pt-[calc(2.75rem+3rem)] lg:pt-[3rem]'
+                  ? 'pt-[calc(2.75rem+3rem)] lg:pt-14'
                   : 'pt-[2.75rem] lg:pt-0'
               }`}
             >

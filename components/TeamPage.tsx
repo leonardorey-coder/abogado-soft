@@ -30,6 +30,9 @@ interface ActivityItem {
   id: string;
   activity: string;
   description: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  entityName?: string | null;
   createdAt: string;
   user: { id: string; name: string; email: string; avatarUrl?: string | null };
 }
@@ -64,6 +67,50 @@ function activityIcon(activity: string): { icon: string; bg: string; color: stri
   if (lower.includes("user")) return { icon: "person", bg: "bg-blue-100 dark:bg-blue-900/30", color: "text-blue-600 dark:text-blue-400" };
   if (lower.includes("login") || lower.includes("logout")) return { icon: "login", bg: "bg-purple-100 dark:bg-purple-900/30", color: "text-purple-600 dark:text-purple-400" };
   return { icon: "history", bg: "bg-gray-100 dark:bg-gray-700", color: "text-gray-600 dark:text-gray-400" };
+}
+
+function translateActivity(activity: string): string {
+  const map: Record<string, string> = {
+    DOCUMENT_VIEWED: "Documento visto",
+    DOCUMENT_CREATED: "Documento creado",
+    DOCUMENT_UPDATED: "Documento actualizado",
+    DOCUMENT_DELETED: "Documento eliminado",
+    DOCUMENT_RESTORED: "Documento restaurado",
+    DOCUMENT_ASSIGNED: "Documento asignado",
+    DOCUMENT_SHARED: "Documento compartido",
+    DOCUMENT_DOWNLOADED: "Documento descargado",
+    DOCUMENT_EXPORTED: "Documento exportado",
+    DOCUMENT_ARCHIVED: "Documento archivado",
+    DOCUMENT_TRASHED: "Documento enviado a papelera",
+    CONVENIO_CREATED: "Convenio creado",
+    CONVENIO_UPDATED: "Convenio actualizado",
+    CONVENIO_DELETED: "Convenio eliminado",
+    CONVENIO_SIGNED: "Convenio firmado",
+    COLLABORATION_STARTED: "Colaboración iniciada",
+    COLLABORATION_ENDED: "Colaboración finalizada",
+    USER_REGISTERED: "Usuario registrado",
+    USER_UPDATED: "Usuario actualizado",
+    USER_ACTIVATED: "Usuario activado",
+    USER_DEACTIVATED: "Usuario desactivado",
+    USER_ROLE_CHANGED: "Rol cambiado",
+    USER_DELETED: "Usuario eliminado",
+    GROUP_CREATED: "Grupo creado",
+    GROUP_UPDATED: "Grupo actualizado",
+    GROUP_DELETED: "Grupo eliminado",
+    GROUP_MEMBER_ADDED: "Miembro añadido",
+    GROUP_MEMBER_REMOVED: "Miembro eliminado",
+    LOGIN: "Inició sesión",
+    LOGOUT: "Cerró sesión",
+    PASSWORD_CHANGED: "Contraseña cambiada",
+    ADMIN_ACCESS_GRANTED: "Acceso admin concedido",
+    ADMIN_ACCESS_DENIED: "Acceso admin denegado",
+    BACKUP_CREATED: "Copia de seguridad creada",
+    BACKUP_RESTORED: "Copia de seguridad restaurada",
+    SETTINGS_CHANGED: "Configuración cambiada",
+    COMMENT_ADDED: "Comentario añadido",
+    COMMENT_DELETED: "Comentario eliminado",
+  };
+  return map[activity] ?? activity.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
 
 export const TeamPage: React.FC = () => {
@@ -346,7 +393,13 @@ export const TeamPage: React.FC = () => {
                               />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-semibold text-[#111318] dark:text-white truncate">{u.name}</p>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/equipo/usuario/${u.id}`)}
+                                className="font-semibold text-[#111318] dark:text-white hover:text-primary dark:hover:text-primary transition-colors text-left truncate block"
+                              >
+                                {u.name}
+                              </button>
                               <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
                             </div>
                           </div>
@@ -443,7 +496,13 @@ export const TeamPage: React.FC = () => {
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[#111318] dark:text-white text-base truncate">{u.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/equipo/usuario/${u.id}`)}
+                          className="font-bold text-[#111318] dark:text-white text-base hover:text-primary dark:hover:text-primary transition-colors text-left truncate block w-full"
+                        >
+                          {u.name}
+                        </button>
                         <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
                       </div>
                     </div>
@@ -522,19 +581,37 @@ export const TeamPage: React.FC = () => {
         {/* Stats summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total usuarios", value: users.length, icon: "group" },
-            { label: "Activos", value: activeUsers.length, icon: "check_circle" },
-            { label: "Administradores", value: users.filter((u) => u.role === "admin").length, icon: "shield_person" },
-            { label: "Inactivos", value: inactiveUsers.length, icon: "cancel" },
-          ].map((s) => (
-            <div key={s.label} className="bg-white dark:bg-[#1a212f] rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] p-4 flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary text-xl">{s.icon}</span>
-              <div>
-                <p className="text-2xl font-black text-[#111318] dark:text-white">{s.value}</p>
-                <p className="text-xs text-[#616f89] dark:text-[#64748b]">{s.label}</p>
-              </div>
-            </div>
-          ))}
+            { label: "Total usuarios", value: users.length, icon: "group", iconColor: "text-primary", iconBg: "bg-blue-50 dark:bg-blue-900/30", action: () => { setRoleFilter(""); setStatusFilter(""); } },
+            { label: "Activos", value: activeUsers.length, icon: "check_circle", iconColor: "text-green-600", iconBg: "bg-green-50 dark:bg-green-900/30", action: () => { setRoleFilter(""); setStatusFilter("true"); } },
+            { label: "Administradores", value: users.filter((u) => u.role === "admin").length, icon: "shield_person", iconColor: "text-indigo-600", iconBg: "bg-indigo-50 dark:bg-indigo-900/30", action: () => { setRoleFilter("admin"); setStatusFilter(""); } },
+            { label: "Inactivos", value: inactiveUsers.length, icon: "cancel", iconColor: "text-red-500", iconBg: "bg-red-50 dark:bg-red-900/30", action: () => { setRoleFilter(""); setStatusFilter("false"); } },
+          ].map((s) => {
+            const isActive =
+              (s.label === "Total usuarios" && !roleFilter && !statusFilter) ||
+              (s.label === "Activos" && statusFilter === "true" && !roleFilter) ||
+              (s.label === "Administradores" && roleFilter === "admin" && !statusFilter) ||
+              (s.label === "Inactivos" && statusFilter === "false" && !roleFilter);
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={s.action}
+                className={`bg-white dark:bg-[#1a212f] rounded-xl border p-4 flex items-center gap-3 text-left w-full transition-all hover:shadow-md ${
+                  isActive
+                    ? "border-primary ring-1 ring-primary/30 shadow-sm"
+                    : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/40"
+                }`}
+              >
+                <div className={`size-10 rounded-lg ${s.iconBg} flex items-center justify-center`}>
+                  <span className={`material-symbols-outlined ${s.iconColor} text-xl`}>{s.icon}</span>
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-[#111318] dark:text-white">{s.value}</p>
+                  <p className="text-xs text-[#616f89] dark:text-[#64748b]">{s.label}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Asignados Summary Section */}
@@ -640,14 +717,38 @@ export const TeamPage: React.FC = () => {
             ) : (
               activity.map((item) => {
                 const { icon, bg, color } = activityIcon(item.activity);
+                // Determine entity link
+                const { entityType, entityId, entityName } = item;
+                const entityLink =
+                  entityId && entityType === "document" ? `/documento/${entityId}` :
+                  entityId && entityType === "convenio" ? `/convenio/${entityId}` :
+                  null;
                 return (
                   <div key={item.id} className="flex items-center gap-4 bg-white dark:bg-[#1a212f] p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
                     <div className={`size-9 ${bg} ${color} rounded-full flex items-center justify-center shrink-0`}>
                       <span className="material-symbols-outlined text-base">{icon}</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-[#111318] dark:text-white text-sm truncate">
-                        <strong>{item.user?.name ?? "Sistema"}</strong> {item.description}
+                      <p className="font-medium text-[#111318] dark:text-white text-sm">
+                        <strong>{item.user?.name ?? "Sistema"}</strong>
+                        {" "}
+                        {translateActivity(item.activity)}
+                        {entityName && (
+                          <>
+                            {" — "}
+                            {entityLink ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(entityLink)}
+                                className="italic text-primary hover:underline bg-transparent border-none p-0 font-medium cursor-pointer"
+                              >
+                                {entityName}
+                              </button>
+                            ) : (
+                              <span className="italic text-[#616f89]">{entityName}</span>
+                            )}
+                          </>
+                        )}
                       </p>
                     </div>
                     <p className="text-xs text-[#616f89] dark:text-[#a0aec0] shrink-0">{formatTimeAgo(item.createdAt)}</p>

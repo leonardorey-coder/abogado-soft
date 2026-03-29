@@ -109,12 +109,12 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
         `}
       >
         {/* ── Logo ─────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2.5 px-5 h-14 shrink-0 border-b border-slate-200 dark:border-slate-700/60">
+        <div className="flex items-center gap-2.5 px-5 h-[4rem] pt-safe pb-2 sm:pb-0 shrink-0 border-b border-slate-200 dark:border-slate-700/60">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Scale className="w-4.5 h-4.5 text-white" />
           </div>
           <span className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-            AbogadoSoft
+            SIDOC
           </span>
           {/* Close button on mobile */}
           <button
@@ -222,6 +222,8 @@ export type AppLayoutOutletContext = {
   searchQuery: string;
   openUploadModal: (files?: File[]) => void;
   refreshDocuments: () => Promise<void>;
+  /** Se incrementa tras subidas/refresh global para que páginas como /documentos vuelvan a cargar datos. */
+  documentsInvalidateSeq: number;
   setEditorTopBar: (slots: EditorTopBarSlots | null) => void;
 };
 
@@ -526,7 +528,12 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const { refresh: refreshDocuments } = useDocuments({ autoFetch: false });
+  const [documentsInvalidateSeq, setDocumentsInvalidateSeq] = useState(0);
+  const { refresh: refreshDocumentsHook } = useDocuments({ autoFetch: false });
+  const refreshDocuments = useCallback(async () => {
+    await refreshDocumentsHook();
+    setDocumentsInvalidateSeq((n) => n + 1);
+  }, [refreshDocumentsHook]);
 
   // Sidebar open state (mobile)
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -727,6 +734,7 @@ export const AppLayout: React.FC = () => {
                 searchQuery,
                 openUploadModal,
                 refreshDocuments,
+                documentsInvalidateSeq,
                 setEditorTopBar,
               } satisfies AppLayoutOutletContext
             }

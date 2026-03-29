@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
 import { ApiActivityLog } from '../lib/api';
+import DiffSummaryPreview from './DiffSummaryPreview';
 
 export interface GenericVersion {
     id: string;
@@ -32,6 +33,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
     COLLABORATION_ENDED: 'Finalizó colaboración',
     DOCUMENT_LOCKED: 'Bloqueó documento',
     DOCUMENT_UNLOCKED: 'Desbloqueó documento',
+    DOCUMENT_VIEWED: 'Vio documento',
 };
 
 function getSpanishActivityName(activity: string): string {
@@ -124,6 +126,13 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                             </p>
                                             {event.activity.description && (
                                                 <p className="text-[11px] text-gray-500 mb-1">{event.activity.description}</p>
+                                            )}
+                                            {/* Diff summary */}
+                                            {(event.activity.metadata as any)?.diffSummary && (
+                                                <DiffSummaryPreview
+                                                    diffSummary={(event.activity.metadata as any).diffSummary}
+                                                    compact={false}
+                                                />
                                             )}
                                             <p className="text-[10px] text-gray-500 flex justify-between">
                                                 <span>{event.activity.entityName ?? 'Documento'}</span>

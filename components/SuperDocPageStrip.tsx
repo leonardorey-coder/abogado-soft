@@ -8,6 +8,8 @@ type Props = {
   activePageIndex: number;
   onActiveChange: (i: number) => void;
   collapsed?: boolean;
+  /** Panel izquierdo del documento abierto (lg): desplaza la tira fija. */
+  leftDockOpen?: boolean;
 };
 
 export const SuperDocPageStrip: React.FC<Props> = ({
@@ -15,6 +17,7 @@ export const SuperDocPageStrip: React.FC<Props> = ({
   activePageIndex,
   onActiveChange,
   collapsed = false,
+  leftDockOpen = false,
 }) => {
   const [pageCount, setPageCount] = useState(0);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
@@ -109,9 +112,18 @@ export const SuperDocPageStrip: React.FC<Props> = ({
 
   if (collapsed) return null;
 
+  const lgLeft = leftDockOpen ? "lg:left-64" : "lg:left-0";
+
   return (
-    <aside className="flex w-[132px] lg:w-[148px] shrink-0 flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0f0f1a] overflow-y-auto max-h-[min(100vh-12rem,900px)]">
-      <div className="px-2 py-2 border-b border-gray-200 dark:border-gray-700">
+    <>
+      <div
+        className="hidden w-[132px] shrink-0 lg:block lg:w-[148px]"
+        aria-hidden
+      />
+      <aside
+        className={`flex w-[132px] shrink-0 flex-col self-start overflow-y-auto border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-[#0f0f1a] max-lg:max-h-[min(100dvh-10rem,900px)] lg:fixed lg:top-[7.5rem] lg:z-[25] lg:w-[148px] lg:max-h-[calc(100dvh-7.75rem)] ${lgLeft}`}
+      >
+      <div className="px-2 py-1.5 border-b border-gray-200 dark:border-gray-700">
         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
           Páginas
         </p>
@@ -150,5 +162,6 @@ export const SuperDocPageStrip: React.FC<Props> = ({
         )}
       </div>
     </aside>
+    </>
   );
 };
