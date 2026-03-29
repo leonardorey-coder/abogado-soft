@@ -22,7 +22,7 @@ export const TermsPage: React.FC = () => {
             Términos de Servicio
           </h1>
           <p className="mt-4 text-xl text-[#616f89] dark:text-gray-400">
-            Acuerdo de uso de la aplicación de escritorio AbogadoSoft para gestión documental colaborativa en nube privada.
+            Acuerdo de uso de la aplicación de escritorio SIDOC para gestión documental colaborativa en nube privada.
           </p>
         </div>
         <div className="mb-16 overflow-hidden rounded-xl bg-white p-8 shadow-sm dark:bg-gray-800/50">
@@ -33,7 +33,7 @@ export const TermsPage: React.FC = () => {
             <div>
               <h2 className="text-lg font-bold text-[#111318] dark:text-white">En pocas palabras</h2>
               <p className={`mt-2 text-lg font-medium leading-relaxed text-[#111318] dark:text-gray-200 ${legalP}`}>
-                AbogadoSoft es una aplicación de escritorio (Electron + React) que permite a los abogados de la universidad gestionar documentos de forma colaborativa. Usted mantiene la propiedad de sus documentos; la aplicación ofrece sincronización nube/local, permisos granulares y papelera con recuperación.
+                SIDOC es una aplicación de escritorio (Electron + React) que permite a los abogados de la universidad gestionar documentos de forma colaborativa. Usted mantiene la propiedad de sus documentos; la aplicación ofrece sincronización nube/local, permisos granulares y papelera con recuperación.
               </p>
             </div>
           </div>
@@ -42,13 +42,13 @@ export const TermsPage: React.FC = () => {
           <section>
             <h2 className="mb-6 text-2xl font-bold text-[#111318] dark:text-white">1. Aceptación</h2>
             <p className={legalP}>
-              Al utilizar AbogadoSoft usted acepta estos Términos de Servicio y la Política de Privacidad. El software está dirigido a abogados universitarios y personal administrativo. Si utiliza la aplicación en nombre de una institución o grupo, declara tener autoridad para vincularlos a estos términos.
+              Al utilizar SIDOC usted acepta estos Términos de Servicio y la Política de Privacidad. El software está dirigido a abogados universitarios y personal administrativo. Si utiliza la aplicación en nombre de una institución o grupo, declara tener autoridad para vincularlos a estos términos.
             </p>
           </section>
           <section>
             <h2 className="mb-6 text-2xl font-bold text-[#111318] dark:text-white">2. Uso del Software</h2>
             <p className={`mb-6 ${legalP}`}>
-              AbogadoSoft concede un uso limitado, no exclusivo y revocable de la aplicación de gestión documental, incluyendo CRUD de archivos, compartir y asignar documentos, permisos (Lectura, Escritura, Admin), grupos de trabajo, gestión de convenios universidad-abogados, sincronización automática nube/local y modo offline.
+              SIDOC concede un uso limitado, no exclusivo y revocable de la aplicación de gestión documental, incluyendo CRUD de archivos, compartir y asignar documentos, permisos (Lectura, Escritura, Admin), grupos de trabajo, gestión de convenios universidad-abogados, sincronización automática nube/local y modo offline.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="rounded-lg bg-white border border-gray-200 dark:border-gray-700 dark:bg-gray-800 p-6">
@@ -79,7 +79,7 @@ export const TermsPage: React.FC = () => {
               </li>
               <li className="flex gap-3">
                 <span className="material-symbols-outlined text-primary shrink-0">description</span>
-                <span className={legalP}><strong className="text-[#111318] dark:text-white">Contenido:</strong> Usted conserva la propiedad intelectual sobre sus documentos. AbogadoSoft no asume responsabilidad sobre la veracidad o legalidad del contenido que gestione.</span>
+                <span className={legalP}><strong className="text-[#111318] dark:text-white">Contenido:</strong> Usted conserva la propiedad intelectual sobre sus documentos. SIDOC no asume responsabilidad sobre la veracidad o legalidad del contenido que gestione.</span>
               </li>
               <li className="flex gap-3">
                 <span className="material-symbols-outlined text-primary shrink-0">update</span>

@@ -7,7 +7,7 @@ export const AppFooter: React.FC = () => {
       <div className="max-w-[1200px] mx-auto px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] text-sm">
           <span className="material-symbols-outlined text-lg">copyright</span>
-          2026 AbogadoSoft - Gestión Legal Segura
+          2026 SIDOC - Sistema Integral de Documentos y Convenios
         </div>
         <div className="flex gap-6 text-sm text-[#616f89] dark:text-[#a0aec0]">
           <Link to="/terminos" className="hover:text-primary transition-colors">

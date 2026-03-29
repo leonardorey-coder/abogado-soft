@@ -16,7 +16,7 @@ export const AuthHeader: React.FC<AuthHeaderProps> = ({ message, buttonLabel, on
               balance
             </span>
           </div>
-          <h2 className="text-gray-900 dark:text-white text-2xl font-bold tracking-tight">Abogadosoft</h2>
+          <h2 className="text-gray-900 dark:text-white text-2xl font-bold tracking-tight">SIDOC</h2>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-gray-600 dark:text-gray-400 hidden sm:block">{message}</span>

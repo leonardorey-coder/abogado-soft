@@ -147,7 +147,7 @@ export const CompleteProfilePage: React.FC = () => {
             <span className="material-symbols-outlined text-xl">balance</span>
           </div>
           <span className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            AbogadoSoft
+            SIDOC
           </span>
         </div>
       </header>

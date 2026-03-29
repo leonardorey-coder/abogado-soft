@@ -206,7 +206,7 @@ export const HealthCheck: React.FC = () => {
     const buildLogText = useCallback(() => {
         const lines: string[] = [];
         lines.push(`═══════════════════════════════════════════════`);
-        lines.push(`  ABOGADOSOFT — API Health Check Report`);
+        lines.push(`  SIDOC — API Health Check Report`);
         lines.push(`═══════════════════════════════════════════════`);
         lines.push(`Fecha:    ${new Date().toLocaleString('es-MX')}`);
         lines.push(`API URL:  ${API_URL}`);

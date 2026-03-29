@@ -9,7 +9,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    title: 'AbogadoSoft',
+    title: 'SIDOC',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

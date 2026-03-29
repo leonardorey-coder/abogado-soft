@@ -59,7 +59,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <span className="material-symbols-outlined text-[20px]">balance</span>
           </div>
           <h1 className="text-slate-900 dark:text-white text-xl font-black tracking-tight hidden md:block">
-            AbogadoSoft
+            SIDOC
           </h1>
         </div>
 

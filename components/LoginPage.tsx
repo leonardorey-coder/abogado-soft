@@ -115,7 +115,7 @@ export const LoginPage: React.FC = () => {
           <div className="w-full max-w-[420px]">
             <div className="flex flex-col mb-6 text-center lg:text-left">
               <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight mb-1">
-                Bienvenido a Abogadosoft
+                Bienvenido a SIDOC
               </h1>
               <p className="text-slate-500 dark:text-slate-400 text-base font-medium">
                 Ingrese sus credenciales para acceder a su oficina.
@@ -240,7 +240,7 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <footer className="mt-6 text-center text-slate-400 dark:text-slate-500 text-sm font-medium">
-              <p>© 2026 Abogadosoft. Diseñado para abogados modernos.</p>
+              <p>© 2026 SIDOC. Sistema integral de documentos y convenios.</p>
             </footer>
           </div>
         </div>

@@ -22,7 +22,7 @@ export const SecurityInfoPage: React.FC = () => {
             Seguridad de su Información
           </h1>
           <p className="mt-4 text-xl text-[#616f89] dark:text-gray-400">
-            Confidencialidad e integridad de sus expedientes en la aplicación de gestión documental AbogadoSoft.
+            Confidencialidad e integridad de sus expedientes en la aplicación de gestión documental SIDOC.
           </p>
         </div>
         <div className="mb-16 overflow-hidden rounded-xl bg-white p-8 shadow-sm dark:bg-gray-800/50">

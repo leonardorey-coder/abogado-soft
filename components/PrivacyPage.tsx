@@ -22,7 +22,7 @@ export const PrivacyPage: React.FC = () => {
             Política de Privacidad
           </h1>
           <p className="mt-4 text-xl text-[#616f89] dark:text-gray-400">
-            Privacidad y seguridad de los datos en la aplicación de gestión documental AbogadoSoft (plataforma desktop, nube privada).
+            Privacidad y seguridad de los datos en la aplicación de gestión documental SIDOC (plataforma desktop, nube privada).
           </p>
         </div>
         <div className="mb-16 overflow-hidden rounded-xl bg-white p-8 shadow-sm dark:bg-gray-800/50">
@@ -42,7 +42,7 @@ export const PrivacyPage: React.FC = () => {
           <section>
             <h2 className="mb-6 text-2xl font-bold text-[#111318] dark:text-white">1. Información que recopilamos</h2>
             <p className={`mb-4 ${legalP}`}>
-              AbogadoSoft recopila la mínima información necesaria para la gestión documental colaborativa en nube privada:
+              SIDOC recopila la mínima información necesaria para la gestión documental colaborativa en nube privada:
             </p>
             <ul className="list-none space-y-4 pl-0">
               <li className="flex gap-3">
@@ -89,7 +89,7 @@ export const PrivacyPage: React.FC = () => {
           <section>
             <h2 className="mb-6 text-2xl font-bold text-[#111318] dark:text-white">3. Uso de la Información</h2>
             <p className={legalP}>
-              La información se utiliza exclusivamente para la prestación del servicio de AbogadoSoft: sincronización nube/local, permisos, grupos, convenios y mejora de la estabilidad. No se comparte, vende ni alquila datos personales o de documentos a terceros con fines publicitarios ni para entrenar modelos de IA con su información confidencial.
+              La información se utiliza exclusivamente para la prestación del servicio de SIDOC: sincronización nube/local, permisos, grupos, convenios y mejora de la estabilidad. No se comparte, vende ni alquila datos personales o de documentos a terceros con fines publicitarios ni para entrenar modelos de IA con su información confidencial.
             </p>
           </section>
           <section>

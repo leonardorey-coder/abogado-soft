@@ -16,7 +16,7 @@ export const GuestRoute: React.FC = () => {
                     <div className="bg-primary text-white p-4 rounded-xl shadow-lg shadow-primary/20 animate-pulse">
                         <span className="material-symbols-outlined text-[48px] block">balance</span>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 text-lg">Cargando Abogadosoft…</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-lg">Cargando SIDOC…</p>
                 </div>
             </div>
         );
