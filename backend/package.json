@@ -1,7 +1,7 @@
 {
-  "name": "abogado-soft-backend",
+  "name": "sidoc-backend",
   "version": "0.1.0",
-  "description": "API REST para AbogadoSoft — Bun + Express + Prisma + Supabase (Auth + Realtime)",
+  "description": "API REST para SIDOC — Bun + Express + Prisma + Supabase (Auth + Realtime)",
   "type": "module",
   "main": "src/server.ts",
   "scripts": {
@@ -46,6 +46,7 @@
     "htmldiff-js": "^1.0.5",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.11.0",
+    "meilisearch": "^0.56.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
     "pdf-parse": "^2.4.5",

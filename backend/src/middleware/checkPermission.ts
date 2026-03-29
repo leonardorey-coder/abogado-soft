@@ -1,6 +1,6 @@
 // ============================================================================
 // Permission Middleware — Verifica permisos granulares sobre documentos
-// Resuelve el permiso efectivo: dueño > admin global > individual > grupo
+// Resuelve el permiso efectivo: dueño > admin global > individual > grupo > membresía
 // ============================================================================
 
 import { Request, Response, NextFunction } from 'express';
@@ -35,7 +35,8 @@ declare global {
  *   3. Permiso individual (document_permissions con userId)
  *   4. Permiso heredado de grupo (document_permissions con groupId
  *      donde el usuario sea miembro del grupo)
- *   5. Sin permiso → none
+ *   5. Membresía al grupo (si el documento pertenece al grupo del usuario) → read
+ *   6. Sin permiso → none
  *
  * Si hay múltiples permisos (individual + grupo), toma el mayor.
  * Los permisos expirados (expiresAt < ahora) se ignoran.
@@ -44,10 +45,10 @@ export async function getEffectivePermission(
     userId: string,
     documentId: string,
 ): Promise<PermissionLevelName> {
-    // 1. Verificar si es dueño
+    // 1. Obtener documento con su groupId
     const doc = await prisma.document.findUnique({
         where: { id: documentId },
-        select: { ownerId: true },
+        select: { ownerId: true, groupId: true },
     });
 
     if (!doc) return 'none';
@@ -91,17 +92,37 @@ export async function getEffectivePermission(
         select: { permissionLevel: true },
     });
 
-    if (permissions.length === 0) return 'none';
+    // Si hay permisos explícitos, verificar si alguno es 'none' (denegación explícita)
+    if (permissions.length > 0) {
+        // Verificar si hay denegación explícita (permiso 'none')
+        const hasExplicitDenial = permissions.some(p => p.permissionLevel === 'none');
+        if (hasExplicitDenial) {
+            // Solo denegar si TODOS los permisos son 'none'
+            const allDenied = permissions.every(p => p.permissionLevel === 'none');
+            if (allDenied) return 'none';
+        }
 
-    // 5. Tomar el nivel más alto
-    let maxLevel = 0;
-    for (const perm of permissions) {
-        const level = LEVEL_HIERARCHY[perm.permissionLevel] ?? 0;
-        if (level > maxLevel) maxLevel = level;
+        // 5. Tomar el nivel más alto (excluyendo 'none')
+        let maxLevel = 0;
+        for (const perm of permissions) {
+            if (perm.permissionLevel === 'none') continue;
+            const level = LEVEL_HIERARCHY[perm.permissionLevel] ?? 0;
+            if (level > maxLevel) maxLevel = level;
+        }
+
+        if (maxLevel > 0) {
+            const entry = Object.entries(LEVEL_HIERARCHY).find(([, v]) => v === maxLevel);
+            return (entry?.[0] as PermissionLevelName) ?? 'none';
+        }
     }
 
-    const entry = Object.entries(LEVEL_HIERARCHY).find(([, v]) => v === maxLevel);
-    return (entry?.[0] as PermissionLevelName) ?? 'none';
+    // 6. Si no hay permisos explícitos pero el usuario es miembro del grupo del documento
+    //    → otorgar permiso de lectura por defecto (acceso por membresía)
+    if (doc.groupId && groupIds.includes(doc.groupId)) {
+        return 'read';
+    }
+
+    return 'none';
 }
 
 /**

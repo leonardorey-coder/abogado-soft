@@ -170,6 +170,7 @@ enum ActivityType {
   CASE_UPDATED
   CASE_DOCUMENT_LINKED
   CASE_DOCUMENT_UNLINKED
+  DOCUMENT_VIEWED
 
   @@map("activity_type")
 }

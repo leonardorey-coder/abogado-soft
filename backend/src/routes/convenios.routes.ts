@@ -8,6 +8,44 @@ import { syncDocumentToDrive } from './drive.routes.js';
 import { verifyCredentials } from '../lib/googleDrive.js';
 import * as XLSX from 'xlsx';
 
+// ─── Diff summary helper (convenios) ─────────────────────────────────────────────────
+interface ConvenioDiffSummary {
+  linesAdded: number;
+  linesRemoved: number;
+  sampleLines: { type: 'added' | 'removed'; content: string }[];
+}
+
+function computeConvenioDiffSummary(oldData: any, newData: any): ConvenioDiffSummary | null {
+  try {
+    const oldText = JSON.stringify(oldData ?? {}, null, 2);
+    const newText = JSON.stringify(newData ?? {}, null, 2);
+    const diffs = Diff.diffLines(oldText, newText);
+    let linesAdded = 0;
+    let linesRemoved = 0;
+    const addedSamples: { type: 'added'; content: string }[] = [];
+    const removedSamples: { type: 'removed'; content: string }[] = [];
+    for (const part of diffs) {
+      const lines = (part.value || '').split('\n').filter((l: string) => l.trim());
+      if (part.added) {
+        linesAdded += lines.length;
+        for (const l of lines) {
+          if (addedSamples.length < 3) addedSamples.push({ type: 'added', content: l.slice(0, 120) });
+        }
+      } else if (part.removed) {
+        linesRemoved += lines.length;
+        for (const l of lines) {
+          if (removedSamples.length < 3) removedSamples.push({ type: 'removed', content: l.slice(0, 120) });
+        }
+      }
+    }
+    if (linesAdded === 0 && linesRemoved === 0) return null;
+    return { linesAdded, linesRemoved, sampleLines: [...removedSamples, ...addedSamples] };
+  } catch {
+    return null;
+  }
+}
+
+
 export const conveniosRouter = Router();
 conveniosRouter.use(authenticate);
 
@@ -105,6 +143,24 @@ conveniosRouter.get(
         },
       });
       res.json(convenio);
+
+      // ── Fire-and-forget: registrar apertura para "Abierto recientemente" ──
+      (async () => {
+        try {
+          await prisma.activityLog.create({
+            data: {
+              userId: req.user!.id,
+              activity: 'DOCUMENT_VIEWED',
+              entityType: 'convenio',
+              entityId: convenio.id,
+              entityName: `${convenio.numero} – ${convenio.institucion}`,
+              description: `Convenio abierto: ${convenio.numero}`,
+            },
+          });
+        } catch (err) {
+          console.error('[Convenio open tracking] Error:', err);
+        }
+      })();
     } catch (error) {
       next(error);
     }
@@ -402,6 +458,8 @@ conveniosRouter.post(
       if (createVersion) {
         const newVersionNum = conv.version + 1;
 
+        const diffSummary = computeConvenioDiffSummary(conv.tableData, tableData);
+
         const [version] = await prisma.$transaction([
           prisma.convenioVersion.create({
             data: {
@@ -426,12 +484,14 @@ conveniosRouter.post(
             entityId: convenioId,
             entityName: conv.numero,
             description: `Tabla guardada con nueva versión (v${newVersionNum})`,
-            metadata: { version: newVersionNum, changeNote },
+            metadata: ({ version: newVersionNum, changeNote, ...(diffSummary ? { diffSummary } : {}) } as any),
           },
         });
 
         res.json({ ok: true, version: newVersionNum, versionId: version.id });
       } else {
+        const diffSummary = computeConvenioDiffSummary(conv.tableData, tableData);
+
         await prisma.convenio.update({
           where: { id: convenioId },
           data: { tableData: tableData as any },
@@ -445,6 +505,7 @@ conveniosRouter.post(
             entityId: convenioId,
             entityName: conv.numero,
             description: 'Tabla actualizada',
+            metadata: diffSummary ? ({ diffSummary } as any) : undefined,
           },
         });
 

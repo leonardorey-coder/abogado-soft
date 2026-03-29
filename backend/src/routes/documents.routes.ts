@@ -20,6 +20,68 @@ const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { syncDocumentToDrive } from './drive.routes.js';
 import { verifyCredentials } from '../lib/googleDrive.js';
 
+// ─── Diff summary helper ──────────────────────────────────────────────────────
+
+
+async function extractTextFromPath(filePath: string | null): Promise<string> {
+  if (!filePath || !fs.existsSync(filePath)) return '';
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.txt' || ext === '.rtf') return fs.readFileSync(filePath, 'utf-8');
+  if (ext === '.docx' || ext === '.doc') {
+    try {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value || '';
+    } catch { return ''; }
+  }
+  if (ext === '.pdf') {
+    try {
+      const data = await pdfParse(fs.readFileSync(filePath));
+      return data.text || '';
+    } catch { return ''; }
+  }
+  return '';
+}
+
+interface DiffSummary {
+  linesAdded: number;
+  linesRemoved: number;
+  sampleLines: { type: 'added' | 'removed'; content: string }[];
+}
+
+async function computeDiffSummary(oldPath: string | null, newPath: string | null): Promise<DiffSummary | null> {
+  try {
+    const [oldText, newText] = await Promise.all([
+      extractTextFromPath(oldPath),
+      extractTextFromPath(newPath),
+    ]);
+    if (!oldText && !newText) return null;
+    const diffs = Diff.diffLines(oldText, newText);
+    let linesAdded = 0;
+    let linesRemoved = 0;
+    const addedSamples: { type: 'added'; content: string }[] = [];
+    const removedSamples: { type: 'removed'; content: string }[] = [];
+    for (const part of diffs) {
+      const lines = (part.value || '').split('\n').filter(l => l.trim());
+      if (part.added) {
+        linesAdded += lines.length;
+        for (const l of lines) {
+          if (addedSamples.length < 3) addedSamples.push({ type: 'added', content: l.slice(0, 120) });
+        }
+      } else if (part.removed) {
+        linesRemoved += lines.length;
+        for (const l of lines) {
+          if (removedSamples.length < 3) removedSamples.push({ type: 'removed', content: l.slice(0, 120) });
+        }
+      }
+    }
+    if (linesAdded === 0 && linesRemoved === 0) return null;
+    return { linesAdded, linesRemoved, sampleLines: [...removedSamples, ...addedSamples] };
+  } catch {
+    return null;
+  }
+}
+
+
 // ─── BigInt → Number serialization helper ────────────────────────────────────
 function serializeBigInt(obj: any): any {
   if (obj === null || obj === undefined) return obj;
@@ -125,6 +187,101 @@ const documentsQuerySchema = paginationQuery.extend({
   includeDeleted: z.coerce.boolean().default(false),
 });
 
+// ─── GET /api/documents/recently-opened ────────────────────────────────────
+// MUST be defined before /:id so Express doesn't match it as a UUID
+documentsRouter.get(
+  '/recently-opened',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string || '10', 10), 30);
+      const userId = req.user!.id;
+
+      // Get the most recent unique documents/convenios opened (DOCUMENT_VIEWED)
+      // using a subquery to deduplicate by entityId keeping the most recent
+      const recentLogs = await prisma.activityLog.findMany({
+        where: {
+          userId,
+          activity: 'DOCUMENT_VIEWED',
+          entityId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit * 4, // fetch extra to deduplicate
+        select: {
+          entityId: true,
+          entityType: true,
+          entityName: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      // Deduplicate: keep only the most recently opened occurrence of each entityId
+      const seen = new Set<string>();
+      const unique: typeof recentLogs = [];
+      for (const log of recentLogs) {
+        if (!log.entityId || seen.has(log.entityId)) continue;
+        seen.add(log.entityId);
+        unique.push(log);
+        if (unique.length >= limit) break;
+      }
+
+      // Fetch document details for each entry
+      const results: any[] = [];
+      for (const log of unique) {
+        try {
+          if (log.entityType === 'document') {
+            const doc = await prisma.document.findUnique({
+              where: { id: log.entityId!, isDeleted: false },
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                fileStatus: true,
+                updatedAt: true,
+                mimeType: true,
+                owner: { select: { id: true, name: true } },
+              },
+            });
+            if (doc) {
+              results.push({
+                ...doc,
+                entityType: 'document',
+                openedAt: log.createdAt,
+              });
+            }
+          } else if (log.entityType === 'convenio') {
+            const conv = await prisma.convenio.findUnique({
+              where: { id: log.entityId! },
+              select: {
+                id: true,
+                numero: true,
+                institucion: true,
+                estado: true,
+                updatedAt: true,
+                responsable: { select: { id: true, name: true } },
+              },
+            });
+            if (conv) {
+              results.push({
+                ...conv,
+                name: `${conv.numero} – ${conv.institucion}`,
+                entityType: 'convenio',
+                openedAt: log.createdAt,
+              });
+            }
+          }
+        } catch {
+          // skip entities that no longer exist
+        }
+      }
+
+      res.json({ data: results });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ─── GET /api/documents/trash ───────────────────────────────────────────────
 // MUST be defined before /:id so Express doesn't match "trash" as a UUID
 documentsRouter.get(
@@ -156,6 +313,11 @@ documentsRouter.get(
 );
 
 // ─── GET /api/documents ─────────────────────────────────────────────────────
+// Lista documentos del usuario según permisos:
+// 1. Documentos propios (ownerId)
+// 2. Documentos con permiso explícito individual (DocumentPermission.userId)
+// 3. Documentos del grupo con permiso de grupo (DocumentPermission.groupId)
+// 4. Documentos del grupo donde el usuario es miembro Y tiene al menos permiso 'download'
 documentsRouter.get(
   '/',
   validateQuery(documentsQuerySchema),
@@ -163,15 +325,86 @@ documentsRouter.get(
     try {
       const { page, limit, sortOrder, search, type, status, groupId, caseId, includeDeleted } = req.query as any;
       const skip = (page - 1) * limit;
+      const userId = req.user!.id;
+      const now = new Date();
+
+      // Verificar si el usuario es admin global
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      const isGlobalAdmin = user?.role === 'admin';
+
+      // Obtener los grupos del usuario
+      const userGroups = await prisma.groupMember.findMany({
+        where: { userId },
+        select: { groupId: true },
+      });
+      const userGroupIds = userGroups.map(g => g.groupId);
+
+      // Construir condiciones de acceso basadas en permisos
+      const accessConditions: any[] = [
+        // 1. Es dueño del documento
+        { ownerId: userId },
+        // 2. Tiene permiso individual explícito (no expirado)
+        {
+          permissions: {
+            some: {
+              userId,
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: now } },
+              ],
+            },
+          },
+        },
+      ];
+
+      // 3. Si pertenece a grupos, agregar documentos del grupo con permisos
+      if (userGroupIds.length > 0) {
+        accessConditions.push(
+          // Documentos del grupo donde hay un permiso de grupo válido
+          {
+            AND: [
+              { groupId: { in: userGroupIds } },
+              {
+                permissions: {
+                  some: {
+                    groupId: { in: userGroupIds },
+                    OR: [
+                      { expiresAt: null },
+                      { expiresAt: { gt: now } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          // Documentos del grupo sin permisos explícitos (acceso por membresía)
+          // Solo si el documento pertenece al grupo y no tiene restricciones de permisos
+          {
+            AND: [
+              { groupId: { in: userGroupIds } },
+              {
+                permissions: {
+                  none: {
+                    permissionLevel: 'none',
+                    OR: [
+                      { userId },
+                      { groupId: { in: userGroupIds } },
+                    ],
+                  },
+                },
+              },
+            ],
+          }
+        );
+      }
 
       const where: any = {
         isDeleted: includeDeleted ? undefined : false,
-        // Solo documentos propios o con permisos explícitos o que pertenezcan al grupo
-        OR: [
-          { ownerId: req.user!.id },
-          { permissions: { some: { userId: req.user!.id } } },
-          { group: { members: { some: { userId: req.user!.id } } } },
-        ],
+        // Si es admin global, puede ver todo; si no, aplicar filtros de acceso
+        ...(isGlobalAdmin ? {} : { OR: accessConditions }),
       };
 
       if (search) where.name = { contains: search, mode: 'insensitive' };
@@ -190,6 +423,15 @@ documentsRouter.get(
             owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
             group: { select: { id: true, name: true } },
             case_: { select: { id: true, caseNumber: true, title: true } },
+            permissions: {
+              where: {
+                OR: [
+                  { userId },
+                  ...(userGroupIds.length > 0 ? [{ groupId: { in: userGroupIds } }] : []),
+                ],
+              },
+              select: { permissionLevel: true, userId: true, groupId: true },
+            },
             _count: { select: { comments: true, versions: true, assignments: true } },
             assignments: {
               include: {
@@ -201,7 +443,87 @@ documentsRouter.get(
         prisma.document.count({ where }),
       ]);
 
-      res.json({ data: serializeBigInt(documents), total, page, limit });
+      // Calcular permiso efectivo para cada documento y filtrar los que no tienen acceso
+      const documentsWithPermissions = documents.map(doc => {
+        let effectivePermission: string = 'none';
+
+        // 1. Si es dueño → admin
+        if (doc.ownerId === userId) {
+          effectivePermission = 'admin';
+        }
+        // 2. Si es admin global → admin
+        else if (isGlobalAdmin) {
+          effectivePermission = 'admin';
+        }
+        // 3. Buscar el permiso más alto entre los permisos individuales y de grupo
+        else if (doc.permissions.length > 0) {
+          const levels = { none: 0, download: 1, read: 2, write: 3, admin: 4 };
+          let maxLevel = 0;
+          for (const perm of doc.permissions) {
+            const level = levels[perm.permissionLevel as keyof typeof levels] ?? 0;
+            if (level > maxLevel) maxLevel = level;
+          }
+          effectivePermission = Object.entries(levels).find(([, v]) => v === maxLevel)?.[0] ?? 'none';
+        }
+        // 4. Si es miembro del grupo y no hay permisos explícitos, dar acceso de lectura por defecto
+        else if (doc.groupId && userGroupIds.includes(doc.groupId)) {
+          effectivePermission = 'read';
+        }
+
+        // Remover el campo permissions del response (solo era para cálculo interno)
+        const { permissions, ...docWithoutInternalPerms } = doc;
+
+        return {
+          ...docWithoutInternalPerms,
+          effectivePermission,
+        };
+      });
+
+      // Filtrar documentos sin acceso (permiso 'none')
+      const accessibleDocuments = documentsWithPermissions.filter(
+        doc => doc.effectivePermission !== 'none'
+      );
+
+      // Obtener historial de shares para cada documento
+      const docIds = accessibleDocuments.map(d => d.id);
+      const shareActivities = await prisma.activityLog.findMany({
+        where: {
+          entityId: { in: docIds },
+          entityType: 'document',
+          activity: 'DOCUMENT_SHARED',
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          entityId: true,
+          metadata: true,
+          createdAt: true,
+          user: { select: { id: true, name: true } },
+        },
+      });
+
+      // Agrupar shares por documento (máximo 3 más recientes por documento)
+      const sharesByDoc = new Map<string, Array<{ sharedWith: string; shareMethod: string; sharedAt: Date; sharedBy: { id: string; name: string } | null }>>();
+      for (const share of shareActivities) {
+        if (!share.entityId) continue;
+        const existing = sharesByDoc.get(share.entityId) || [];
+        if (existing.length < 3) {
+          existing.push({
+            sharedWith: (share.metadata as any)?.sharedWith || 'Desconocido',
+            shareMethod: (share.metadata as any)?.shareMethod || 'system',
+            sharedAt: share.createdAt,
+            sharedBy: share.user,
+          });
+          sharesByDoc.set(share.entityId, existing);
+        }
+      }
+
+      // Agregar shares a cada documento
+      const documentsWithShares = accessibleDocuments.map(doc => ({
+        ...doc,
+        recentShares: sharesByDoc.get(doc.id) || [],
+      }));
+
+      res.json({ data: serializeBigInt(documentsWithShares), total: accessibleDocuments.length, page, limit });
     } catch (error) {
       next(error);
     }
@@ -255,11 +577,24 @@ documentsRouter.get(
 
       res.json(serializeBigInt(document));
 
-      // ── Auto-transición de asignación: pendiente → visto ──
-      // Se ejecuta después de enviar la respuesta (fire-and-forget)
+      // ── Fire-and-forget: DOCUMENT_VIEWED + auto-transición de asignación ──
       (async () => {
         try {
           const docId = paramId(req);
+
+          // Registrar apertura para "Abierto recientemente"
+          await prisma.activityLog.create({
+            data: {
+              userId: req.user!.id,
+              activity: 'DOCUMENT_VIEWED',
+              entityType: 'document',
+              entityId: docId,
+              entityName: document.name,
+              description: `Documento abierto: ${document.name}`,
+            },
+          });
+
+          // Auto-transición de asignación: pendiente → visto
           const pendingAssignments = await prisma.documentAssignment.findMany({
             where: {
               documentId: docId,
@@ -293,7 +628,7 @@ documentsRouter.get(
             })),
           });
         } catch (err) {
-          console.error('[Assignment auto-status] Error pendiente→visto:', err);
+          console.error('[Document open tracking] Error:', err);
         }
       })();
     } catch (error) {
@@ -987,6 +1322,7 @@ documentsRouter.post(
       if (createVersion) {
         // ── Modo "Nueva Versión": incrementar versión y crear registro ──
         const newVersion = doc.version + 1;
+        const diffSummary = await computeDiffSummary(doc.localPath, req.file.path);
 
         await prisma.$transaction([
           prisma.document.update({
@@ -1016,6 +1352,7 @@ documentsRouter.post(
               entityId: docId,
               entityName: doc.name,
               description: `Nueva versión ${newVersion} guardada${changeNote ? `: ${changeNote}` : ''}`,
+              metadata: diffSummary ? ({ diffSummary } as any) : undefined,
             },
           }),
         ]);
@@ -1040,7 +1377,8 @@ documentsRouter.post(
           syncResult,
         }));
       } else {
-        // ── Modo "Guardar": solo sobreescribe archivo sin nueva versión; igual se sincroniza a Drive ──
+        const diffSummary = await computeDiffSummary(doc.localPath, req.file.path);
+
         await prisma.document.update({
           where: { id: docId },
           data: {
@@ -1058,7 +1396,7 @@ documentsRouter.post(
             entityId: docId,
             entityName: doc.name,
             description: `Documento editado: ${doc.name}`,
-            metadata: { source: 'editor_save', createVersion: false, size: fileSize },
+            metadata: ({ source: 'editor_save', createVersion: false, size: fileSize, ...(diffSummary ? { diffSummary } : {}) } as any),
           },
         });
 
@@ -1719,6 +2057,91 @@ documentsRouter.post(
 
         res.json(serializeBigInt({ ok: true, version: doc.version, size: fileSize, syncResult }));
       }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── POST /api/documents/:id/share ───────────────────────────────────────────
+// Registra que el documento fue compartido con un contacto (email, app, etc.)
+const shareDocumentSchema = z.object({
+  sharedWith: z.string().min(1).max(255), // email, nombre de app, o identificador del contacto
+  shareMethod: z.enum(['email', 'whatsapp', 'link', 'system', 'other']).default('system'),
+  note: z.string().max(500).optional(),
+});
+
+documentsRouter.post(
+  '/:id/share',
+  validateParams(uuidParam),
+  requirePermission('read'),
+  validate(shareDocumentSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { sharedWith, shareMethod, note } = req.body;
+
+      const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: docId },
+        select: { id: true, name: true },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_SHARED',
+          entityType: 'document',
+          entityId: docId,
+          entityName: doc.name,
+          description: `Documento compartido con: ${sharedWith}`,
+          metadata: {
+            sharedWith,
+            shareMethod,
+            note: note || null,
+          },
+        },
+      });
+
+      res.status(201).json({ ok: true, sharedWith, shareMethod });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/shares ───────────────────────────────────────────
+// Lista el historial de shares de un documento
+documentsRouter.get(
+  '/:id/shares',
+  validateParams(uuidParam),
+  requirePermission('download'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+
+      const shares = await prisma.activityLog.findMany({
+        where: {
+          entityId: docId,
+          entityType: 'document',
+          activity: 'DOCUMENT_SHARED',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          user: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      });
+
+      // Extraer los contactos únicos compartidos
+      const sharedContacts = shares.map(s => ({
+        id: s.id,
+        sharedWith: (s.metadata as any)?.sharedWith || 'Desconocido',
+        shareMethod: (s.metadata as any)?.shareMethod || 'system',
+        sharedBy: s.user,
+        sharedAt: s.createdAt,
+      }));
+
+      res.json({ shares: sharedContacts });
     } catch (error) {
       next(error);
     }
