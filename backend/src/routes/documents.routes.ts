@@ -185,6 +185,8 @@ const documentsQuerySchema = paginationQuery.extend({
   groupId: z.string().uuid().optional(),
   caseId: z.string().uuid().optional(),
   includeDeleted: z.coerce.boolean().default(false),
+  from: z.string().optional(),
+  to: z.string().optional(),
 });
 
 // ─── GET /api/documents/recently-opened ────────────────────────────────────
@@ -323,7 +325,7 @@ documentsRouter.get(
   validateQuery(documentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, search, type, status, groupId, caseId, includeDeleted } = req.query as any;
+      const { page, limit, sortOrder, search, type, status, groupId, caseId, includeDeleted, from, to } = req.query as any;
       const skip = (page - 1) * limit;
       const userId = req.user!.id;
       const now = new Date();
@@ -412,6 +414,12 @@ documentsRouter.get(
       if (status) where.fileStatus = status;
       if (groupId) where.groupId = groupId;
       if (caseId) where.caseId = caseId;
+      if (from || to) {
+        where.updatedAt = {
+          ...(from ? { gte: new Date(from) } : {}),
+          ...(to ? { lte: new Date(to) } : {}),
+        };
+      }
 
       const [documents, total] = await Promise.all([
         prisma.document.findMany({
@@ -523,7 +531,7 @@ documentsRouter.get(
         recentShares: sharesByDoc.get(doc.id) || [],
       }));
 
-      res.json({ data: serializeBigInt(documentsWithShares), total: accessibleDocuments.length, page, limit });
+      res.json({ data: serializeBigInt(documentsWithShares), total, page, limit });
     } catch (error) {
       next(error);
     }
