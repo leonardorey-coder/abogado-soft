@@ -13,14 +13,18 @@ import {
   Info,
   AlertCircle,
   Loader2,
+  Bell,
 } from "lucide-react";
 import { getNavGroups, navigationConfig } from "../lib/navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
-import { documentsApi, backupsApi } from "../lib/api";
+import { documentsApi, backupsApi, notificationsApi, type ApiNotification } from "../lib/api";
 import { useDocuments } from "../lib/useDocuments";
 import { ModalFrame } from "./ui/index";
 import { UserAvatar } from "./UserAvatar";
+import { ToastProvider } from "../contexts/ToastContext";
+import { ToastContainer } from "./ToastContainer";
+import { NotificationsDrawer } from "./NotificationsDrawer";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Types
@@ -234,6 +238,8 @@ interface TopBarProps {
   onUploadClick: () => void;
   isEditorRoute: boolean;
   editorTopBar: EditorTopBarSlots | null;
+  unreadCount: number;
+  onBellClick: () => void;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -243,11 +249,13 @@ const TopBar: React.FC<TopBarProps> = ({
   onUploadClick,
   isEditorRoute,
   editorTopBar,
+  unreadCount,
+  onBellClick,
 }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-1 px-2 sm:gap-2 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
+    <header id="app-top-bar" className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-1 px-2 sm:gap-2 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
       {!isEditorRoute && (
         <button
           type="button"
@@ -295,7 +303,22 @@ const TopBar: React.FC<TopBarProps> = ({
       )}
 
       {!isEditorRoute && (
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Bell button */}
+          <button
+            type="button"
+            onClick={onBellClick}
+            className="relative w-10 h-10 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
+            aria-label="Notificaciones"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={onUploadClick}
@@ -535,6 +558,49 @@ export const AppLayout: React.FC = () => {
     setDocumentsInvalidateSeq((n) => n + 1);
   }, [refreshDocumentsHook]);
 
+  // ── Notificaciones ──────────────────────────────────────────────────────
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await notificationsApi.list({ limit: 30 });
+      const data: ApiNotification[] = (res as any).data ?? res;
+      setNotifications(data);
+      setUnreadCount(data.filter((n: ApiNotification) => !n.isRead).length);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  // Initial load + polling cada 30s
+  useEffect(() => {
+    setNotifLoading(true);
+    fetchNotifications().finally(() => setNotifLoading(false));
+    const interval = setInterval(fetchNotifications, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const handleMarkRead = useCallback(async (id: string) => {
+    try {
+      await notificationsApi.markRead(id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {}
+  }, []);
+
+  const handleMarkAllRead = useCallback(async () => {
+    try {
+      await notificationsApi.markAllRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch {}
+  }, []);
+
   // Sidebar open state (mobile)
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -701,61 +767,84 @@ export const AppLayout: React.FC = () => {
     if (!isEditorRoute) setEditorTopBar(null);
   }, [isEditorRoute]);
 
+  // Close notif drawer on route change
+  useEffect(() => {
+    setNotifOpen(false);
+  }, [location.pathname]);
+
   /* ── Render ────────────────────────────────────────────────────────── */
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white overflow-hidden">
-      {/* Sidebar — hidden on editor routes */}
-      {!isEditorRoute && (
-        <Sidebar
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          user={user}
-          onLogout={handleLogout}
-        />
-      )}
-
-      {/* Main column */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <TopBar
-          onMenuClick={() => setSidebarOpen(true)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onUploadClick={() => openUploadModal()}
-          isEditorRoute={isEditorRoute}
-          editorTopBar={editorTopBar}
-        />
-
-        {/* Content area */}
-        <main id="main-content" className="flex-1 overflow-y-auto pb-24 lg:pb-0">
-          <Outlet
-            context={
-              {
-                searchQuery,
-                openUploadModal,
-                refreshDocuments,
-                documentsInvalidateSeq,
-                setEditorTopBar,
-              } satisfies AppLayoutOutletContext
-            }
+    <ToastProvider>
+      <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white overflow-hidden">
+        {/* Sidebar — hidden on editor routes */}
+        {!isEditorRoute && (
+          <Sidebar
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            user={user}
+            onLogout={handleLogout}
           />
-        </main>
+        )}
+
+        {/* Main column */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top bar */}
+          <TopBar
+            onMenuClick={() => setSidebarOpen(true)}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onUploadClick={() => openUploadModal()}
+            isEditorRoute={isEditorRoute}
+            editorTopBar={editorTopBar}
+            unreadCount={unreadCount}
+            onBellClick={() => setNotifOpen((prev) => !prev)}
+          />
+
+          {/* Content area */}
+          <main id="main-content" className="flex-1 overflow-y-auto pb-24 lg:pb-0">
+            <Outlet
+              context={
+                {
+                  searchQuery,
+                  openUploadModal,
+                  refreshDocuments,
+                  documentsInvalidateSeq,
+                  setEditorTopBar,
+                } satisfies AppLayoutOutletContext
+              }
+            />
+          </main>
+        </div>
+
+        {/* Bottom Navigation (Mobile only) */}
+        {!isEditorRoute && <BottomNav />}
+
+        {/* Upload modal */}
+        <UploadModal
+          state={modal}
+          onClose={closeUploadModal}
+          onFileChange={handleFileChange}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onRemoveFile={handleRemoveFile}
+          onUpload={handleUploadAndSave}
+        />
+
+        {/* Notifications Drawer */}
+        <NotificationsDrawer
+          open={notifOpen}
+          notifications={notifications}
+          loading={notifLoading}
+          unreadCount={unreadCount}
+          onClose={() => setNotifOpen(false)}
+          onMarkRead={handleMarkRead}
+          onMarkAllRead={handleMarkAllRead}
+        />
+
+        {/* Toast container */}
+        <ToastContainer />
       </div>
-
-      {/* Bottom Navigation (Mobile only) */}
-      {!isEditorRoute && <BottomNav />}
-
-      {/* Upload modal */}
-      <UploadModal
-        state={modal}
-        onClose={closeUploadModal}
-        onFileChange={handleFileChange}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onRemoveFile={handleRemoveFile}
-        onUpload={handleUploadAndSave}
-      />
-    </div>
+    </ToastProvider>
   );
 };

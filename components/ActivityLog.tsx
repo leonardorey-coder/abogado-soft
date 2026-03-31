@@ -224,6 +224,60 @@ export const ActivityLog: React.FC = () => {
     activityApi.stats().then(setStats).catch(() => { });
   }, []);
 
+  // ── Real-time polling (30s) ─────────────────────────────────────────
+  const [pendingNewEntries, setPendingNewEntries] = useState<ApiActivityLog[]>([]);
+  const lastPollTimestampRef = useRef<Date>(new Date());
+
+  // Derive active filters for polling (mirrors fetchLogs params)
+  const pollForNew = useCallback(async () => {
+    if (document.visibilityState === 'hidden') return;
+    try {
+      const result = await activityApi.list({
+        page: 1,
+        limit: 20,
+        userId: filterUserId || undefined,
+        activity: filterAction || undefined,
+        category: activeTab === 'all' ? undefined : activeTab,
+        from: lastPollTimestampRef.current.toISOString(),
+      });
+      const fresh: ApiActivityLog[] = result.data ?? [];
+      lastPollTimestampRef.current = new Date();
+      if (fresh.length > 0) {
+        // Only show banner for entries that match active filters
+        setPendingNewEntries(prev => {
+          const existingIds = new Set([...prev.map(e => e.id), ...logs.map(e => e.id)]);
+          const reallyNew = fresh.filter(e => !existingIds.has(e.id));
+          return reallyNew.length > 0 ? [...reallyNew, ...prev] : prev;
+        });
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [activeTab, filterUserId, filterAction, logs]);
+
+  useEffect(() => {
+    // Reset poll timestamp when filters change so we don't get stale diffs
+    lastPollTimestampRef.current = new Date();
+    setPendingNewEntries([]);
+  }, [activeTab, filterUserId, filterAction, period, customFrom, customTo]);
+
+  useEffect(() => {
+    const interval = setInterval(pollForNew, 30_000);
+    return () => clearInterval(interval);
+  }, [pollForNew]);
+
+  // Merge pending entries into the main list
+  const flushPending = useCallback(() => {
+    if (pendingNewEntries.length === 0) return;
+    setLogs(prev => {
+      const existingIds = new Set(prev.map(e => e.id));
+      const toAdd = pendingNewEntries.filter(e => !existingIds.has(e.id));
+      return [...toAdd, ...prev];
+    });
+    setTotal(prev => prev + pendingNewEntries.length);
+    setPendingNewEntries([]);
+  }, [pendingNewEntries]);
+
   const handleLoadMore = () => {
     const next = page + 1;
     setPage(next);
@@ -288,7 +342,17 @@ export const ActivityLog: React.FC = () => {
                 <Link to="/" className="hover:text-primary">Inicio</Link>
                 <span>/</span><span className="text-[#111318] dark:text-white">Bitácora</span>
               </nav>
-              <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Bitácora de Actividad</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Bitácora de Actividad</h1>
+                {/* Live indicator */}
+                <span className="flex items-center gap-1.5 mt-1">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                  </span>
+                  <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wide">En vivo</span>
+                </span>
+              </div>
               <p className="text-[#616f89] dark:text-[#a0aec0] text-base">
                 Historial centralizado de acciones en documentos, convenios, equipo, seguridad y asignaciones.
               </p>
@@ -303,6 +367,21 @@ export const ActivityLog: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* ── New-entries banner (real-time) ── */}
+          {pendingNewEntries.length > 0 && (
+            <button
+              onClick={flushPending}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
+              {pendingNewEntries.length} nueva{pendingNewEntries.length > 1 ? 's entradas' : ' entrada'} — clic para mostrar
+              <span className="relative flex h-2 w-2 ml-1">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+              </span>
+            </button>
+          )}
 
           {/* ── Category Tabs ── */}
           <div className="flex gap-2 overflow-x-auto border-b border-slate-200 dark:border-slate-700 pb-1 no-scrollbar">
