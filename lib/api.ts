@@ -5,7 +5,7 @@
 
 import { supabase } from './supabaseAuth';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
 
 // ─── Helper para obtener token ──────────────────────────────────────────
 
@@ -472,6 +472,8 @@ export const documentsApi = {
     fileStatus?: string;
     groupId?: string;
     caseId?: string;
+    from?: string;
+    to?: string;
   }): Promise<PaginatedResponse<ApiDocument>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
@@ -481,6 +483,8 @@ export const documentsApi = {
     if (params?.fileStatus) query.set('status', params.fileStatus);
     if (params?.groupId) query.set('groupId', params.groupId);
     if (params?.caseId) query.set('caseId', params.caseId);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
     const qs = query.toString();
     const raw = await apiFetch<{
       data: ApiDocument[];

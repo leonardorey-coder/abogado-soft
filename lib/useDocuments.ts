@@ -106,6 +106,10 @@ interface UseDocumentsOptions {
   search?: string;
   fileStatus?: string;
   limit?: number;
+  from?: string;
+  to?: string;
+  /** Called after a successful delete with the deleted doc id and name */
+  onDeleted?: (id: string, name: string) => void;
 }
 
 interface UseDocumentsReturn {
@@ -117,14 +121,14 @@ interface UseDocumentsReturn {
   totalPages: number;
   setPage: (page: number) => void;
   refresh: () => Promise<void>;
-  deleteDocument: (id: string) => Promise<void>;
+  deleteDocument: (id: string, docName?: string) => Promise<void>;
   restoreDocument: (id: string) => Promise<void>;
   updateStatus: (id: string, status: FileStatus) => Promise<void>;
   createDocument: (data: { name: string; type: string; description?: string }) => Promise<Document | null>;
 }
 
 export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsReturn {
-  const { autoFetch = true, search, fileStatus, limit = 20 } = options;
+  const { autoFetch = true, search, fileStatus, limit = 20, from, to, onDeleted } = options;
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +145,8 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
         limit,
         search: search || undefined,
         fileStatus: fileStatus || undefined,
+        from: from || undefined,
+        to: to || undefined,
       });
       const frontendDocs = res.data.map(apiDocToFrontend);
       setDocuments(frontendDocs);
@@ -153,7 +159,7 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, fileStatus]);
+  }, [page, limit, search, fileStatus, from, to]);
 
   useEffect(() => {
     if (autoFetch) {
@@ -161,16 +167,17 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
     }
   }, [autoFetch, fetchDocuments]);
 
-  const deleteDocument = useCallback(async (id: string) => {
+  const deleteDocument = useCallback(async (id: string, docName?: string) => {
     try {
       await documentsApi.delete(id);
       setDocuments(prev => prev.filter(d => d.id !== id));
       setTotal(prev => prev - 1);
+      onDeleted?.(id, docName ?? '');
     } catch (err) {
       console.error('Error deleting document:', err);
       throw err;
     }
-  }, []);
+  }, [onDeleted]);
 
   const restoreDocument = useCallback(async (id: string) => {
     try {
