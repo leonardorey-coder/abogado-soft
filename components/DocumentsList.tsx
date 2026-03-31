@@ -39,6 +39,10 @@ import {
   Edit2,
   Shield,
 } from "lucide-react";
+import { DateRangeFilter } from "./DateRangeFilter";
+import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
+import { documentsApi as _docApiForPreview, type ApiDocument } from "../lib/api";
+import { useToast } from "../contexts/ToastContext";
 
 interface DocumentsListProps {
   searchQuery?: string;
@@ -143,7 +147,12 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
   const perPage = 10;
   const [filter, setFilter] = useState<DocPageFilter>("TODOS");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const fileStatus = filterToApiStatus(filter);
+
+  const refreshRef = useRef<(() => Promise<void>) | null>(null);
+  const { addToast } = useToast();
 
   const {
     documents,
@@ -159,6 +168,26 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     search: searchQuery,
     fileStatus,
     limit: perPage,
+    from: dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined,
+    to: dateTo ? `${dateTo}T23:59:59.999Z` : undefined,
+    onDeleted: useCallback((id: string, docName: string) => {
+      const name = docName || "El documento";
+      addToast({
+        message: `"${name}" se movió a la papelera`,
+        type: "success",
+        actionLabel: "Deshacer",
+        duration: 5000,
+        action: async () => {
+          try {
+            await documentsApi.restore(id);
+            await refreshRef.current?.();
+            addToast({ message: `"${name}" restaurado`, type: "success" });
+          } catch {
+            addToast({ message: `Error al restaurar "${name}"`, type: "error" });
+          }
+        },
+      });
+    }, [addToast]),
   });
 
   const [counts, setCounts] = useState({ todos: 0, activos: 0, pendientes: 0, inactivos: 0 });
@@ -168,6 +197,8 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
   const [shareDocument, setShareDocument] = useState<Document | null>(null);
   const [assignDocument, setAssignDocument] = useState<Document | null>(null);
   const [permissionsDocument, setPermissionsDocument] = useState<Document | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<ApiDocument | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
   const deleteConfirmTimerRef = useRef<number | null>(null);
@@ -176,6 +207,9 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
   const { isDraggingOver } = useFileDragDrop({
     onDrop: (files) => openUploadModal(files),
   });
+
+  // Keep refreshRef current for undo toast callback
+  React.useEffect(() => { refreshRef.current = refresh; }, [refresh]);
 
   const fetchCounts = useCallback(async () => {
     try {
@@ -235,7 +269,18 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
       if (deleteConfirmTimerRef.current) {
         window.clearInterval(deleteConfirmTimerRef.current);
       }
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current);
+      }
     };
+  }, []);
+
+  // Fetch full ApiDocument for preview (with localPath/mimeType needed)
+  const handlePreview = useCallback(async (doc: Document) => {
+    try {
+      const full = await _docApiForPreview.get(doc.id);
+      setPreviewDoc(full);
+    } catch { /* ignore */ }
   }, []);
 
   const recentDocIds = new Set(
@@ -303,7 +348,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
       setConfirmDeleteSecondsLeft(0);
       void (async () => {
         try {
-          await deleteDocument(doc.id);
+          await deleteDocument(doc.id, doc.name);
           await fetchCounts();
           refreshRecentlyOpened();
         } catch (e) {
@@ -500,31 +545,48 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
           </Button>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-          {(
-            [
-              { key: "TODOS" as const, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
-              { key: "ACTIVOS" as const, label: "Activos", count: counts.activos, icon: "verified", color: "text-green-600" },
-              { key: "PENDIENTES" as const, label: "Pendientes", count: pillPendientesTotal, icon: "pending", color: "text-orange-600" },
-              { key: "INACTIVOS" as const, label: "Inactivos", count: counts.inactivos, icon: "error", color: "text-red-600" },
-            ] as const
-          ).map((pill) => (
-            <button
-              key={pill.key}
-              type="button"
-              onClick={() => setFilter(pill.key)}
-              className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all shrink-0 ${
-                filter === pill.key
-                  ? "bg-primary text-white"
-                  : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"
-              }`}
-            >
-              <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "" : pill.color}`}>
-                {pill.icon}
-              </span>
-              {pill.label} ({pill.count})
-            </button>
-          ))}
+        {/* Pills + Fecha en un wrapper flex sin overflow para que el dropdown de Fecha no quede clipado */}
+        <div className="flex items-center gap-3 pb-2">
+          {/* Pills scrollables */}
+          <div className="flex gap-3 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
+            {(
+              [
+                { key: "TODOS" as const, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
+                { key: "ACTIVOS" as const, label: "Activos", count: counts.activos, icon: "verified", color: "text-green-600" },
+                { key: "PENDIENTES" as const, label: "Pendientes", count: pillPendientesTotal, icon: "pending", color: "text-orange-600" },
+                { key: "INACTIVOS" as const, label: "Inactivos", count: counts.inactivos, icon: "error", color: "text-red-600" },
+              ] as const
+            ).map((pill) => (
+              <button
+                key={pill.key}
+                type="button"
+                onClick={() => setFilter(pill.key)}
+                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all shrink-0 ${
+                  filter === pill.key
+                    ? "bg-primary text-white"
+                    : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"
+                }`}
+              >
+                <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "" : pill.color}`}>
+                  {pill.icon}
+                </span>
+                {pill.label} ({pill.count})
+              </button>
+            ))}
+          </div>
+
+          {/* Date range filter — fuera del overflow para que su dropdown no quede clipado */}
+          <div className="shrink-0">
+            <DateRangeFilter
+              from={dateFrom}
+              to={dateTo}
+              onChange={(f, t) => {
+                setDateFrom(f);
+                setDateTo(t);
+                setPage(1);
+              }}
+            />
+          </div>
         </div>
 
         <div className="rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm flex flex-col overflow-hidden">
@@ -639,7 +701,16 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                               <td className="px-6 py-4 text-center">{statusButtons(doc)}</td>
                               <td className="px-6 py-4 text-center">{renderSyncCell(doc)}</td>
                               <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                <div className="inline-flex justify-end">
+                                <div className="inline-flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handlePreview(doc)}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                                    title="Vista previa"
+                                    aria-label="Vista previa"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
                                   <ActionMenu
                                     items={buildDocumentActionMenuItems(doc, {
                                       onOpen: () => handleDocumentOpen(doc),
@@ -824,6 +895,17 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
           }}
         />
       )}
+
+      {/* Document Preview Panel */}
+      <DocumentPreviewPanel
+        document={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+        onShare={previewDoc ? () => {
+          const frontendDoc = documentsForList.find(d => d.id === previewDoc.id);
+          if (frontendDoc) setShareDocument(frontendDoc);
+          setPreviewDoc(null);
+        } : undefined}
+      />
     </>
   );
 };

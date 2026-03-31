@@ -295,6 +295,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const { user: authUser } = useAuth();
   const [rightPanel, setRightPanel] = useState<RightPanel>('COMMENTS');
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+
+  // Focus mode
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [showFocusHint, setShowFocusHint] = useState(false);
+  const focusHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panelsBeforeFocusRef = useRef<{ left: boolean; right: RightPanel }>({ left: true, right: 'COMMENTS' });
   const [doc, setDoc] = useState<ApiDocument | null>(null);
   const [documentActivity, setDocumentActivity] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -360,7 +366,59 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     setSuperdocInstance(null);
     setActivePageIndex(0);
     setLeftSidebarOpen(true);
+    // Reset focus mode state when navigating to a different document
+    setIsFocusMode(false);
+    setShowFocusHint(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
+
+  // ─── Focus Mode helpers ───────────────────────────────────────────────
+  const enterFocusMode = useCallback(() => {
+    panelsBeforeFocusRef.current = { left: leftSidebarOpen, right: rightPanel };
+    setLeftSidebarOpen(false);
+    setRightPanel('NONE');
+    setIsFocusMode(true);
+    setShowFocusHint(true);
+    if (focusHintTimerRef.current) clearTimeout(focusHintTimerRef.current);
+    focusHintTimerRef.current = setTimeout(() => setShowFocusHint(false), 3000);
+  }, [leftSidebarOpen, rightPanel]);
+
+  const exitFocusMode = useCallback(() => {
+    setIsFocusMode(false);
+    setShowFocusHint(false);
+    if (focusHintTimerRef.current) clearTimeout(focusHintTimerRef.current);
+    setLeftSidebarOpen(panelsBeforeFocusRef.current.left);
+    setRightPanel(panelsBeforeFocusRef.current.right);
+  }, []);
+
+  // Cleanup hint timer on unmount
+  useEffect(() => {
+    return () => {
+      if (focusHintTimerRef.current) clearTimeout(focusHintTimerRef.current);
+    };
+  }, []);
+
+  // Keyboard shortcut: F to toggle focus, Escape to exit
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      if (e.key === 'f' || e.key === 'F') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          if (isFocusMode) exitFocusMode(); else enterFocusMode();
+        }
+      }
+      if (e.key === 'Escape' && isFocusMode) {
+        exitFocusMode();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isFocusMode, enterFocusMode, exitFocusMode]);
 
   const [isEditingDocName, setIsEditingDocName] = useState(false);
   const [docNameDraft, setDocNameDraft] = useState('');
@@ -806,6 +864,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
     const rightPanelOpen = rightPanel !== 'NONE';
 
+    // Focus mode button (shown in right slot)
+    const focusBtn = (
+      <button
+        type="button"
+        onClick={() => isFocusMode ? exitFocusMode() : enterFocusMode()}
+        className={panelToggleBtn(isFocusMode)}
+        aria-label={isFocusMode ? 'Salir de modo focus' : 'Entrar en modo focus (F)'}
+        title={isFocusMode ? 'Salir (Esc)' : 'Modo Focus (F)'}
+      >
+        <span className="material-symbols-outlined text-[18px]">
+          {isFocusMode ? 'fullscreen_exit' : 'fullscreen'}
+        </span>
+      </button>
+    );
+
     const leftSlot = (
       <div className="flex w-full items-center justify-center">
         <span className="inline-flex w-9 shrink-0 lg:hidden" aria-hidden />
@@ -822,15 +895,18 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     );
 
     const rightSlot = (
-      <button
-        type="button"
-        className={panelToggleBtn(rightPanelOpen)}
-        aria-label={rightPanelOpen ? 'Cerrar panel lateral' : 'Abrir panel lateral'}
-        aria-pressed={rightPanelOpen}
-        onClick={() => setRightPanel((p) => (p === 'NONE' ? 'COMMENTS' : 'NONE'))}
-      >
-        <EditorPanelToggleIcon side="right" />
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={panelToggleBtn(rightPanelOpen)}
+          aria-label={rightPanelOpen ? 'Cerrar panel lateral' : 'Abrir panel lateral'}
+          aria-pressed={rightPanelOpen}
+          onClick={() => setRightPanel((p) => (p === 'NONE' ? 'COMMENTS' : 'NONE'))}
+        >
+          <EditorPanelToggleIcon side="right" />
+        </button>
+        {focusBtn}
+      </div>
     );
 
     setEditorTopBar({
@@ -1297,7 +1373,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // ─── Main Render ─────────────────────────────────────────────────────
 
   return (
-    <div className="bg-background-light dark:bg-background-dark font-display flex-1 flex flex-col">
+    <div className="bg-background-light dark:bg-background-dark font-display flex-1 flex flex-col relative">
+      {/* Focus mode hint overlay */}
+      {showFocusHint && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-8 z-[100] flex justify-center animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-900/90 dark:bg-white/10 backdrop-blur-sm text-white text-sm font-semibold shadow-xl border border-white/10">
+            <span className="material-symbols-outlined text-[16px] text-primary">fullscreen</span>
+            Modo Focus activo — <kbd className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> para salir
+          </div>
+        </div>
+      )}
+
       {/* Trash warning banner */}
       {documentFromTrash && (
         <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
