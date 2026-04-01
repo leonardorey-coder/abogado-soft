@@ -3,6 +3,8 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
+import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
+
 
 export const casesRouter = Router();
 casesRouter.use(authenticate);
@@ -123,11 +125,32 @@ casesRouter.post(
       });
 
       res.status(201).json(case_);
+
+      // ── Fire-and-forget: indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          await svc.indexDocument({
+            id: case_.id,
+            entityType: 'case',
+            title: `${case_.caseNumber} — ${case_.title}`,
+            subtitle: case_.client ?? case_.description ?? undefined,
+            textContent: case_.description ?? '',
+            url: `/expedientes/${case_.id}`,
+            meta: { status: case_.status, caseType: case_.caseType },
+            updatedAt: case_.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error indexando expediente:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── PATCH /api/cases/:id ───────────────────────────────────────────────────
 casesRouter.patch(
@@ -157,11 +180,32 @@ casesRouter.patch(
       });
 
       res.json(case_);
+
+      // ── Fire-and-forget: re-indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          await svc.indexDocument({
+            id: case_.id,
+            entityType: 'case',
+            title: `${case_.caseNumber} — ${case_.title}`,
+            subtitle: case_.client ?? case_.description ?? undefined,
+            textContent: case_.description ?? '',
+            url: `/expedientes/${case_.id}`,
+            meta: { status: case_.status, caseType: case_.caseType },
+            updatedAt: case_.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error re-indexando expediente:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── POST /api/cases/:id/documents ──────────────────────────────────────────
 const linkDocSchema = z.object({

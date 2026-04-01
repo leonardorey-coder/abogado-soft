@@ -7,6 +7,8 @@ import * as Diff from 'diff';
 import { syncDocumentToDrive } from './drive.routes.js';
 import { verifyCredentials } from '../lib/googleDrive.js';
 import * as XLSX from 'xlsx';
+import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
+
 
 // ─── Diff summary helper (convenios) ─────────────────────────────────────────────────
 interface ConvenioDiffSummary {
@@ -197,11 +199,32 @@ conveniosRouter.post(
       });
 
       res.status(201).json(convenio);
+
+      // ── Fire-and-forget: indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          await svc.indexDocument({
+            id: convenio.id,
+            entityType: 'convenio',
+            title: `${convenio.numero} — ${convenio.institucion}`,
+            subtitle: convenio.descripcion ?? undefined,
+            textContent: [convenio.descripcion, convenio.notas].filter(Boolean).join(' '),
+            url: `/convenios/${convenio.id}`,
+            meta: { estado: convenio.estado },
+            updatedAt: convenio.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error indexando convenio:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── PATCH /api/convenios/:id ───────────────────────────────────────────────
 conveniosRouter.patch(
@@ -232,11 +255,32 @@ conveniosRouter.patch(
       });
 
       res.json(convenio);
+
+      // ── Fire-and-forget: re-indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          await svc.indexDocument({
+            id: convenio.id,
+            entityType: 'convenio',
+            title: `${convenio.numero} — ${convenio.institucion}`,
+            subtitle: convenio.descripcion ?? undefined,
+            textContent: [convenio.descripcion, convenio.notas].filter(Boolean).join(' '),
+            url: `/convenios/${convenio.id}`,
+            meta: { estado: convenio.estado },
+            updatedAt: convenio.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error re-indexando convenio:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── DELETE /api/convenios/:id ──────────────────────────────────────────────
 conveniosRouter.delete(
@@ -261,11 +305,22 @@ conveniosRouter.delete(
       });
 
       res.json({ message: 'Convenio eliminado' });
+
+      // ── Fire-and-forget: eliminar del índice de búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (svc) await svc.removeDocument(convenio.id, 'convenio');
+        } catch (err) {
+          console.warn('[Search] Error eliminando convenio del índice:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── POST /api/convenios/:id/documents ──────────────────────────────────────
 const linkDocSchema = z.object({

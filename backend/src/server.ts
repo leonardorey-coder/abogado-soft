@@ -19,7 +19,10 @@ import { activityRouter } from './routes/activity.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { driveRouter } from './routes/drive.routes.js';
+import { searchRouter } from './routes/search.routes.js';
 import { setupCronJobs } from './cronJobs.js';
+import { getSearchService } from './services/search/SearchServiceFactory.js';
+
 // ─── Rutas ───────────────────────────────────────────────────────────────────
 
 function parseDotEnv(contents: string): Record<string, string> {
@@ -90,6 +93,8 @@ app.use('/api/activity', activityRouter);
 app.use('/api/backups', backupsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/drive', driveRouter);
+app.use('/api/search', searchRouter);
+
 
 // ─── Error handler (siempre al final) ────────────────────────────────────────
 app.use(errorHandler);
@@ -97,11 +102,16 @@ app.use(errorHandler);
 // Inicializar tareas programadas (Cron)
 setupCronJobs();
 
+// Inicializar motor de búsqueda (fire-and-forget, no bloquea el arranque)
+getSearchService().catch((err) => console.warn('[Search] Error al inicializar:', err));
+
 // ─── Iniciar servidor ────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 AbogadoSoft API corriendo en http://localhost:${PORT}`);
   console.log(`⚡ Runtime: Bun ${process.versions.bun || 'unknown'}`);
   console.log(`📦 Entorno: ${process.env.NODE_ENV ?? 'development'}`);
+  console.log(`🔍 Motor de búsqueda: ${process.env.SEARCH_ENGINE ?? 'prisma'}`);
 });
+
 
 export default app;

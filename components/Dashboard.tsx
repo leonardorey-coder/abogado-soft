@@ -854,144 +854,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </SectionCard>
         </div>
 
-        {/* ── Actividad Reciente de Documentos (con polling en tiempo real) ── */}
-        <SectionCard
-          title=""
-          noPadding
-          className="overflow-hidden shadow-sm"
-        >
-          {/* Header custom con indicador "en vivo" */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Actividad Reciente</span>
-              {/* Live indicator */}
-              <span className="flex items-center gap-1 ml-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                </span>
-                <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">En vivo</span>
-              </span>
-            </div>
-            <button
-              onClick={() => navigate('/bitacora')}
-              className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
-            >
-              Ver todo
-              <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-            {activityLoading && recentActivity.length === 0 ? (
-              // Skeleton
-              <div className="p-4 space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Skeleton className="w-7 h-7 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3 w-2/3 rounded" />
-                      <Skeleton className="h-2.5 w-1/3 rounded" />
-                    </div>
-                    <Skeleton className="h-2.5 w-10 rounded" />
-                  </div>
-                ))}
-              </div>
-            ) : recentActivity.length === 0 ? (
-              <div className="py-8 px-6 text-center">
-                <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-xs text-slate-500 dark:text-slate-400">Sin actividad de documentos esta semana</p>
-              </div>
-            ) : (
-              recentActivity.map((entry) => {
-                const activityIconMap: Record<string, string> = {
-                  DOCUMENT_CREATED: 'upload_file',
-                  DOCUMENT_UPDATED: 'edit_note',
-                  DOCUMENT_VERSION_CREATED: 'history',
-                  DOCUMENT_SHARED: 'share',
-                  DOCUMENT_ASSIGNED: 'assignment',
-                  DOCUMENT_DOWNLOADED: 'download',
-                  DOCUMENT_DELETED: 'delete',
-                  DOCUMENT_RESTORED: 'restore',
-                  DOCUMENT_COMMENT_ADDED: 'comment',
-                  DOCUMENT_VIEWED: 'visibility',
-                };
-                const activityLabelMap: Record<string, string> = {
-                  DOCUMENT_CREATED: 'Subió',
-                  DOCUMENT_UPDATED: 'Editó',
-                  DOCUMENT_VERSION_CREATED: 'Nueva versión',
-                  DOCUMENT_SHARED: 'Compartió',
-                  DOCUMENT_ASSIGNED: 'Asignó',
-                  DOCUMENT_DOWNLOADED: 'Descargó',
-                  DOCUMENT_DELETED: 'Eliminó',
-                  DOCUMENT_RESTORED: 'Restauró',
-                  DOCUMENT_COMMENT_ADDED: 'Comentó',
-                  DOCUMENT_VIEWED: 'Abrió',
-                };
-                const icon = activityIconMap[entry.activity] ?? 'article';
-                const actionLabel = activityLabelMap[entry.activity] ?? entry.activity.replace(/_/g, ' ').toLowerCase();
-                const isVersion = entry.activity === 'DOCUMENT_VERSION_CREATED';
-
-                const timeAgo = (() => {
-                  const diff = Date.now() - new Date(entry.createdAt).getTime();
-                  const mins = Math.floor(diff / 60000);
-                  const hrs = Math.floor(mins / 60);
-                  const days = Math.floor(hrs / 24);
-                  if (days > 0) return `${days}d`;
-                  if (hrs > 0) return `${hrs}h`;
-                  if (mins > 0) return `${mins}m`;
-                  return 'ahora';
-                })();
-
-                return (
-                  <div
-                    key={entry.id}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group"
-                  >
-                    {/* Avatar */}
-                    <div className="flex-shrink-0 relative">
-                      <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
-                        {(entry.user?.name ?? 'S').charAt(0).toUpperCase()}
-                      </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[9px] text-primary">{icon}</span>
-                      </div>
-                    </div>
-                    {/* Text */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-tight truncate">
-                        <span className="font-semibold">{entry.user?.name ?? 'Sistema'}</span>
-                        {' '}
-                        <span className="text-slate-500">{actionLabel}</span>
-                        {entry.entityId && (
-                          <>
-                            {' — '}
-                            <button
-                              className="font-medium text-primary hover:underline truncate max-w-[120px] inline-block align-bottom"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/documento/${entry.entityId}`); }}
-                              title={entry.entityName ?? ''}
-                            >
-                              {entry.entityName ?? 'Documento'}
-                            </button>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    {/* Meta */}
-                    <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-                      <span className="text-[10px] text-slate-400">{timeAgo}</span>
-                      {isVersion && (
-                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">v↑</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </SectionCard>
 
         <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
           <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
@@ -1200,6 +1062,145 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                 </div>
               </>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* ── Actividad Reciente de Documentos (con polling en tiempo real) ── */}
+        <SectionCard
+          title=""
+          noPadding
+          className="overflow-hidden shadow-sm"
+        >
+          {/* Header custom con indicador "en vivo" */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Actividad Reciente</span>
+              {/* Live indicator */}
+              <span className="flex items-center gap-1 ml-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">En vivo</span>
+              </span>
+            </div>
+            <button
+              onClick={() => navigate('/bitacora')}
+              className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
+            >
+              Ver todo
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {activityLoading && recentActivity.length === 0 ? (
+              // Skeleton
+              <div className="p-4 space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="w-7 h-7 rounded-full shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3 w-2/3 rounded" />
+                      <Skeleton className="h-2.5 w-1/3 rounded" />
+                    </div>
+                    <Skeleton className="h-2.5 w-10 rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : recentActivity.length === 0 ? (
+              <div className="py-8 px-6 text-center">
+                <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">Sin actividad de documentos esta semana</p>
+              </div>
+            ) : (
+              recentActivity.map((entry) => {
+                const activityIconMap: Record<string, string> = {
+                  DOCUMENT_CREATED: 'upload_file',
+                  DOCUMENT_UPDATED: 'edit_note',
+                  DOCUMENT_VERSION_CREATED: 'history',
+                  DOCUMENT_SHARED: 'share',
+                  DOCUMENT_ASSIGNED: 'assignment',
+                  DOCUMENT_DOWNLOADED: 'download',
+                  DOCUMENT_DELETED: 'delete',
+                  DOCUMENT_RESTORED: 'restore',
+                  DOCUMENT_COMMENT_ADDED: 'comment',
+                  DOCUMENT_VIEWED: 'visibility',
+                };
+                const activityLabelMap: Record<string, string> = {
+                  DOCUMENT_CREATED: 'Subió',
+                  DOCUMENT_UPDATED: 'Editó',
+                  DOCUMENT_VERSION_CREATED: 'Nueva versión',
+                  DOCUMENT_SHARED: 'Compartió',
+                  DOCUMENT_ASSIGNED: 'Asignó',
+                  DOCUMENT_DOWNLOADED: 'Descargó',
+                  DOCUMENT_DELETED: 'Eliminó',
+                  DOCUMENT_RESTORED: 'Restauró',
+                  DOCUMENT_COMMENT_ADDED: 'Comentó',
+                  DOCUMENT_VIEWED: 'Abrió',
+                };
+                const icon = activityIconMap[entry.activity] ?? 'article';
+                const actionLabel = activityLabelMap[entry.activity] ?? entry.activity.replace(/_/g, ' ').toLowerCase();
+                const isVersion = entry.activity === 'DOCUMENT_VERSION_CREATED';
+
+                const timeAgo = (() => {
+                  const diff = Date.now() - new Date(entry.createdAt).getTime();
+                  const mins = Math.floor(diff / 60000);
+                  const hrs = Math.floor(mins / 60);
+                  const days = Math.floor(hrs / 24);
+                  if (days > 0) return `${days}d`;
+                  if (hrs > 0) return `${hrs}h`;
+                  if (mins > 0) return `${mins}m`;
+                  return 'ahora';
+                })();
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group"
+                  >
+                    {/* Avatar */}
+                    <div className="flex-shrink-0 relative">
+                      <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
+                        {(entry.user?.name ?? 'S').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[9px] text-primary">{icon}</span>
+                      </div>
+                    </div>
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-tight truncate">
+                        <span className="font-semibold">{entry.user?.name ?? 'Sistema'}</span>
+                        {' '}
+                        <span className="text-slate-500">{actionLabel}</span>
+                        {entry.entityId && (
+                          <>
+                            {' — '}
+                            <button
+                              className="font-medium text-primary hover:underline truncate max-w-[120px] inline-block align-bottom"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/documento/${entry.entityId}`); }}
+                              title={entry.entityName ?? ''}
+                            >
+                              {entry.entityName ?? 'Documento'}
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    {/* Meta */}
+                    <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
+                      <span className="text-[10px] text-slate-400">{timeAgo}</span>
+                      {isVersion && (
+                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">v↑</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </SectionCard>

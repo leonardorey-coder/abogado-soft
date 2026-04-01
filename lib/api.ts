@@ -1181,3 +1181,41 @@ export const driveApi = {
     URL.revokeObjectURL(blobUrl);
   },
 };
+
+// ─── BÚSQUEDA GLOBAL ─────────────────────────────────────────────────────────
+
+export type SearchEntityType = 'document' | 'convenio' | 'case';
+
+export interface SearchHit {
+  id: string;
+  entityType: SearchEntityType;
+  title: string;
+  subtitle?: string;
+  tags?: string[];
+  url: string;
+  meta?: Record<string, unknown>;
+  updatedAt?: string;
+  highlight?: string;
+}
+
+export interface SearchResults {
+  hits: SearchHit[];
+  totalHits: number;
+  processingTimeMs: number;
+  query: string;
+}
+
+export const searchApi = {
+  globalSearch: (
+    query: string,
+    options?: {
+      limit?: number;
+      types?: SearchEntityType[];
+    },
+  ): Promise<SearchResults> => {
+    const params = new URLSearchParams({ q: query });
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.types?.length) params.set('types', options.types.join(','));
+    return apiFetch<SearchResults>(`/search?${params.toString()}`);
+  },
+};

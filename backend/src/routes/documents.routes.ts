@@ -13,6 +13,9 @@ import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requirePermission, getEffectivePermission } from '../middleware/checkPermission.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
+import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
+import { extractTextFromFile } from '../services/search/textExtractor.js';
+
 import * as Diff from 'diff';
 import * as pdfParseModule from 'pdf-parse';
 import * as XLSX from 'xlsx';
@@ -730,6 +733,29 @@ documentsRouter.post(
         ...freshDocument,
         syncResult,
       }));
+
+      // ── Fire-and-forget: indexar en búsqueda (con contenido extraído del archivo) ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          const textContent = await extractTextFromFile(freshDocument.localPath);
+          await svc.indexDocument({
+            id: freshDocument.id,
+            entityType: 'document',
+            title: freshDocument.name,
+            subtitle: freshDocument.description ?? undefined,
+            tags: freshDocument.tags ?? [],
+            textContent,
+            url: `/documento/${freshDocument.id}`,
+            meta: { type: freshDocument.type, fileStatus: freshDocument.fileStatus },
+            updatedAt: freshDocument.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error indexando documento subido:', (err as Error).message);
+        }
+      })();
+
     } catch (error) {
       next(error);
     }
@@ -936,11 +962,34 @@ documentsRouter.post(
       });
 
       res.status(201).json(serializeBigInt(document));
+
+      // ── Fire-and-forget: indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          const textContent = await extractTextFromFile((document as any).localPath);
+          await svc.indexDocument({
+            id: document.id,
+            entityType: 'document',
+            title: document.name,
+            subtitle: (document as any).description ?? undefined,
+            tags: (document as any).tags ?? [],
+            textContent,
+            url: `/documento/${document.id}`,
+            meta: { type: document.type, fileStatus: document.fileStatus },
+            updatedAt: document.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error indexando documento creado:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── PATCH /api/documents/:id ───────────────────────────────────────────────
 documentsRouter.patch(
@@ -968,11 +1017,34 @@ documentsRouter.patch(
       });
 
       res.json(serializeBigInt(document));
+
+      // ── Fire-and-forget: re-indexar en búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (!svc) return;
+          const textContent = await extractTextFromFile((document as any).localPath);
+          await svc.indexDocument({
+            id: document.id,
+            entityType: 'document',
+            title: document.name,
+            subtitle: (document as any).description ?? undefined,
+            tags: (document as any).tags ?? [],
+            textContent,
+            url: `/documento/${document.id}`,
+            meta: { type: document.type, fileStatus: document.fileStatus },
+            updatedAt: document.updatedAt.toISOString(),
+          });
+        } catch (err) {
+          console.warn('[Search] Error re-indexando documento actualizado:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── DELETE /api/documents/:id ──────────────────────────────────────────────
 // Soft-delete → papelera
@@ -1003,11 +1075,22 @@ documentsRouter.delete(
       });
 
       res.json({ message: 'Documento enviado a papelera' });
+
+      // ── Fire-and-forget: eliminar del índice de búsqueda ──
+      ;(async () => {
+        try {
+          const svc = getSearchServiceSync();
+          if (svc) await svc.removeDocument(document.id, 'document');
+        } catch (err) {
+          console.warn('[Search] Error eliminando documento del índice:', (err as Error).message);
+        }
+      })();
     } catch (error) {
       next(error);
     }
   },
 );
+
 
 // ─── DELETE /api/documents/:id/permanent ────────────────────────────────────
 // Eliminación permanente — solo documentos que ya están en papelera

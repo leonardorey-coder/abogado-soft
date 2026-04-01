@@ -25,6 +25,8 @@ import { UserAvatar } from "./UserAvatar";
 import { ToastProvider } from "../contexts/ToastContext";
 import { ToastContainer } from "./ToastContainer";
 import { NotificationsDrawer } from "./NotificationsDrawer";
+import { GlobalSearchModal } from "./GlobalSearchModal";
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Types
@@ -235,6 +237,7 @@ interface TopBarProps {
   onMenuClick: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onSearchOpen: () => void;
   onUploadClick: () => void;
   isEditorRoute: boolean;
   editorTopBar: EditorTopBarSlots | null;
@@ -242,16 +245,19 @@ interface TopBarProps {
   onBellClick: () => void;
 }
 
+
 const TopBar: React.FC<TopBarProps> = ({
   onMenuClick,
   searchQuery,
   onSearchChange,
+  onSearchOpen,
   onUploadClick,
   isEditorRoute,
   editorTopBar,
   unreadCount,
   onBellClick,
 }) => {
+
   const navigate = useNavigate();
 
   return (
@@ -293,12 +299,15 @@ const TopBar: React.FC<TopBarProps> = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Buscar…"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full h-10 sm:h-9 pl-9 pr-3 rounded-lg text-sm sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              placeholder="Buscar… (⌘K)"
+              readOnly
+              onClick={onSearchOpen}
+              onFocus={onSearchOpen}
+              value=""
+              className="w-full h-10 sm:h-9 pl-9 pr-3 rounded-lg text-sm sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors cursor-pointer"
             />
           </div>
+
         </div>
       )}
 
@@ -551,6 +560,8 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+
   const [documentsInvalidateSeq, setDocumentsInvalidateSeq] = useState(0);
   const { refresh: refreshDocumentsHook } = useDocuments({ autoFetch: false });
   const refreshDocuments = useCallback(async () => {
@@ -621,6 +632,12 @@ export const AppLayout: React.FC = () => {
   // Close sidebar on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘K / Ctrl+K — abrir búsqueda global
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchModalOpen(true);
+        return;
+      }
       if (e.key === "Escape" && sidebarOpen) {
         setSidebarOpen(false);
       }
@@ -628,6 +645,7 @@ export const AppLayout: React.FC = () => {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOpen]);
+
 
   /* ── Auto-download daily backup for admins ─────────────────────────── */
   useEffect(() => {
@@ -793,12 +811,14 @@ export const AppLayout: React.FC = () => {
             onMenuClick={() => setSidebarOpen(true)}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            onSearchOpen={() => setSearchModalOpen(true)}
             onUploadClick={() => openUploadModal()}
             isEditorRoute={isEditorRoute}
             editorTopBar={editorTopBar}
             unreadCount={unreadCount}
             onBellClick={() => setNotifOpen((prev) => !prev)}
           />
+
 
           {/* Content area */}
           <main id="main-content" className="flex-1 overflow-y-auto pb-24 lg:pb-0">
@@ -830,6 +850,13 @@ export const AppLayout: React.FC = () => {
           onRemoveFile={handleRemoveFile}
           onUpload={handleUploadAndSave}
         />
+
+        {/* Global Search Modal */}
+        <GlobalSearchModal
+          open={searchModalOpen}
+          onClose={() => setSearchModalOpen(false)}
+        />
+
 
         {/* Notifications Drawer */}
         <NotificationsDrawer
