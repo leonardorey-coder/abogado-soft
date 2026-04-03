@@ -34,10 +34,11 @@ const ACTIVITY_LABELS: Record<string, string> = {
     DOCUMENT_LOCKED: 'Bloqueó documento',
     DOCUMENT_UNLOCKED: 'Desbloqueó documento',
     DOCUMENT_VIEWED: 'Vio documento',
+    DOCUMENT_EXTRACTED: 'Convirtió a PDF',
 };
 
 function getSpanishActivityName(activity: string): string {
-    return ACTIVITY_LABELS[activity] || activity.replace(/_/g, ' ').toLowerCase();
+    return ACTIVITY_LABELS[activity] ?? activity.replace(/_/g, ' ').toLowerCase();
 }
 
 function getActivityIcon(activity: string): string {
@@ -50,6 +51,7 @@ function getActivityIcon(activity: string): string {
     if (value.includes('restore')) return 'restore';
     if (value.includes('lock')) return 'lock';
     if (value.includes('version')) return 'history';
+    if (value.includes('extracted') || value.includes('pdf')) return 'picture_as_pdf';
     return 'edit_note';
 }
 

@@ -222,6 +222,7 @@ model User {
   documentSyncLogs       DocumentSyncLog[]
   accessPinsCreated      DocumentAccessPin[]  @relation("PinCreator")
   accessPinsRedeemed     DocumentAccessPin[]  @relation("PinRedeemer")
+  documentPdfs           DocumentPdf[]
 
   @@index([email])
   @@index([role])
@@ -327,6 +328,7 @@ model Document {
   caseDocuments     CaseDocument[]
   documentSyncLogs  DocumentSyncLog[]
   accessPins        DocumentAccessPin[]
+  pdfs              DocumentPdf[]
 
   @@index([ownerId])
   @@index([groupId])
@@ -820,4 +822,26 @@ model DocumentAccessPin {
   @@index([documentId])
   @@index([pin])
   @@map("document_access_pins")
+}
+
+// ─────────────────────────────────────────────
+// PDFs CONVERTIDOS ENLAZADOS A DOCUMENTOS
+// ─────────────────────────────────────────────
+
+model DocumentPdf {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  name       String   @db.VarChar(500)
+  localPath  String   @map("local_path")
+  size       BigInt   @default(0)
+  source     String   @default("manual") @db.VarChar(20) // 'manual' | 'share'
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([createdAt(sort: Desc)])
+  @@map("document_pdfs")
 }

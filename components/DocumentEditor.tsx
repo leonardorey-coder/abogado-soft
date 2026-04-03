@@ -8,7 +8,7 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useIm
 import { Document } from '../types';
 import { useNavigate, useParams, Link, useOutletContext, useLocation } from 'react-router-dom';
 import type { AppLayoutOutletContext } from './AppLayout';
-import { documentsApi, activityApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, ApiActivityLog, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi } from '../lib/api';
+import { documentsApi, activityApi, ApiDocument, ApiDocumentVersion, ApiDocumentComment, ApiActivityLog, getDocumentFileUrl, getDocumentVersionFileUrl, downloadDocument, permissionsApi, documentPdfsApi, ApiDocumentPdf, getDocumentPdfFileUrl } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
@@ -19,13 +19,14 @@ import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/fo
 import { ShareModal } from './ShareModal';
 import { SuperDocPageStrip } from './SuperDocPageStrip';
 import { SuperDocPageSetupModal } from './SuperDocPageSetupModal';
+import { captureDocumentAsPdf } from '../lib/captureDocumentAsPdf';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
 // SuperDoc export options type (defined locally since not exported from superdoc)
 type SuperDocExportOptions = Record<string, unknown>;
 
-type RightPanel = 'NONE' | 'COMMENTS' | 'VERSIONS' | 'HISTORY' | 'DETAILS';
+type RightPanel = 'NONE' | 'COMMENTS' | 'VERSIONS' | 'HISTORY' | 'DETAILS' | 'PDFS';
 type SyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
 
 interface DocumentEditorProps {
@@ -284,6 +285,157 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
 
 SuperDocEditor.displayName = 'SuperDocEditor';
 
+// ─── PdfIframeThumbnail ───────────────────────────────────────────────────────
+// Renders an authenticated blob URL inside an iframe for PDF preview
+
+const PdfIframeThumbnail: React.FC<{ documentId: string; pdfId: string }> = ({ documentId, pdfId }) => {
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [failed, setFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let url: string | null = null;
+    (async () => {
+      try {
+        const { supabase } = await import('../lib/supabaseAuth');
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token ?? null;
+        const apiUrl = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
+        const res = await fetch(`${apiUrl}/documents/${documentId}/pdfs/${pdfId}/file`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error('Failed to fetch PDF');
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+        setBlobUrl(url);
+      } catch {
+        setFailed(true);
+      }
+    })();
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [documentId, pdfId]);
+
+  if (failed) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+        <span className="material-symbols-outlined text-4xl text-gray-400">picture_as_pdf</span>
+      </div>
+    );
+  }
+
+  if (!blobUrl) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+        <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={`${blobUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+      className="absolute inset-0 w-full h-full border-0 pointer-events-none"
+      title="Vista previa del PDF"
+      loading="lazy"
+    />
+  );
+};
+
+// ─── scrollToFirstMatch — Scroll + Highlight automático desde búsqueda ────────
+//
+// Busca el texto `searchText` dentro del container del editor usando TreeWalker
+// sobre nodos de texto. Al encontrarlo:
+//   1. Envuelve el fragmento en <mark class="search-highlight-jump">
+//   2. Hace scroll suave hasta el elemento
+//   3. Elimina el highlight después de 3.5 segundos para no interferir con edición
+//
+// Funciona para documentos DOCX (SuperDoc DOM regular) y PDFs/iframes (no hace nada).
+
+function scrollToFirstMatch(container: HTMLElement | null, searchText: string): void {
+  if (!container || !searchText.trim()) return;
+
+  const query = searchText.trim().toLowerCase();
+  const MAX_ATTEMPTS = 16;  // 16 × 500ms = 8 segundos máximo
+  let attempts = 0;
+
+  // Intenta encontrar el texto en el DOM; si SuperDoc aún no ha renderizado, reintenta
+  function tryScroll() {
+    attempts++;
+
+    // Buscar el contenedor real del documento — SuperDoc puede renderizar dentro de un div hijo
+    // (normalmente dentro del div.superdoc-container o su primer div hijo con contenido)
+    const searchRoot: HTMLElement = container!;
+
+    try {
+      const walker = document.createTreeWalker(
+        searchRoot,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            const tag = parent.tagName.toLowerCase();
+            if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+            // Ignorar nodos vacíos
+            if (!node.textContent?.trim()) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        }
+      );
+
+      let found = false;
+      let node: Text | null;
+
+      while ((node = walker.nextNode() as Text | null)) {
+        const text = node.textContent ?? '';
+        const idx = text.toLowerCase().indexOf(query);
+        if (idx === -1) continue;
+
+        found = true;
+
+        try {
+          const range = document.createRange();
+          range.setStart(node, idx);
+          range.setEnd(node, Math.min(idx + searchText.length, text.length));
+
+          const mark = document.createElement('mark');
+          mark.className = 'search-highlight-jump';
+          mark.setAttribute('data-search-jump', 'true');
+
+          range.surroundContents(mark);
+          mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          // Eliminar highlight después de 4s
+          setTimeout(() => {
+            if (!mark.parentNode) return;
+            const textNode = document.createTextNode(mark.textContent ?? '');
+            mark.parentNode.replaceChild(textNode, mark);
+          }, 4000);
+
+          console.log(`[Search] ✅ Scroll a "${searchText}" (intento ${attempts})`);
+        } catch {
+          // surroundContents falla con nodos mixtos — solo hacer scroll al párrafo
+          node.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          console.log(`[Search] ↑ Scroll approximate a "${searchText}" (intento ${attempts})`);
+        }
+
+        break;
+      }
+
+      // Si no encontró y aún hay intentos, reintentar en 500ms
+      if (!found && attempts < MAX_ATTEMPTS) {
+        setTimeout(tryScroll, 500);
+      } else if (!found) {
+        console.warn(`[Search] No se encontró "${searchText}" en el documento tras ${attempts} intentos`);
+      }
+    } catch (err) {
+      console.warn('[Search] scrollToFirstMatch error:', err);
+    }
+  }
+
+  // Primer intento a los 600ms (tiempo mínimo para el primer render de SuperDoc)
+  setTimeout(tryScroll, 600);
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTrash }) => {
@@ -362,6 +514,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const canAdmin = effectivePermission === 'admin';
   const superdocRole = canEdit ? 'editor' : 'viewer';
 
+  // PDF conversion state
+  const [isConvertingPdf, setIsConvertingPdf] = useState(false);
+  const [documentPdfs, setDocumentPdfs] = useState<ApiDocumentPdf[]>([]);
+  const [loadingPdfs, setLoadingPdfs] = useState(false);
+  const [pdfConvertError, setPdfConvertError] = useState<string | null>(null);
+  const [pdfConvertSuccess, setPdfConvertSuccess] = useState(false);
+  const pdfSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track which PDF is currently being shared (by id)
+  const [sharingPdfId, setSharingPdfId] = useState<string | null>(null);
+
   useEffect(() => {
     setSuperdocInstance(null);
     setActivePageIndex(0);
@@ -395,8 +557,40 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   useEffect(() => {
     return () => {
       if (focusHintTimerRef.current) clearTimeout(focusHintTimerRef.current);
+      if (pdfSuccessTimerRef.current) clearTimeout(pdfSuccessTimerRef.current);
     };
   }, []);
+
+  // ─── Scroll automático desde búsqueda global ──────────────────────────
+  // Guardamos el searchHighlight en un ref al montar para no depender de location.state
+  // (que podría cambiar con navigate() causando re-mounts del componente)
+  const searchHighlightRef = useRef<string | null>(
+    (location.state as { searchHighlight?: string } | null)?.searchHighlight ?? null
+  );
+
+  useEffect(() => {
+    // Solo actuar cuando superdocInstance pasa de null → valor (editor listo)
+    if (!superdocInstance) return;
+    const highlight = searchHighlightRef.current;
+    if (!highlight) return;
+
+    // Consumir el highlight una sola vez
+    searchHighlightRef.current = null;
+
+    // Disparar scroll (la función tiene delay interno de 800ms para esperar render)
+    scrollToFirstMatch(superDocMountRef.current, highlight);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [superdocInstance]);
+
+  // Load PDFs when PDFS panel opens
+  useEffect(() => {
+    if (rightPanel !== 'PDFS' || !documentId) return;
+    setLoadingPdfs(true);
+    documentPdfsApi.list(documentId)
+      .then(res => setDocumentPdfs(res.pdfs))
+      .catch(() => {})
+      .finally(() => setLoadingPdfs(false));
+  }, [rightPanel, documentId]);
 
   // Keyboard shortcut: F to toggle focus, Escape to exit
   useEffect(() => {
@@ -541,27 +735,39 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     fetchDocument();
   }, [fetchDocument]);
 
-  useEffect(() => {
+  const fetchDocumentActivity = useCallback(async () => {
     if (!documentId) {
       setDocumentActivity([]);
       return;
     }
-
-    activityApi
-      .list({
+    try {
+      const res = await activityApi.list({
         page: 1,
         limit: 100,
         entityType: 'document',
         entityId: documentId,
-      })
-      .then((res) => {
-        setDocumentActivity(res.data ?? []);
-      })
-      .catch((err) => {
-        console.error('Error al cargar bitácora del documento:', err);
-        setDocumentActivity([]);
       });
+      setDocumentActivity(res.data ?? []);
+    } catch (err) {
+      console.error('Error al cargar bitácora del documento:', err);
+    }
   }, [documentId]);
+
+  // Initial load
+  useEffect(() => {
+    void fetchDocumentActivity();
+  }, [fetchDocumentActivity]);
+
+  // Auto-refresh cada 30s cuando el panel HISTORY está abierto
+  // + carga inmediata al abrir el panel
+  useEffect(() => {
+    if (rightPanel !== 'HISTORY') return;
+    void fetchDocumentActivity(); // carga inmediata al abrir
+    const interval = setInterval(() => {
+      void fetchDocumentActivity();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [rightPanel, fetchDocumentActivity]);
 
   // ─── Fetch effective permission ─────────────────────────────────────
   useEffect(() => {
@@ -829,7 +1035,100 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
   }, [documentId, doc]);
 
+  const handleSaveAsPdf = useCallback(async () => {
+    if (!documentId || isConvertingPdf) return;
+    setIsConvertingPdf(true);
+    setPdfConvertError(null);
+    setPdfConvertSuccess(false);
+    try {
+      let pdfBlob: Blob | null = null;
 
+      // Prioridad 1: export nativo de SuperDoc (si lo expone)
+      const superdoc = editorRef.current?.getSuperDoc();
+      if (superdoc && typeof (superdoc as any).exportToPdf === 'function') {
+        pdfBlob = await (superdoc as any).exportToPdf();
+      }
+
+      // Prioridad 2: captura fiel página a página desde el DOM (.superdoc-page)
+      if (!pdfBlob && superDocMountRef.current) {
+        pdfBlob = await captureDocumentAsPdf(superDocMountRef.current);
+      }
+
+      if (!pdfBlob) throw new Error('No se pudo generar el PDF. Asegúrate de tener el documento abierto.');
+
+      const newPdf = await documentPdfsApi.upload(documentId, pdfBlob, 'manual');
+      setDocumentPdfs(prev => [newPdf, ...prev]);
+      setPdfConvertSuccess(true);
+      if (pdfSuccessTimerRef.current) clearTimeout(pdfSuccessTimerRef.current);
+      pdfSuccessTimerRef.current = setTimeout(() => setPdfConvertSuccess(false), 3000);
+    } catch (err: any) {
+      setPdfConvertError(err?.message ?? 'Error al generar el PDF');
+    } finally {
+      setIsConvertingPdf(false);
+    }
+  }, [documentId, isConvertingPdf]);
+
+  // ─── Share PDF from thumbnail ────────────────────────────────────────
+  const handleSharePdf = useCallback(async (pdf: ApiDocumentPdf) => {
+    if (sharingPdfId === pdf.id || !documentId) return;
+    setSharingPdfId(pdf.id);
+    try {
+      // 1. Fetch the PDF blob with auth
+      const { supabase: sb } = await import('../lib/supabaseAuth');
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token ?? null;
+      const pdfUrl = getDocumentPdfFileUrl(documentId, pdf.id);
+      const res = await fetch(pdfUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('No se pudo obtener el PDF para compartir.');
+      const blob = await res.blob();
+      const pdfFile = new File([blob], pdf.name, { type: 'application/pdf' });
+
+      // 2. Try native OS share sheet
+      const supportsFileShare =
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [pdfFile] });
+
+      if (supportsFileShare) {
+        await navigator.share({
+          title: pdf.name,
+          text: `Documento PDF: ${pdf.name}`,
+          files: [pdfFile],
+        });
+      } else if (typeof navigator.share === 'function') {
+        // Share without file (URL-only fallback)
+        await navigator.share({
+          title: pdf.name,
+          text: `Documento PDF: ${pdf.name}`,
+          url: pdfUrl,
+        });
+      } else {
+        // Fallback: trigger download
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = pdf.name;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+      }
+
+      // 3. Log share to bitácora
+      await documentsApi.share(documentId, {
+        sharedWith: `PDF: ${pdf.name}`,
+        shareMethod: 'system',
+        note: `Compartido via sistema — PDF convertido (${pdf.name})`,
+      });
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error('[SharePdf]', err);
+        alert('No se pudo compartir el PDF. Intenta descargarlo manualmente.');
+      }
+    } finally {
+      setSharingPdfId(null);
+    }
+  }, [documentId, sharingPdfId]);
 
   const handleModeChange = (mode: 'editing' | 'viewing' | 'suggesting') => {
     setEditorMode(mode);
@@ -951,6 +1250,22 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           <span className="material-symbols-outlined text-lg sm:text-xl">share</span>
           <span className="hidden sm:inline">Compartir</span>
         </button>
+        {isDocx && (
+          <button
+            type="button"
+            onClick={handleSaveAsPdf}
+            disabled={isConvertingPdf}
+            title="Convertir este documento a PDF y guardarlo enlazado"
+            className={`${headerBtn} ${pdfConvertSuccess ? 'border-green-400 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : ''}`}
+          >
+            <span className={`material-symbols-outlined text-lg sm:text-xl ${isConvertingPdf ? 'animate-spin' : ''}`}>
+              {isConvertingPdf ? 'progress_activity' : pdfConvertSuccess ? 'check_circle' : 'picture_as_pdf'}
+            </span>
+            <span className="hidden sm:inline">
+              {isConvertingPdf ? 'Convirtiendo…' : pdfConvertSuccess ? '¡PDF guardado!' : 'Guardar como PDF'}
+            </span>
+          </button>
+        )}
         {!showDiff && canUseSuperdoc && (
           <>
             <button
@@ -1006,6 +1321,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     pageStripOpen,
     activeUsers,
     setShowShareModal,
+    isDocx,
+    isConvertingPdf,
+    pdfConvertSuccess,
+    handleSaveAsPdf,
   ]);
 
   // ─── Loading / Error states ──────────────────────────────────────────
@@ -1426,6 +1745,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               { key: 'VERSIONS' as RightPanel, icon: 'layers', label: 'Versiones' },
               { key: 'HISTORY' as RightPanel, icon: 'history', label: 'Historial' },
               { key: 'DETAILS' as RightPanel, icon: 'info', label: 'Detalles' },
+              ...(isDocx ? [{ key: 'PDFS' as RightPanel, icon: 'picture_as_pdf', label: `Ver PDF's${documentPdfs.length > 0 ? ` (${documentPdfs.length})` : ''}` }] : []),
             ]).map(tab => (
               <button
                 key={tab.key}
@@ -1520,11 +1840,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                   {rightPanel === 'VERSIONS' && 'layers'}
                   {rightPanel === 'HISTORY' && 'history'}
                   {rightPanel === 'DETAILS' && 'info'}
+                  {rightPanel === 'PDFS' && 'picture_as_pdf'}
                 </span>
                 {rightPanel === 'COMMENTS' && 'Comentarios'}
                 {rightPanel === 'VERSIONS' && 'Versiones'}
                 {rightPanel === 'HISTORY' && 'Historial Completo'}
                 {rightPanel === 'DETAILS' && 'Detalles'}
+                {rightPanel === 'PDFS' && 'PDFs Convertidos'}
               </span>
               <button onClick={() => setRightPanel('NONE')} className="text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
                 <span className="material-symbols-outlined text-lg block">close</span>
@@ -1721,13 +2043,122 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 {renderDetailsView()}
               </div>
             )}
+            {rightPanel === 'PDFS' && (
+              <div className="flex-1 overflow-y-auto">
+                {loadingPdfs ? (
+                  <div className="flex items-center justify-center py-16">
+                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent" />
+                  </div>
+                ) : documentPdfs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-3">
+                    <span className="material-symbols-outlined text-5xl text-gray-300 dark:text-gray-600">picture_as_pdf</span>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">No hay PDFs convertidos aún</p>
+                    <p className="text-gray-400 dark:text-gray-500 text-xs">Usa «Guardar como PDF» en el header para generar uno</p>
+                  </div>
+                ) : (
+                  <div className="p-4 space-y-4">
+                    {documentPdfs.map(pdf => {
+                      // Build the authenticated URL for preview
+                      const pdfUrl = getDocumentPdfFileUrl(doc.id, pdf.id);
+                      return (
+                        <div
+                          key={pdf.id}
+                          className="border border-[#e7e7f3] dark:border-white/10 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          {/* iframe thumbnail */}
+                          <div
+                            className="relative w-full bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                            style={{ paddingBottom: '140%' }}
+                          >
+                            <PdfIframeThumbnail
+                              documentId={doc.id}
+                              pdfId={pdf.id}
+                            />
+                          </div>
+
+                          {/* Info */}
+                          <div className="p-3">
+                            <p className="text-sm font-bold text-[#0e0e1b] dark:text-white truncate" title={pdf.name}>{pdf.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              {formatTimeAgo(pdf.createdAt)}
+                              {pdf.creator ? ` · ${pdf.creator.name}` : ''}
+                              {` · ${formatFileSize(pdf.size)}`}
+                            </p>
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => documentPdfsApi.download(doc.id, pdf.id, pdf.name)}
+                                className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                title="Descargar PDF"
+                              >
+                                <span className="material-symbols-outlined text-sm">download</span>
+                                Descargar
+                              </button>
+                              <button
+                                onClick={() => handleSharePdf(pdf)}
+                                disabled={sharingPdfId === pdf.id}
+                                className={`flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                                  sharingPdfId === pdf.id
+                                    ? 'border-primary/40 bg-primary/5 text-primary opacity-70 cursor-not-allowed'
+                                    : 'border-primary/30 text-primary hover:bg-primary/5 dark:border-primary/40 dark:hover:bg-primary/10'
+                                }`}
+                                title="Compartir PDF via sistema"
+                              >
+                                <span className={`material-symbols-outlined text-sm ${sharingPdfId === pdf.id ? 'animate-spin' : ''}`}>
+                                  {sharingPdfId === pdf.id ? 'progress_activity' : 'share'}
+                                </span>
+                                {sharingPdfId === pdf.id ? '…' : 'Compartir'}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('¿Eliminar este PDF? Esta acción no se puede deshacer.')) return;
+                                  try {
+                                    await documentPdfsApi.delete(doc.id, pdf.id);
+                                    setDocumentPdfs(prev => prev.filter(p => p.id !== pdf.id));
+                                  } catch {
+                                    alert('No se pudo eliminar el PDF.');
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                                title="Eliminar PDF"
+                              >
+                                <span className="material-symbols-outlined text-sm">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </aside>
         )}
       </div>
 
       {showShareModal && doc && (
-        <ShareModal document={doc as any} onClose={() => setShowShareModal(false)} />
+        <ShareModal
+          document={doc as any}
+          onClose={() => setShowShareModal(false)}
+          onPdfConverted={() => {
+            if (documentId) {
+              documentPdfsApi.list(documentId).then(res => setDocumentPdfs(res.pdfs)).catch(() => {});
+            }
+          }}
+          generatePdf={async () => {
+            // Prioridad 1: export nativo de SuperDoc
+            const superdoc = editorRef.current?.getSuperDoc();
+            if (superdoc && typeof (superdoc as any).exportToPdf === 'function') {
+              return (superdoc as any).exportToPdf() as Promise<Blob>;
+            }
+            // Prioridad 2: captura fiel página a página
+            const mountEl = superDocMountRef.current;
+            if (!mountEl) throw new Error('El editor no está disponible');
+            return captureDocumentAsPdf(mountEl);
+          }}
+        />
       )}
+
 
       <SuperDocPageSetupModal
         open={pageSetupOpen}
@@ -1742,6 +2173,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           { key: 'VERSIONS' as RightPanel, icon: 'layers', label: 'Versiones' },
           { key: 'HISTORY' as RightPanel, icon: 'history', label: 'Historial' },
           { key: 'DETAILS' as RightPanel, icon: 'info', label: 'Detalles' },
+          ...(isDocx ? [{ key: 'PDFS' as RightPanel, icon: 'picture_as_pdf', label: "PDF's" }] : []),
         ]).map(tab => (
           <button
             key={tab.key}

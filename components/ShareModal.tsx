@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Document, DocumentShare, ShareMethod } from "../types";
-import { getShareableDocumentFile, documentsApi, ApiDocumentShare } from '../lib/api';
+import { getShareableDocumentFile, documentsApi, ApiDocumentShare, documentPdfsApi, getDocumentPdfFileUrl } from '../lib/api';
 import { Mail, MessageCircle, Link2, Share2, Clock, User, FileDown } from "lucide-react";
 
 interface ShareModalProps {
   document: Document;
   onClose: () => void;
   onShareLogged?: () => void;
+  onPdfConverted?: () => void;
+  /** Función para generar el PDF del documento. Si se provee, se usará para el botón "Compartir como PDF" */
+  generatePdf?: () => Promise<Blob>;
 }
 
 const shareMethodIcons: Record<ShareMethod, React.ReactNode> = {
@@ -51,7 +54,7 @@ function isPdfCompatible(document: Document): boolean {
   return !!(ext && PDF_COMPATIBLE_TYPES.includes(ext));
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onShareLogged }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onShareLogged, onPdfConverted, generatePdf }) => {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [sharingPdf, setSharingPdf] = useState(false);
@@ -146,50 +149,67 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
     setPdfError(null);
     setSharingPdf(true);
     try {
-      const { html } = await documentsApi.getContent(document.id);
-      const container = window.document.createElement('div');
-      container.style.cssText = [
-        'position:fixed', 'left:-9999px', 'top:0',
-        'width:794px', 'background:white', 'color:black',
-        'font-family:Georgia,serif', 'font-size:12pt',
-        'line-height:1.5', 'padding:48px', 'box-sizing:border-box',
-      ].join(';');
-      container.innerHTML = html;
-      window.document.body.appendChild(container);
+      let pdfBlob: Blob | null = null;
 
-      const images = Array.from(container.querySelectorAll('img'));
-      await Promise.allSettled(images.map(img =>
-        img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
-      ));
+      if (generatePdf) {
+        // Usar el generador provisto por el padre (DocumentEditor con SuperDoc)
+        pdfBlob = await generatePdf();
+      } else {
+        // Fallback: renderizar el HTML del documento y capturar con html2canvas
+        const { html } = await documentsApi.getContent(document.id);
+        const container = window.document.createElement('div');
+        container.style.cssText = [
+          'position:fixed', 'left:-9999px', 'top:0',
+          'width:794px', 'background:white', 'color:black',
+          'font-family:Georgia,serif', 'font-size:12pt',
+          'line-height:1.5', 'padding:48px', 'box-sizing:border-box',
+        ].join(';');
+        container.innerHTML = html;
+        window.document.body.appendChild(container);
 
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
-      const canvas = await html2canvas(container, { scale: 1.5, useCORS: true, logging: false, windowWidth: 794 });
-      window.document.body.removeChild(container);
+        const images = Array.from(container.querySelectorAll('img'));
+        await Promise.allSettled(images.map(img =>
+          img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+        ));
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * pageWidth) / canvas.width;
+        const html2canvas = (await import('html2canvas')).default;
+        const { jsPDF } = await import('jspdf');
+        const canvas = await html2canvas(container, { scale: 1.5, useCORS: true, logging: false, windowWidth: 794, backgroundColor: '#ffffff' });
+        window.document.body.removeChild(container);
 
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      while (heightLeft > 0) {
-        position -= pageHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        const pageW = 595.28;
+        const pageH = 841.89;
+        const imgH = (canvas.height * pageW) / canvas.width;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+        let remaining = imgH;
+        let first = true;
+        while (remaining > 0) {
+          if (!first) pdf.addPage();
+          first = false;
+          const srcY = (imgH - remaining) / imgH * canvas.height;
+          const sliceH = Math.min(remaining, pageH);
+          const sliceCanvasH = Math.max(1, Math.round(sliceH / imgH * canvas.height));
+          const slice = window.document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = sliceCanvasH;
+          const ctx = slice.getContext('2d')!;
+          ctx.drawImage(canvas, 0, srcY, canvas.width, sliceCanvasH, 0, 0, canvas.width, sliceCanvasH);
+          pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, sliceH);
+          remaining -= pageH;
+        }
+        pdfBlob = pdf.output('blob');
       }
 
-      const pdfBlob = pdf.output('blob');
-      const pdfName = document.name.replace(/\.(docx?|pdf)$/i, '') + '.pdf';
+      if (!pdfBlob) throw new Error('No se pudo generar el PDF');
+
+      // Subir el PDF al servidor y enlazarlo al documento
+      const pdfRecord = await documentPdfsApi.upload(document.id, pdfBlob, 'share');
+      onPdfConverted?.();
+
+      const pdfName = pdfRecord.name;
       const pdfFile = new File([pdfBlob], pdfName, { type: 'application/pdf' });
 
-      // UNA sola acción: share nativo si el browser lo soporta con files, si no descarga directa
+      // Intentar Web Share API; fallback a descarga directa
       const supportsFileShare =
         typeof navigator.share === 'function' &&
         typeof navigator.canShare === 'function' &&
@@ -198,15 +218,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
       if (supportsFileShare) {
         await navigator.share({ title: pdfName, text: `Compartir documento: ${pdfName}`, files: [pdfFile] });
       } else {
-        const url = URL.createObjectURL(pdfBlob);
+        const blobUrl = URL.createObjectURL(pdfBlob);
         const a = window.document.createElement('a');
-        a.href = url;
+        a.href = blobUrl;
         a.download = pdfName;
         a.click();
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(blobUrl);
       }
 
-      // Registrar UNA sola vez al final
       await logShare('Compartido como PDF', 'system');
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -217,6 +236,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
       setSharingPdf(false);
     }
   };
+
 
   const handleManualShare = async (e: React.FormEvent) => {
     e.preventDefault();

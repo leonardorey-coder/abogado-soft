@@ -1224,3 +1224,150 @@ export const searchApi = {
     return apiFetch<SearchResults>(`/search?${params.toString()}`);
   },
 };
+
+// ─── PDFs ENLAZADOS A DOCUMENTOS ─────────────────────────────────────────────
+
+export interface ApiDocumentPdf {
+  id: string;
+  documentId: string;
+  name: string;
+  localPath: string;
+  size: number;
+  source: 'manual' | 'share';
+  createdBy: string | null;
+  createdAt: string;
+  creator?: { id: string; name: string } | null;
+}
+
+/** Construye la URL para servir/previsualizar un PDF convertido (autenticado) */
+export function getDocumentPdfFileUrl(documentId: string, pdfId: string): string {
+  return `${API_URL}/documents/${documentId}/pdfs/${pdfId}/file`;
+}
+
+/** Sube un Blob PDF ya generado al servidor y lo enlaza al documento */
+async function uploadPdfBlob(
+  documentId: string,
+  pdfBlob: Blob,
+  source: 'manual' | 'share',
+): Promise<ApiDocumentPdf> {
+  const token = await (async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  })();
+
+  const formData = new FormData();
+  formData.append('pdf', pdfBlob, 'document.pdf');
+  formData.append('source', source);
+
+  const res = await fetch(`${API_URL}/documents/${documentId}/upload-pdf`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any)?.error ?? `Error al subir el PDF (${res.status})`);
+  }
+  return res.json();
+}
+
+/** Genera un PDF fiel desde un elemento DOM con html2canvas+jsPDF y lo sube */
+async function generatePdfFromElement(
+  element: HTMLElement,
+  documentId: string,
+  source: 'manual' | 'share',
+): Promise<ApiDocumentPdf> {
+  const html2canvas = (await import('html2canvas')).default;
+  const { jsPDF } = await import('jspdf');
+
+  const canvas = await html2canvas(element, {
+    scale: 1.5,
+    useCORS: true,
+    logging: false,
+    windowWidth: element.scrollWidth,
+    backgroundColor: '#ffffff',
+  });
+
+  const pageWidth = 595.28;   // A4 pt width
+  const pageHeight = 841.89; // A4 pt height
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * pageWidth) / canvas.width;
+
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  let y = 0;
+  let remaining = imgHeight;
+  let first = true;
+  while (remaining > 0) {
+    if (!first) pdf.addPage();
+    first = false;
+    const srcY = (imgHeight - remaining) / imgHeight * canvas.height;
+    const sliceH = Math.min(remaining, pageHeight);
+    const sliceCanvasH = sliceH / imgHeight * canvas.height;
+
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceCanvasH;
+    const ctx = sliceCanvas.getContext('2d')!;
+    ctx.drawImage(canvas, 0, srcY, canvas.width, sliceCanvasH, 0, 0, canvas.width, sliceCanvasH);
+
+    const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, sliceH);
+    remaining -= pageHeight;
+    y += pageHeight;
+  }
+
+  const pdfBlob = pdf.output('blob');
+  return uploadPdfBlob(documentId, pdfBlob, source);
+}
+
+/** Extiende documentsApi con métodos de PDFs enlazados */
+export const documentPdfsApi = {
+  /**
+   * Sube un PDF ya generado (Blob) al servidor y lo enlaza al documento.
+   * Usar cuando ya tienes el Blob del PDF listo (e.g. desde SuperDoc export).
+   */
+  upload: (documentId: string, pdfBlob: Blob, source: 'manual' | 'share' = 'manual') =>
+    uploadPdfBlob(documentId, pdfBlob, source),
+
+  /**
+   * Genera el PDF desde un elemento DOM visible (html2canvas+jsPDF) y lo sube.
+   * Usar cuando quieres capturar lo que el usuario ve en pantalla.
+   */
+  generateFromElement: (documentId: string, element: HTMLElement, source: 'manual' | 'share' = 'manual') =>
+    generatePdfFromElement(element, documentId, source),
+
+  /** Lista todos los PDFs convertidos enlazados al documento */
+  list: (documentId: string) =>
+    apiFetch<{ pdfs: ApiDocumentPdf[] }>(`/documents/${documentId}/pdfs`),
+
+  /** Elimina un PDF enlazado */
+  delete: (documentId: string, pdfId: string) =>
+    apiFetch<{ ok: boolean; message: string }>(`/documents/${documentId}/pdfs/${pdfId}`, {
+      method: 'DELETE',
+    }),
+
+  /** Descarga un PDF autenticado al disco local */
+  download: async (documentId: string, pdfId: string, fileName: string): Promise<void> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? null;
+
+    const url = getDocumentPdfFileUrl(documentId, pdfId);
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!res.ok) throw new Error('Error al descargar el PDF');
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
+};
+

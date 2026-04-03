@@ -749,6 +749,7 @@ documentsRouter.post(
             textContent,
             url: `/documento/${freshDocument.id}`,
             meta: { type: freshDocument.type, fileStatus: freshDocument.fileStatus },
+            createdAt: freshDocument.createdAt.toISOString(),
             updatedAt: freshDocument.updatedAt.toISOString(),
           });
         } catch (err) {
@@ -978,6 +979,7 @@ documentsRouter.post(
             textContent,
             url: `/documento/${document.id}`,
             meta: { type: document.type, fileStatus: document.fileStatus },
+            createdAt: document.createdAt.toISOString(),
             updatedAt: document.updatedAt.toISOString(),
           });
         } catch (err) {
@@ -1033,6 +1035,7 @@ documentsRouter.patch(
             textContent,
             url: `/documento/${document.id}`,
             meta: { type: document.type, fileStatus: document.fileStatus },
+            createdAt: (document as any).createdAt?.toISOString(),
             updatedAt: document.updatedAt.toISOString(),
           });
         } catch (err) {
@@ -1303,7 +1306,7 @@ documentsRouter.post(
 );
 
 // ─── GET /api/documents/:id/diff ─────────────────────────────────────────────
-// @ts-expect-error No types available for htmldiff-js
+// @ts-ignore — no types available for htmldiff-js
 import HtmlDiff from 'htmldiff-js';
 
 documentsRouter.get(
@@ -2238,3 +2241,181 @@ documentsRouter.get(
     }
   },
 );
+
+// ─── POST /api/documents/:id/upload-pdf ───────────────────────────────────────
+// Recibe un PDF ya generado (client-side o server-side) y lo persiste enlazado al documento.
+// El cliente genera el PDF con fidelidad (jsPDF+html2canvas / SuperDoc export) y lo sube aquí.
+const pdfUploadStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    const dir = path.join(process.cwd(), 'uploads', 'pdfs');
+    await mkdir(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, _file, cb) => {
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}.pdf`);
+  },
+});
+const pdfUpload = multer({
+  storage: pdfUploadStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname.endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos PDF'));
+    }
+  },
+});
+
+documentsRouter.post(
+  '/:id/upload-pdf',
+  validateParams(uuidParam),
+  requirePermission('read'),
+  pdfUpload.single('pdf'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const source: string = (req.body?.source === 'share') ? 'share' : 'manual';
+
+      if (!req.file) {
+        res.status(400).json({ error: 'No se recibió ningún archivo PDF' });
+        return;
+      }
+
+      const doc = await prisma.document.findUniqueOrThrow({
+        where: { id: docId },
+        select: { id: true, name: true, type: true },
+      });
+
+      const baseName = doc.name.replace(/\.(docx?|pdf)$/i, '');
+      const pdfName = `${baseName}.pdf`;
+
+      const pdfRecord = await (prisma as any).documentPdf.create({
+        data: {
+          documentId: docId,
+          name: pdfName,
+          localPath: req.file.path,
+          size: BigInt(req.file.size),
+          source,
+          createdBy: req.user!.id,
+        },
+        include: {
+          creator: { select: { id: true, name: true } },
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'DOCUMENT_EXTRACTED',
+          entityType: 'document',
+          entityId: docId,
+          entityName: doc.name,
+          description: `PDF guardado: ${pdfName}`,
+          metadata: { source, pdfId: pdfRecord.id, size: req.file.size } as any,
+        },
+      });
+
+      res.status(201).json(serializeBigInt(pdfRecord));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+
+// ─── GET /api/documents/:id/pdfs ─────────────────────────────────────────────
+// Lista todos los PDFs convertidos enlazados a un documento
+documentsRouter.get(
+  '/:id/pdfs',
+  validateParams(uuidParam),
+  requirePermission('download'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+
+      const pdfs = await (prisma as any).documentPdf.findMany({
+        where: { documentId: docId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          creator: { select: { id: true, name: true } },
+        },
+      });
+
+      res.json({ pdfs: serializeBigInt(pdfs) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/:id/pdfs/:pdfId/file ─────────────────────────────────
+// Sirve el archivo PDF para preview / descarga
+documentsRouter.get(
+  '/:id/pdfs/:pdfId/file',
+  validateParams(z.object({ id: z.string().uuid(), pdfId: z.string().uuid() })),
+  requirePermission('download'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const pdfId = Array.isArray(req.params.pdfId) ? req.params.pdfId[0] : req.params.pdfId;
+
+      const pdfRecord = await (prisma as any).documentPdf.findUniqueOrThrow({
+        where: { id: pdfId, documentId: docId },
+      });
+
+      if (!pdfRecord.localPath || !fs.existsSync(pdfRecord.localPath)) {
+        res.status(404).json({ error: 'Archivo PDF no disponible' });
+        return;
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdfRecord.name)}"`);
+      res.sendFile(path.resolve(pdfRecord.localPath));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── DELETE /api/documents/:id/pdfs/:pdfId ───────────────────────────────────
+// Elimina un PDF enlazado (solo el creador o admin)
+documentsRouter.delete(
+  '/:id/pdfs/:pdfId',
+  validateParams(z.object({ id: z.string().uuid(), pdfId: z.string().uuid() })),
+  requirePermission('read'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const pdfId = Array.isArray(req.params.pdfId) ? req.params.pdfId[0] : req.params.pdfId;
+
+      const pdfRecord = await (prisma as any).documentPdf.findUniqueOrThrow({
+        where: { id: pdfId, documentId: docId },
+        include: { document: { select: { ownerId: true } } },
+      });
+
+      const userId = req.user!.id;
+      const userRecord = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isCreator = pdfRecord.createdBy === userId;
+      const isDocOwner = pdfRecord.document.ownerId === userId;
+      const isAdmin = userRecord?.role === 'admin';
+
+      if (!isCreator && !isDocOwner && !isAdmin) {
+        res.status(403).json({ error: 'No tienes permiso para eliminar este PDF' });
+        return;
+      }
+
+      // Borrar archivo del disco (mejor esfuerzo)
+      if (pdfRecord.localPath && fs.existsSync(pdfRecord.localPath)) {
+        try { fs.unlinkSync(pdfRecord.localPath); } catch { /* ignorar */ }
+      }
+
+      await (prisma as any).documentPdf.delete({ where: { id: pdfId } });
+
+      res.json({ ok: true, message: 'PDF eliminado correctamente' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
