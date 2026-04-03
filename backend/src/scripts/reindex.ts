@@ -64,7 +64,7 @@ async function reindex() {
   const t0 = Date.now();
   const documents = await prisma.document.findMany({
     where: { isDeleted: false },
-    select: { id: true, name: true, type: true, description: true, tags: true, fileStatus: true, localPath: true, updatedAt: true },
+    select: { id: true, name: true, type: true, description: true, tags: true, fileStatus: true, localPath: true, createdAt: true, updatedAt: true },
   });
 
   let docErrors = 0;
@@ -80,6 +80,7 @@ async function reindex() {
           tags: doc.tags, textContent,
           url: `/documento/${doc.id}`,
           meta: { type: doc.type, fileStatus: doc.fileStatus },
+          createdAt: doc.createdAt.toISOString(),
           updatedAt: doc.updatedAt.toISOString(),
         });
       } catch {
@@ -98,7 +99,7 @@ async function reindex() {
   console.log('\n📋  Indexando convenios…');
   const t1 = Date.now();
   const convenios = await prisma.convenio.findMany({
-    select: { id: true, numero: true, institucion: true, descripcion: true, notas: true, estado: true, updatedAt: true },
+    select: { id: true, numero: true, institucion: true, descripcion: true, notas: true, estado: true, createdAt: true, updatedAt: true },
   });
   const convDocs: SearchableDocument[] = convenios.map(c => ({
     id: c.id, entityType: 'convenio',
@@ -107,6 +108,7 @@ async function reindex() {
     textContent: [c.descripcion, c.notas].filter(Boolean).join(' '),
     url: `/convenios/${c.id}`,
     meta: { estado: c.estado },
+    createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   }));
   for (let i = 0; i < convDocs.length; i += BATCH_SIZE) await svc.indexBulk(convDocs.slice(i, i + BATCH_SIZE));
@@ -118,7 +120,7 @@ async function reindex() {
   console.log('\n⚖️   Indexando expedientes…');
   const t2 = Date.now();
   const cases = await prisma.case.findMany({
-    select: { id: true, caseNumber: true, title: true, client: true, description: true, status: true, caseType: true, updatedAt: true },
+    select: { id: true, caseNumber: true, title: true, client: true, description: true, status: true, caseType: true, createdAt: true, updatedAt: true },
   });
   const caseDocs: SearchableDocument[] = cases.map(c => ({
     id: c.id, entityType: 'case',
@@ -127,6 +129,7 @@ async function reindex() {
     textContent: c.description ?? '',
     url: `/expedientes/${c.id}`,
     meta: { status: c.status, caseType: c.caseType },
+    createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   }));
   for (let i = 0; i < caseDocs.length; i += BATCH_SIZE) await svc.indexBulk(caseDocs.slice(i, i + BATCH_SIZE));

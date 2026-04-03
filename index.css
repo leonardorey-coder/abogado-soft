@@ -97,3 +97,46 @@
   scrollbar-width: none;  /* Firefox */
 }
 
+/* ─── Búsqueda inteligente: highlight en el editor ─── */
+
+/* Highlight que aparece al saltar al texto desde la búsqueda */
+.search-highlight-jump {
+  background: linear-gradient(120deg, #ffd60a 0%, #ffb700 100%);
+  border-radius: 3px;
+  padding: 0 3px;
+  color: #1a1a1a !important;
+  box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.4);
+  animation: searchHighlightPulse 1.2s ease-in-out 2;
+}
+
+@keyframes searchHighlightPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 5px rgba(255, 214, 10, 0.15); }
+}
+
+/* Estilos de <mark> dentro del modal de búsqueda */
+.search-snippet-text mark {
+  background: linear-gradient(120deg, #fde68a 0%, #fbbf24 100%);
+  color: #92400e;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.dark .search-snippet-text mark {
+  background: linear-gradient(120deg, #78350f 0%, #92400e 100%);
+  color: #fde68a;
+}
+
+/* Estilos de <mark> en el título del hit de búsqueda */
+mark {
+  background: linear-gradient(120deg, #fde68a 0%, #fbbf24 100%);
+  color: #92400e;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.dark mark {
+  background: linear-gradient(120deg, #78350f 0%, #92400e 100%);
+  color: #fde68a;
+}

@@ -1195,7 +1195,12 @@ export interface SearchHit {
   url: string;
   meta?: Record<string, unknown>;
   updatedAt?: string;
+  /** Fragmento de título con <mark> resaltado */
   highlight?: string;
+  /** Fragmento de contenido del documento con <mark> resaltado (solo Meilisearch) */
+  contentSnippet?: string;
+  /** Fecha de creación */
+  createdAt?: string;
 }
 
 export interface SearchResults {

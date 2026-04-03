@@ -23,6 +23,8 @@ export interface SearchableDocument {
   url: string;
   /** Metadatos extras según tipo (estado, tipo de archivo, etc.) */
   meta?: Record<string, unknown>;
+  /** Fecha de creación del registro */
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -33,8 +35,12 @@ export interface SearchHit {
   title: string;
   subtitle?: string;
   tags?: string[];
+  /** Fragmento del contenido del documento con el término resaltado con <mark> (solo Meilisearch) */
+  contentSnippet?: string;
   url: string;
   meta?: Record<string, unknown>;
+  /** Fecha de creación del registro */
+  createdAt?: string;
   updatedAt?: string;
   /** Fragmentos con el término resaltado (opcional, solo Meilisearch) */
   highlight?: string;

@@ -19,8 +19,10 @@ const INDEX_NAMES: SearchEntityType[] = ['document', 'convenio', 'case'];
 // Atributos que se usan para hacer matching (incluye textContent)
 const SEARCHABLE_ATTRIBUTES = ['title', 'subtitle', 'tags', 'textContent'];
 
-// Atributos que se devuelven en los resultados (excluye textContent para no inflar la respuesta)
-const ATTRIBUTES_TO_RETRIEVE = ['id', 'entityType', 'title', 'subtitle', 'tags', 'url', 'meta', 'updatedAt'];
+// Atributos que se devuelven en los resultados
+// IMPORTANTE: textContent debe estar aquí para que Meilisearch lo incluya en _formatted
+// (aunque no lo devolvamos al cliente directamente, la versión _formatted sí la usamos para el snippet)
+const ATTRIBUTES_TO_RETRIEVE = ['id', 'entityType', 'title', 'subtitle', 'tags', 'url', 'meta', 'createdAt', 'updatedAt', 'textContent'];
 
 // Atributos filterable (para filtrar por entityType)
 const FILTERABLE_ATTRIBUTES = ['entityType'];
@@ -54,7 +56,7 @@ export class MeiliSearchProvider implements ISearchProvider {
         await Promise.all([
           index.updateSearchableAttributes(SEARCHABLE_ATTRIBUTES),
           index.updateFilterableAttributes(FILTERABLE_ATTRIBUTES),
-          index.updateDisplayedAttributes(ATTRIBUTES_TO_RETRIEVE),
+          index.updateDisplayedAttributes(['*']),  // Permitir todos para que _formatted incluya textContent
           index.updateTypoTolerance({
             enabled: true,
             minWordSizeForTypos: { oneTypo: 4, twoTypos: 8 },
@@ -133,7 +135,10 @@ export class MeiliSearchProvider implements ISearchProvider {
       q: query,
       limit: Math.ceil(limit / targetIndexes.length) + 2, // distribuir entre índices
       attributesToRetrieve: ATTRIBUTES_TO_RETRIEVE,
-      attributesToHighlight: ['title', 'subtitle'],
+      attributesToHighlight: ['title', 'subtitle', 'textContent'],
+      attributesToCrop: ['textContent'],
+      cropLength: 20,        // 20 palabras de contexto alrededor del match
+      cropMarker: '…',
       highlightPreTag: '<mark>',
       highlightPostTag: '</mark>',
     }));
@@ -155,8 +160,21 @@ export class MeiliSearchProvider implements ISearchProvider {
             tags: hit.tags,
             url: hit.url,
             meta: hit.meta,
+            createdAt: hit.createdAt,
             updatedAt: hit.updatedAt,
             highlight: hit._formatted?.title ?? undefined,
+            // Snippet del contenido: solo si el textContent formateado difiere del original
+            // (indica que hay un <mark> → hubo match en el contenido del archivo)
+            contentSnippet: (() => {
+              const formatted = hit._formatted?.textContent;
+              const original = hit.textContent;
+              if (!formatted) return undefined;
+              // Meilisearch solo formatea si hay coincidencia; si son iguales, no hubo match
+              if (typeof formatted === 'string' && formatted.includes('<mark>')) {
+                return formatted;
+              }
+              return undefined;
+            })(),
           });
         }
       }
