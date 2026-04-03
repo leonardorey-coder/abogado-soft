@@ -32,7 +32,7 @@ export const DocumentXlsxEditor: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({ message: '', type: 'success', visible: false });
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [documentActivity, setDocumentActivity] = useState<ApiActivityLog[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
