@@ -19,6 +19,7 @@ import { activityRouter } from './routes/activity.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { driveRouter } from './routes/drive.routes.js';
+import { storageRouter } from './routes/storage.routes.js';
 import { searchRouter } from './routes/search.routes.js';
 import { setupCronJobs } from './cronJobs.js';
 import { getSearchService } from './services/search/SearchServiceFactory.js';
@@ -92,7 +93,8 @@ app.use('/api/groups', groupsRouter);
 app.use('/api/activity', activityRouter);
 app.use('/api/backups', backupsRouter);
 app.use('/api/notifications', notificationsRouter);
-app.use('/api/drive', driveRouter);
+app.use('/api/drive', driveRouter);     // Legacy — mantener durante período de transición
+app.use('/api/storage', storageRouter); // Nuevo — proveedor agnóstico (R2)
 app.use('/api/search', searchRouter);
 
 

@@ -4,9 +4,6 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import path from 'path';
-import fs from 'fs';
-import { mkdir } from 'fs/promises';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import prisma from '../lib/prisma.js';
@@ -20,51 +17,69 @@ import * as Diff from 'diff';
 import * as pdfParseModule from 'pdf-parse';
 import * as XLSX from 'xlsx';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import { syncDocumentToDrive } from './drive.routes.js';
-import { verifyCredentials } from '../lib/googleDrive.js';
-
-// ─── Diff summary helper ──────────────────────────────────────────────────────
+import { getStorageProvider, docKey, versionKey, pdfKey, downloadDocumentBuffer } from '../lib/storage/index.js';
 
 
-async function extractTextFromPath(filePath: string | null): Promise<string> {
-  if (!filePath || !fs.existsSync(filePath)) return '';
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.txt' || ext === '.rtf') return fs.readFileSync(filePath, 'utf-8');
-  if (ext === '.docx' || ext === '.doc') {
+// ─── Helpers de extracción de texto desde Buffer (sin disco) ───────────────────
+// Usados para diff de versiones y para indexación en búsqueda.
+
+async function extractHtmlFromBuffer(buf: Buffer, ext: string): Promise<string> {
+  const normalExt = ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+
+  if (normalExt === '.txt' || normalExt === '.rtf') {
+    const raw = buf.toString('utf-8');
+    return raw.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  }
+  if (normalExt === '.docx' || normalExt === '.doc') {
     try {
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.convertToHtml(
+        { buffer: buf },
+        {
+          convertImage: mammoth.images.imgElement(async (image: any) => {
+            const imgBuf = await image.read();
+            const base64 = Buffer.from(imgBuf).toString('base64');
+            const mime = image.contentType || 'image/png';
+            return { src: `data:${mime};base64,${base64}` };
+          }),
+          styleMap: [
+            "p[style-name='Title'] => h1:fresh",
+            "p[style-name='Heading 1'] => h1:fresh",
+            "p[style-name='Heading 2'] => h2:fresh",
+            "p[style-name='Heading 3'] => h3:fresh",
+            "p[style-name='Subtitle'] => h2:fresh",
+            "b => strong",
+            "i => em",
+            "u => u",
+            "strike => s",
+          ],
+        },
+      );
       return result.value || '';
     } catch { return ''; }
   }
-  if (ext === '.pdf') {
+  if (normalExt === '.pdf') {
     try {
-      const data = await pdfParse(fs.readFileSync(filePath));
-      return data.text || '';
+      const data = await pdfParse(buf);
+      const raw = data.text || '';
+      return raw.split(/\n\n+/).map((p: string) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
     } catch { return ''; }
   }
   return '';
 }
 
-interface DiffSummary {
-  linesAdded: number;
-  linesRemoved: number;
-  sampleLines: { type: 'added' | 'removed'; content: string }[];
-}
-
-async function computeDiffSummary(oldPath: string | null, newPath: string | null): Promise<DiffSummary | null> {
+async function computeDiffSummaryFromBuffers(oldBuf: Buffer | null, newBuf: Buffer | null, ext: string) {
   try {
-    const [oldText, newText] = await Promise.all([
-      extractTextFromPath(oldPath),
-      extractTextFromPath(newPath),
+    const [oldHtml, newHtml] = await Promise.all([
+      oldBuf ? extractHtmlFromBuffer(oldBuf, ext) : Promise.resolve(''),
+      newBuf ? extractHtmlFromBuffer(newBuf, ext) : Promise.resolve(''),
     ]);
-    if (!oldText && !newText) return null;
-    const diffs = Diff.diffLines(oldText, newText);
-    let linesAdded = 0;
-    let linesRemoved = 0;
+    if (!oldHtml && !newHtml) return null;
+    const diffs = Diff.diffLines(oldHtml.replace(/<[^>]+>/g, ''), newHtml.replace(/<[^>]+>/g, ''));
+    let linesAdded = 0, linesRemoved = 0;
     const addedSamples: { type: 'added'; content: string }[] = [];
     const removedSamples: { type: 'removed'; content: string }[] = [];
     for (const part of diffs) {
-      const lines = (part.value || '').split('\n').filter(l => l.trim());
+      const lines = (part.value || '').split('\n').filter((l: string) => l.trim());
       if (part.added) {
         linesAdded += lines.length;
         for (const l of lines) {
@@ -79,11 +94,14 @@ async function computeDiffSummary(oldPath: string | null, newPath: string | null
     }
     if (linesAdded === 0 && linesRemoved === 0) return null;
     return { linesAdded, linesRemoved, sampleLines: [...removedSamples, ...addedSamples] };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
+
+// ─── Multer: memoryStorage (archivos en RAM, sin disco) ─────────────────────
+// para uploads intermedios del editor (archivos <= 50 MB).
+// Para archivos más grandes el cliente usa POST /api/drive/upload-url
+// y sube directamente a Drive (flujo resumable).
 
 // ─── BigInt → Number serialization helper ────────────────────────────────────
 function serializeBigInt(obj: any): any {
@@ -106,40 +124,11 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
-/**
- * Resuelve la ruta del archivo: si es absoluta la usa tal cual,
- * si es relativa (solo nombre de archivo) busca en uploads/.
- */
-function resolveFilePath(localPath: string): string {
-  if (path.isAbsolute(localPath)) {
-    return localPath;
-  }
-  // Path relativo → buscar en uploads/
-  const inUploads = path.join(process.cwd(), 'uploads', localPath);
-  if (fs.existsSync(inUploads)) {
-    return inUploads;
-  }
-  // Fallback: resolver desde cwd
-  return path.resolve(localPath);
-}
 
-// ─── Multer config para subida de archivos ──────────────────────────────────
-const storage = multer.diskStorage({
-  destination: async (_req, _file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads');
-    await mkdir(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
-  },
-});
 
 const uploadMiddleware = multer({
-  storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB — archivos grandes usan flujo firmado
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/pdf',
@@ -151,6 +140,7 @@ const uploadMiddleware = multer({
       'image/png',
       'image/gif',
       'image/webp',
+      'text/plain',
     ];
     cb(null, allowed.includes(file.mimetype));
   },
@@ -278,6 +268,116 @@ documentsRouter.get(
         } catch {
           // skip entities that no longer exist
         }
+      }
+
+      res.json({ data: results });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── GET /api/documents/recently-shared ─────────────────────────────────────
+// Devuelve los archivos/convenios compartidos recientemente (globales del grupo/usuario)
+// MUST be defined before /:id so Express doesn't match it as a UUID
+documentsRouter.get(
+  '/recently-shared',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string || '10', 10), 50);
+      const userId = req.user!.id;
+
+      // Obtener el grupo del usuario para ver shares del equipo completo
+      const userGroup = await prisma.groupMember.findFirst({
+        where: { userId },
+        select: { groupId: true },
+      });
+
+      // Buscar shares de documentos y convenios
+      // Si el usuario es parte de un grupo, ver los del equipo
+      // Si no, solo los propios
+      const userIds: string[] = [userId];
+      if (userGroup) {
+        const groupMembers = await prisma.groupMember.findMany({
+          where: { groupId: userGroup.groupId },
+          select: { userId: true },
+        });
+        for (const m of groupMembers) {
+          if (!userIds.includes(m.userId)) userIds.push(m.userId);
+        }
+      }
+
+      const shareLogs = await prisma.activityLog.findMany({
+        where: {
+          userId: { in: userIds },
+          activity: 'DOCUMENT_SHARED',
+          entityId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit * 3,
+        select: {
+          id: true,
+          entityId: true,
+          entityType: true,
+          entityName: true,
+          createdAt: true,
+          metadata: true,
+          user: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      });
+
+      // Agrupar por (entityId) manteniendo todas las entradas (no deduplicar por entidad,
+      // ya que queremos ver todos los shares), pero limitar al total solicitado.
+      const results: any[] = [];
+      const seenLogIds = new Set<string>();
+
+      for (const log of shareLogs) {
+        if (seenLogIds.has(log.id) || !log.entityId) continue;
+        seenLogIds.add(log.id);
+
+        const meta = (log.metadata as any) ?? {};
+
+        const entry: any = {
+          logId: log.id,
+          entityId: log.entityId,
+          entityType: log.entityType || 'document',
+          entityName: log.entityName || 'Sin nombre',
+          sharedWith: meta.sharedWith || 'Desconocido',
+          shareMethod: (meta.shareMethod as string) || 'system',
+          note: meta.note || null,
+          sharedAt: log.createdAt,
+          sharedBy: log.user,
+        };
+
+        // Enriquecer con datos actuales de la entidad (nombre, tipo, estado)
+        try {
+          if (entry.entityType === 'document') {
+            const doc = await prisma.document.findUnique({
+              where: { id: log.entityId, isDeleted: false },
+              select: { id: true, name: true, type: true, fileStatus: true },
+            });
+            if (doc) {
+              entry.entityName = doc.name;
+              entry.entitySubtype = doc.type;
+              entry.entityStatus = doc.fileStatus;
+            }
+          } else if (entry.entityType === 'convenio') {
+            const conv = await prisma.convenio.findUnique({
+              where: { id: log.entityId },
+              select: { id: true, numero: true, institucion: true, estado: true },
+            });
+            if (conv) {
+              entry.entityName = `${conv.numero} – ${conv.institucion}`;
+              entry.entitySubtype = 'CONVENIO';
+              entry.entityStatus = conv.estado;
+            }
+          }
+        } catch {
+          // Entidad eliminada — igualmente incluir el log
+        }
+
+        results.push(entry);
+        if (results.length >= limit) break;
       }
 
       res.json({ data: results });
@@ -649,6 +749,8 @@ documentsRouter.get(
 );
 
 // ─── POST /api/documents/upload ──────────────────────────────────────────────
+// Recibe el archivo en memoryStorage, lo sube directamente a Google Drive.
+// No escribe ningún byte en el disco del servidor.
 documentsRouter.post(
   '/upload',
   uploadMiddleware.single('file'),
@@ -660,8 +762,8 @@ documentsRouter.post(
         return;
       }
 
-      // Determine document type from extension
-      const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+      // Determinar tipo de documento desde extensión
+      const ext = file.originalname.split('.').pop()?.toLowerCase() ?? '';
       const typeMap: Record<string, string> = {
         doc: 'doc', docx: 'docx', pdf: 'pdf',
         xls: 'xls', xlsx: 'xlsx', txt: 'txt', rtf: 'rtf',
@@ -669,24 +771,22 @@ documentsRouter.post(
       };
       const docType = typeMap[ext] ?? 'pdf';
 
-      // Obtener el primer grupo del usuario si no se proporciona groupId
+      // Obtener grupo por defecto
       let defaultGroupId = req.body.groupId;
       if (!defaultGroupId) {
         const userGroup = await prisma.groupMember.findFirst({
           where: { userId: req.user!.id },
-          select: { groupId: true }
+          select: { groupId: true },
         });
-        if (userGroup) {
-          defaultGroupId = userGroup.groupId;
-        }
+        if (userGroup) defaultGroupId = userGroup.groupId;
       }
 
+      // Crear registro en BD (sin localPath)
       const document = await prisma.document.create({
         data: {
           name: req.body.name || file.originalname,
           type: docType as any,
           size: BigInt(file.size),
-          localPath: file.path,
           mimeType: file.mimetype,
           ownerId: req.user!.id,
           description: req.body.description || undefined,
@@ -710,15 +810,20 @@ documentsRouter.post(
         },
       });
 
-      // Auto-sync a Google Drive para nuevos documentos
+      // Subir buffer a R2
       let syncResult = null;
       try {
-        const driveReady = await verifyCredentials();
-        if (driveReady) {
-          syncResult = await syncDocumentToDrive(document.id, req.user!.id, undefined, { skipNewVersion: true });
-        }
+        const storage = getStorageProvider();
+        const key = docKey(document.groupId, document.id, ext);
+        await storage.upload(key, file.buffer, file.mimetype);
+        await prisma.document.update({
+          where: { id: document.id },
+          data: { storageKey: key, syncStatus: 'completed', lastSyncAt: new Date() },
+        });
+        syncResult = { ok: true };
       } catch (syncError) {
-        console.error('[Upload] Auto-sync a Drive falló:', (syncError as Error).message);
+        console.error('[Upload] Auto-sync a R2 falló:', (syncError as Error).message);
+        await prisma.document.update({ where: { id: document.id }, data: { syncStatus: 'failed' } });
         syncResult = { ok: false, error: (syncError as Error).message };
       }
 
@@ -729,17 +834,14 @@ documentsRouter.post(
         },
       });
 
-      res.status(201).json(serializeBigInt({
-        ...freshDocument,
-        syncResult,
-      }));
+      res.status(201).json(serializeBigInt({ ...freshDocument, syncResult }));
 
-      // ── Fire-and-forget: indexar en búsqueda (con contenido extraído del archivo) ──
+      // Fire-and-forget: indexar en búsqueda usando el buffer en memoria
       ;(async () => {
         try {
           const svc = getSearchServiceSync();
           if (!svc) return;
-          const textContent = await extractTextFromFile(freshDocument.localPath);
+          const textContent = (await extractHtmlFromBuffer(file.buffer, ext)).replace(/<[^>]+>/g, ' ').trim();
           await svc.indexDocument({
             id: freshDocument.id,
             entityType: 'document',
@@ -764,7 +866,8 @@ documentsRouter.post(
 );
 
 // ─── GET /api/documents/:id/file ────────────────────────────────────────────
-// Sirve el archivo raw (para embedding en iframe/img, preview)
+// Sirve el archivo raw como proxy de Drive (preview/embeddings).
+// No escribe en disco: descarga de Drive y hace pipe al cliente.
 documentsRouter.get(
   '/:id/file',
   validateParams(uuidParam),
@@ -773,30 +876,28 @@ documentsRouter.get(
     try {
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: paramId(req) },
+        select: { type: true, mimeType: true, storageKey: true, driveFileId: true, localPath: true },
       });
 
-      let targetPath = doc.localPath;
-      let targetMime = doc.mimeType;
-
+      // Soporte para preview de versión específica via ?version=N
       const versionQuery = req.query.version;
+      let fileSource: { storageKey?: string | null; driveFileId?: string | null; localPath?: string | null } = doc;
       if (versionQuery) {
         const ver = await prisma.documentVersion.findFirst({
-          where: { documentId: paramId(req), version: parseInt(versionQuery as string, 10) }
+          where: { documentId: paramId(req), version: parseInt(versionQuery as string, 10) },
+          select: { storageKey: true, cloudUrl: true, localPath: true },
         });
-        if (ver && ver.localPath) {
-          targetPath = ver.localPath;
-        }
+        if (ver) fileSource = { storageKey: ver.storageKey, driveFileId: ver.cloudUrl, localPath: ver.localPath };
       }
 
-      if (!targetPath) {
+      if (!fileSource.storageKey && !fileSource.driveFileId && !fileSource.localPath) {
         res.status(404).json({ error: 'Archivo no disponible' });
         return;
       }
 
-      if (targetMime) {
-        res.setHeader('Content-Type', targetMime);
-      }
-      res.sendFile(resolveFilePath(targetPath));
+      const buffer = await downloadDocumentBuffer(fileSource);
+      if (doc.mimeType) res.setHeader('Content-Type', doc.mimeType);
+      res.send(buffer);
     } catch (error) {
       next(error);
     }
@@ -814,18 +915,18 @@ documentsRouter.get(
 
       const version = await prisma.documentVersion.findUniqueOrThrow({
         where: { id: verId, documentId: docId },
-        include: { document: { select: { mimeType: true } } }
+        include: { document: { select: { mimeType: true, name: true } } },
       });
 
-      if (!version.localPath || !fs.existsSync(version.localPath)) {
-        res.status(404).json({ error: 'Archivo de versión no disponible' });
-        return;
-      }
-
-      if (version.document.mimeType) {
-        res.setHeader('Content-Type', version.document.mimeType);
-      }
-      res.sendFile(path.resolve(version.localPath));
+      const mimeType = version.document.mimeType ?? 'application/octet-stream';
+      const buffer = await downloadDocumentBuffer({
+        storageKey: version.storageKey,
+        driveFileId: version.cloudUrl,
+        localPath: version.localPath,
+      });
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(version.document.name)}"`);
+      res.send(buffer);
     } catch (error) {
       next(error);
     }
@@ -841,14 +942,18 @@ documentsRouter.get(
     try {
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: paramId(req) },
+        select: { name: true, mimeType: true, storageKey: true, driveFileId: true, localPath: true },
       });
 
-      if (!doc.localPath) {
+      if (!doc.storageKey && !doc.driveFileId && !doc.localPath) {
         res.status(404).json({ error: 'Archivo no disponible para descarga' });
         return;
       }
 
-      res.download(resolveFilePath(doc.localPath), doc.name);
+      const buffer = await downloadDocumentBuffer(doc);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.name)}"`);
+      if (doc.mimeType) res.setHeader('Content-Type', doc.mimeType);
+      res.send(buffer);
     } catch (error) {
       next(error);
     }
@@ -856,8 +961,8 @@ documentsRouter.get(
 );
 
 // ─── GET /api/documents/:id/content ──────────────────────────────────────────
-// Extrae el contenido HTML de un DOCX para inicializar el editor colaborativo.
-// Para TXT devuelve el texto envuelto en <p>. Otros formatos → 404.
+// Extrae HTML del archivo descargando el buffer desde Drive.
+// DOCX → HTML vía mammoth, TXT → párrafos, otros formatos → 404.
 documentsRouter.get(
   '/:id/content',
   validateParams(uuidParam),
@@ -866,55 +971,23 @@ documentsRouter.get(
     try {
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: paramId(req) },
+        select: { type: true, storageKey: true, driveFileId: true, localPath: true },
       });
 
-      if (!doc.localPath || !fs.existsSync(doc.localPath)) {
-        res.status(404).json({ error: 'Archivo no disponible' });
+      if (!doc.storageKey && !doc.driveFileId && !doc.localPath) {
+        res.json({ html: '' });
         return;
       }
 
-      const ext = path.extname(doc.name).toLowerCase();
+      const buffer = await downloadDocumentBuffer(doc);
+      const ext = `.${doc.type.toLowerCase()}`;
+      const html = await extractHtmlFromBuffer(buffer, ext);
 
-      // DOCX → HTML via mammoth (with embedded images)
-      if (ext === '.docx' || ext === '.doc') {
-        const result = await mammoth.convertToHtml(
-          { path: doc.localPath },
-          {
-            convertImage: mammoth.images.imgElement(async (image: any) => {
-              const buf = await image.read();
-              const base64 = Buffer.from(buf).toString('base64');
-              const mime = image.contentType || 'image/png';
-              return { src: `data:${mime};base64,${base64}` };
-            }),
-            styleMap: [
-              "p[style-name='Title'] => h1:fresh",
-              "p[style-name='Heading 1'] => h1:fresh",
-              "p[style-name='Heading 2'] => h2:fresh",
-              "p[style-name='Heading 3'] => h3:fresh",
-              "p[style-name='Subtitle'] => h2:fresh",
-              "b => strong",
-              "i => em",
-              "u => u",
-              "strike => s",
-            ],
-          },
-        );
-        res.json({ html: result.value, messages: result.messages });
-        return;
-      }
-
-      // TXT / RTF → wrap in paragraphs
-      if (ext === '.txt' || ext === '.rtf') {
-        const raw = fs.readFileSync(doc.localPath, 'utf-8');
-        const html = raw
-          .split(/\n\n+/)
-          .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
-          .join('');
+      if (ext === '.docx' || ext === '.doc' || ext === '.txt' || ext === '.rtf') {
         res.json({ html });
         return;
       }
 
-      // PDF / images / spreadsheets → no text extraction
       res.status(404).json({ error: 'Este tipo de archivo no soporta extracción de contenido para el editor' });
     } catch (error) {
       next(error);
@@ -1107,11 +1180,29 @@ documentsRouter.delete(
       if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
       if (!doc.isDeleted) return res.status(400).json({ error: 'El documento debe estar en papelera para eliminarlo permanentemente' });
 
-      // Eliminar archivo físico si existe
-      if (doc.localPath) {
-        const filePath = path.resolve(doc.localPath);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      // Recopilar claves de storage ANTES de borrar en BD
+      const versionsToDelete = await prisma.documentVersion.findMany({
+        where: { documentId: doc.id },
+        select: { storageKey: true, cloudUrl: true },
+      });
+      const pdfsToDelete = await (prisma as any).documentPdf.findMany({
+        where: { documentId: doc.id },
+        select: { storageKey: true, driveFileId: true },
+      });
+
+      // Borrar desde storage (best-effort, sin bloquear la eliminación en BD)
+      const storage = getStorageProvider();
+      const { deleteFile } = await import('../lib/googleDrive.js');
+      for (const v of versionsToDelete) {
+        if (v.storageKey) storage.delete(v.storageKey).catch(() => {});
+        if (v.cloudUrl) deleteFile(v.cloudUrl).catch(() => {});
       }
+      for (const p of pdfsToDelete) {
+        if ((p as any).storageKey) storage.delete((p as any).storageKey).catch(() => {});
+        if ((p as any).driveFileId) deleteFile((p as any).driveFileId).catch(() => {});
+      }
+      if (doc.storageKey) storage.delete(doc.storageKey).catch(() => {});
+      if (doc.driveFileId) deleteFile(doc.driveFileId).catch(() => {});
 
       // Eliminar versiones, comentarios, permisos, actividad y el documento
       await prisma.$transaction([
@@ -1306,6 +1397,7 @@ documentsRouter.post(
 );
 
 // ─── GET /api/documents/:id/diff ─────────────────────────────────────────────
+// Descarga buffers de Drive para comparar dos versiones.
 // @ts-ignore — no types available for htmldiff-js
 import HtmlDiff from 'htmldiff-js';
 
@@ -1327,52 +1419,30 @@ documentsRouter.get(
         }),
       ]);
 
-      const extractHtml = async (ver: any) => {
-        if (!ver || !ver.localPath || !fs.existsSync(ver.localPath)) return '';
-        const ext = path.extname(ver.localPath).toLowerCase();
-
-        if (ext === '.txt' || ext === '.rtf') {
-          const raw = fs.readFileSync(ver.localPath, 'utf-8');
-          return raw.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-        }
-        if (ext === '.docx' || ext === '.doc') {
-          const result = await mammoth.convertToHtml(
-            { path: ver.localPath },
-            {
-              convertImage: mammoth.images.imgElement(async (image: any) => {
-                const buf = await image.read();
-                const base64 = Buffer.from(buf).toString('base64');
-                const mime = image.contentType || 'image/png';
-                return { src: `data:${mime};base64,${base64}` };
-              }),
-              styleMap: [
-                "p[style-name='Title'] => h1:fresh",
-                "p[style-name='Heading 1'] => h1:fresh",
-                "p[style-name='Heading 2'] => h2:fresh",
-                "p[style-name='Heading 3'] => h3:fresh",
-                "p[style-name='Subtitle'] => h2:fresh",
-                "b => strong",
-                "i => em",
-                "u => u",
-                "strike => s",
-              ],
-            },
-          );
-          return result.value || '';
-        }
-        if (ext === '.pdf') {
-          const dataBuffer = fs.readFileSync(ver.localPath);
-          const data = await pdfParse(dataBuffer);
-          const raw = data.text || '';
-          return raw.split(/\n\n+/).map((p: string) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-        }
-        return '';
+      const fetchBuf = async (ver: any): Promise<Buffer | null> => {
+        if (!ver) return null;
+        try {
+          return await downloadDocumentBuffer({
+            storageKey: ver.storageKey,
+            driveFileId: ver.cloudUrl,
+            localPath: ver.localPath,
+          });
+        } catch { return null; }
       };
 
-      const [html1, html2] = await Promise.all([extractHtml(ver1), extractHtml(ver2)]);
+      const doc = await prisma.document.findUnique({
+        where: { id: paramId(req) },
+        select: { type: true },
+      });
+      const ext = doc?.type ?? 'docx';
+
+      const [buf1, buf2] = await Promise.all([fetchBuf(ver1), fetchBuf(ver2)]);
+      const [html1, html2] = await Promise.all([
+        buf1 ? extractHtmlFromBuffer(buf1, ext) : Promise.resolve(''),
+        buf2 ? extractHtmlFromBuffer(buf2, ext) : Promise.resolve(''),
+      ]);
 
       const diffHtml = HtmlDiff.execute(html1, html2);
-
       res.json({ html: diffHtml });
     } catch (error) {
       next(error);
@@ -1381,9 +1451,9 @@ documentsRouter.get(
 );
 
 // ─── POST /api/documents/:id/save ────────────────────────────────────────────
-// Endpoint unificado: recibe el archivo del editor, lo guarda localmente.
-// Si createVersion=true, crea nueva versión en DB. Si no, solo sobreescribe.
-// Auto-sync a Google Drive si está configurado.
+// Recibe el archivo del editor (en RAM via memoryStorage), lo sube a Drive.
+// Si el doc aún no tiene driveFileId (primer Guardar), crea el archivo en Drive.
+// Si createVersion=true, incrementa la versión en BD.
 
 documentsRouter.post(
   '/:id/save',
@@ -1400,31 +1470,65 @@ documentsRouter.post(
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
         select: {
-          id: true, name: true, type: true, localPath: true,
-          version: true, driveFileId: true, ownerId: true,
+          id: true, name: true, type: true, groupId: true,
+          version: true, storageKey: true, driveFileId: true, localPath: true, ownerId: true,
         },
       });
 
-      // 2. Guardar archivo subido
+      // 2. Validar que llegó el archivo
       if (!req.file) {
         res.status(400).json({ error: 'No se recibió ningún archivo.' });
         return;
       }
 
+      const fileBuffer = req.file.buffer;
       const fileSize = req.file.size;
 
+      // 3. Obtener buffer de la versión anterior para diff
+      let oldBuffer: Buffer | null = null;
+      if (doc.storageKey || doc.driveFileId || doc.localPath) {
+        try { oldBuffer = await downloadDocumentBuffer(doc); } catch { /* no diff available */ }
+      }
+
       if (createVersion) {
-        // ── Modo "Nueva Versión": incrementar versión y crear registro ──
+        // ── Modo "Nueva Versión" ──────────────────────────────────────────────
+        //
+        // FLUJO CORRECTO:
+        //   · La versión previa (doc.version) ya tiene su snapshot actualizado
+        //     gracias a que los overwrites mantienen el snapshot en sincronía.
+        //   · Se crea el snapshot de la NUEVA versión con el NUEVO contenido.
+        //   · El archivo principal también se actualiza con el NUEVO contenido.
+        //
         const newVersion = doc.version + 1;
-        const diffSummary = await computeDiffSummary(doc.localPath, req.file.path);
+        const diffSummary = await computeDiffSummaryFromBuffers(oldBuffer, fileBuffer, doc.type);
+
+        const dKey = docKey(doc.groupId, doc.id, doc.type);
+        // Key para el snapshot de la NUEVA versión (contiene el nuevo contenido)
+        const newVKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
+
+        let syncResult: { ok: boolean; error?: string } | null = null;
+        try {
+          const storage = getStorageProvider();
+          // 1. Subir el nuevo contenido como snapshot de la nueva versión
+          await storage.upload(newVKey, fileBuffer, req.file!.mimetype);
+          // 2. Actualizar el archivo principal con el nuevo contenido
+          await storage.update(dKey, fileBuffer, req.file!.mimetype);
+          syncResult = { ok: true };
+        } catch (syncError) {
+          console.error('[Save] Error al subir a R2:', (syncError as Error).message);
+          getStorageProvider().delete(newVKey).catch(() => {});
+          syncResult = { ok: false, error: (syncError as Error).message };
+        }
 
         await prisma.$transaction([
           prisma.document.update({
             where: { id: docId },
             data: {
-              localPath: req.file.path,
               size: BigInt(fileSize),
               version: newVersion,
+              storageKey: dKey,
+              syncStatus: syncResult?.ok ? 'completed' : 'failed',
+              lastSyncAt: syncResult?.ok ? new Date() : undefined,
               updatedAt: new Date(),
             },
           }),
@@ -1432,10 +1536,11 @@ documentsRouter.post(
             data: {
               documentId: docId,
               version: newVersion,
-              localPath: req.file.path,
               size: BigInt(fileSize),
               changeNote,
               createdBy: req.user!.id,
+              // El snapshot de la nueva versión contiene el NUEVO contenido
+              storageKey: syncResult?.ok ? newVKey : undefined,
             } as any,
           }),
           prisma.activityLog.create({
@@ -1451,66 +1556,91 @@ documentsRouter.post(
           }),
         ]);
 
-        // Auto-sync a Google Drive (versión ya creada aquí; no crear otra en Drive)
-        let syncResult = null;
-        try {
-          const driveReady = await verifyCredentials();
-          if (driveReady) {
-            syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
-          }
-        } catch (syncError) {
-          console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
-          syncResult = { ok: false, error: (syncError as Error).message };
-        }
-
         res.json(serializeBigInt({
-          ok: true,
-          version: newVersion,
-          size: fileSize,
-          localPath: req.file.path,
-          syncResult,
+          ok: true, version: newVersion, size: fileSize, syncResult,
         }));
+
       } else {
-        const diffSummary = await computeDiffSummary(doc.localPath, req.file.path);
+        // ── Modo "Guardar" (sobreescribir current) ─────────────────────────────
+        //
+        // CRÍTICO: Actualizar TANTO el archivo principal COMO el snapshot de la
+        // versión actual en R2. Si solo actualizamos el principal, la próxima vez
+        // que se cree una versión nueva, el snapshot de esta versión quedará stale
+        // y al volver a ella se mostrará contenido antiguo.
+        //
+        const diffSummary = await computeDiffSummaryFromBuffers(oldBuffer, fileBuffer, doc.type);
+        const dKey = docKey(doc.groupId, doc.id, doc.type);
+        // Key del snapshot para la versión ACTUAL (se mantiene sincronizada en cada overwrite)
+        const currentVKey = versionKey(doc.groupId, doc.id, doc.version, doc.type);
 
-        await prisma.document.update({
-          where: { id: docId },
-          data: {
-            localPath: req.file.path,
-            size: BigInt(fileSize),
-            updatedAt: new Date(),
-          },
-        });
-
-        await prisma.activityLog.create({
-          data: {
-            userId: req.user!.id,
-            activity: 'DOCUMENT_UPDATED',
-            entityType: 'document',
-            entityId: docId,
-            entityName: doc.name,
-            description: `Documento editado: ${doc.name}`,
-            metadata: ({ source: 'editor_save', createVersion: false, size: fileSize, ...(diffSummary ? { diffSummary } : {}) } as any),
-          },
-        });
-
-        let syncResult = null;
+        let syncResult: { ok: boolean; error?: string } | null = null;
         try {
-          const driveReady = await verifyCredentials();
-          if (driveReady) {
-            syncResult = await syncDocumentToDrive(docId, req.user!.id, undefined, { skipNewVersion: true });
+          const storage = getStorageProvider();
+
+          // 1. Actualizar el archivo principal
+          await storage.update(dKey, fileBuffer, req.file!.mimetype);
+
+          // 2. Actualizar también el snapshot de la versión actual
+          //    Usamos upload (crea si no existe) con fallback a update.
+          try {
+            await storage.upload(currentVKey, fileBuffer, req.file!.mimetype);
+          } catch {
+            try { await storage.update(currentVKey, fileBuffer, req.file!.mimetype); } catch { /* best effort */ }
           }
+
+          syncResult = { ok: true };
         } catch (syncError) {
-          console.error('[Save] Auto-sync a Drive falló:', (syncError as Error).message);
+          console.error('[Save] Error al subir a R2:', (syncError as Error).message);
           syncResult = { ok: false, error: (syncError as Error).message };
         }
 
+        // Buscar el registro de la versión actual para actualizar su storageKey y tamaño
+        const currentVersionRecord = await prisma.documentVersion.findFirst({
+          where: { documentId: docId, version: doc.version },
+          select: { id: true },
+        });
+
+        const dbOps: any[] = [
+          prisma.document.update({
+            where: { id: docId },
+            data: {
+              size: BigInt(fileSize),
+              storageKey: dKey,
+              syncStatus: syncResult?.ok ? 'completed' : 'failed',
+              lastSyncAt: syncResult?.ok ? new Date() : undefined,
+              updatedAt: new Date(),
+            },
+          }),
+          prisma.activityLog.create({
+            data: {
+              userId: req.user!.id,
+              activity: 'DOCUMENT_UPDATED',
+              entityType: 'document',
+              entityId: docId,
+              entityName: doc.name,
+              description: `Documento editado: ${doc.name}`,
+              metadata: ({ source: 'editor_save', createVersion: false, size: fileSize, ...(diffSummary ? { diffSummary } : {}) } as any),
+            },
+          }),
+        ];
+
+        // Si existe el registro de la versión actual, actualizar su snapshot y tamaño
+        if (currentVersionRecord) {
+          dbOps.push(
+            prisma.documentVersion.update({
+              where: { id: currentVersionRecord.id },
+              data: {
+                size: BigInt(fileSize),
+                storageKey: syncResult?.ok ? currentVKey : undefined,
+              },
+            })
+          );
+        }
+
+        await prisma.$transaction(dbOps);
+
         res.json(serializeBigInt({
-          ok: true,
-          version: doc.version,
-          size: fileSize,
-          localPath: req.file.path,
-          syncResult,
+          ok: true, version: doc.version, size: fileSize, syncResult,
         }));
       }
 
@@ -1992,7 +2122,7 @@ documentsRouter.get(
     try {
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: paramId(req) },
-        select: { id: true, localPath: true, type: true },
+        select: { id: true, type: true, storageKey: true, driveFileId: true, localPath: true },
       });
 
       const t = doc.type?.toUpperCase();
@@ -2001,18 +2131,13 @@ documentsRouter.get(
         return;
       }
 
-      if (!doc.localPath) {
-        res.status(404).json({ error: 'Archivo no disponible' });
+      if (!doc.storageKey && !doc.driveFileId && !doc.localPath) {
+        res.status(404).json({ error: 'Archivo Excel no disponible' });
         return;
       }
 
-      const filePath = resolveFilePath(doc.localPath);
-      if (!fs.existsSync(filePath)) {
-        res.status(404).json({ error: 'Archivo no encontrado en disco' });
-        return;
-      }
-
-      const wb = XLSX.readFile(filePath);
+      const xlsxBuffer = await downloadDocumentBuffer(doc);
+      const wb = XLSX.read(xlsxBuffer);
       const sheetName = wb.SheetNames[0];
       if (!sheetName) {
         res.json({ columns: [], rows: [], sheetNames: wb.SheetNames });
@@ -2079,7 +2204,7 @@ documentsRouter.post(
 
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
-        select: { id: true, name: true, type: true, localPath: true, version: true, ownerId: true },
+        select: { id: true, name: true, type: true, groupId: true, storageKey: true, driveFileId: true, localPath: true, version: true, ownerId: true },
       });
 
       const headers = tableData.columns.map((c: any) => c.name);
@@ -2091,24 +2216,20 @@ documentsRouter.post(
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Datos');
 
-      const uploadDir = path.join(process.cwd(), 'uploads');
-      await mkdir(uploadDir, { recursive: true });
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const filePath = path.join(uploadDir, `${uniqueSuffix}.xlsx`);
-      XLSX.writeFile(wb, filePath);
-
-      const fileSize = fs.statSync(filePath).size;
+      // Generar XLSX como buffer en memoria
+      const xlsxBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+      const fileSize = xlsxBuf.byteLength;
 
       if (createVersion) {
         const newVersion = doc.version + 1;
         await prisma.$transaction([
           prisma.document.update({
             where: { id: docId },
-            data: { localPath: filePath, size: BigInt(fileSize), version: newVersion, updatedAt: new Date() },
+            data: { size: BigInt(fileSize), version: newVersion, updatedAt: new Date() },
           }),
           prisma.documentVersion.create({
             data: {
-              documentId: docId, version: newVersion, localPath: filePath,
+              documentId: docId, version: newVersion,
               size: BigInt(fileSize), changeNote: changeNote || `Tabla guardada v${newVersion}`,
               createdBy: req.user!.id,
             } as any,
@@ -2123,16 +2244,26 @@ documentsRouter.post(
         ]);
 
         let syncResult = null;
+        const dKey = docKey(doc.groupId, doc.id, doc.type);
+        const vKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
         try {
-          const driveReady = await verifyCredentials();
-          if (driveReady) syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
-        } catch (e) { syncResult = { ok: false, error: (e as Error).message }; }
+          const storage = getStorageProvider();
+          if (doc.storageKey) await storage.copy(doc.storageKey, vKey);
+          else await storage.upload(vKey, xlsxBuf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          await storage.update(dKey, xlsxBuf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          await prisma.document.update({ where: { id: docId }, data: { storageKey: dKey, syncStatus: 'completed', lastSyncAt: new Date() } });
+          await prisma.documentVersion.updateMany({ where: { documentId: docId, version: newVersion }, data: { storageKey: vKey } as any });
+          syncResult = { ok: true };
+        } catch (e) {
+          await prisma.document.update({ where: { id: docId }, data: { syncStatus: 'failed' } });
+          syncResult = { ok: false, error: (e as Error).message };
+        }
 
         res.json(serializeBigInt({ ok: true, version: newVersion, size: fileSize, syncResult }));
       } else {
         await prisma.document.update({
           where: { id: docId },
-          data: { localPath: filePath, size: BigInt(fileSize), updatedAt: new Date() },
+          data: { size: BigInt(fileSize), updatedAt: new Date() },
         });
 
         await prisma.activityLog.create({
@@ -2145,9 +2276,15 @@ documentsRouter.post(
 
         let syncResult = null;
         try {
-          const driveReady = await verifyCredentials();
-          if (driveReady) syncResult = await syncDocumentToDrive(docId, req.user!.id, changeNote, { skipNewVersion: true });
-        } catch (e) { syncResult = { ok: false, error: (e as Error).message }; }
+          const storage = getStorageProvider();
+          const dKey = docKey(doc.groupId, doc.id, doc.type);
+          await storage.update(dKey, xlsxBuf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          await prisma.document.update({ where: { id: docId }, data: { storageKey: dKey, syncStatus: 'completed', lastSyncAt: new Date() } });
+          syncResult = { ok: true };
+        } catch (e) {
+          await prisma.document.update({ where: { id: docId }, data: { syncStatus: 'failed' } });
+          syncResult = { ok: false, error: (e as Error).message };
+        }
 
         res.json(serializeBigInt({ ok: true, version: doc.version, size: fileSize, syncResult }));
       }
@@ -2242,21 +2379,10 @@ documentsRouter.get(
   },
 );
 
-// ─── POST /api/documents/:id/upload-pdf ───────────────────────────────────────
-// Recibe un PDF ya generado (client-side o server-side) y lo persiste enlazado al documento.
-// El cliente genera el PDF con fidelidad (jsPDF+html2canvas / SuperDoc export) y lo sube aquí.
-const pdfUploadStorage = multer.diskStorage({
-  destination: async (_req, _file, cb) => {
-    const dir = path.join(process.cwd(), 'uploads', 'pdfs');
-    await mkdir(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, _file, cb) => {
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}.pdf`);
-  },
-});
+// ─── POST /api/documents/:id/upload-pdf ─────────────────────────────────────
+// Recibe un PDF en RAM y lo sube a Drive (pdfUpload ahora usa memoryStorage).
 const pdfUpload = multer({
-  storage: pdfUploadStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'application/pdf' || file.originalname.endsWith('.pdf')) {
@@ -2284,17 +2410,17 @@ documentsRouter.post(
 
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
-        select: { id: true, name: true, type: true },
+        select: { id: true, name: true, type: true, groupId: true },
       });
 
       const baseName = doc.name.replace(/\.(docx?|pdf)$/i, '');
       const pdfName = `${baseName}.pdf`;
 
+      // Crear registro primero para obtener el ID
       const pdfRecord = await (prisma as any).documentPdf.create({
         data: {
           documentId: docId,
           name: pdfName,
-          localPath: req.file.path,
           size: BigInt(req.file.size),
           source,
           createdBy: req.user!.id,
@@ -2303,6 +2429,20 @@ documentsRouter.post(
           creator: { select: { id: true, name: true } },
         },
       });
+
+      // Subir PDF a R2 (best-effort)
+      try {
+        const storage = getStorageProvider();
+        const key = pdfKey(doc.groupId, docId, pdfRecord.id);
+        await storage.upload(key, req.file.buffer, 'application/pdf');
+        await (prisma as any).documentPdf.update({
+          where: { id: pdfRecord.id },
+          data: { storageKey: key },
+        });
+        (pdfRecord as any).storageKey = key;
+      } catch (e) {
+        console.error('[PDF Upload] Error al subir PDF a R2:', (e as Error).message);
+      }
 
       await prisma.activityLog.create({
         data: {
@@ -2364,14 +2504,19 @@ documentsRouter.get(
         where: { id: pdfId, documentId: docId },
       });
 
-      if (!pdfRecord.localPath || !fs.existsSync(pdfRecord.localPath)) {
+      if (!pdfRecord.storageKey && !pdfRecord.driveFileId && !pdfRecord.localPath) {
         res.status(404).json({ error: 'Archivo PDF no disponible' });
         return;
       }
 
+      const pdfBuffer = await downloadDocumentBuffer({
+        storageKey: pdfRecord.storageKey,
+        driveFileId: pdfRecord.driveFileId,
+        localPath: pdfRecord.localPath,
+      });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdfRecord.name)}"`);
-      res.sendFile(path.resolve(pdfRecord.localPath));
+      res.send(pdfBuffer);
     } catch (error) {
       next(error);
     }
@@ -2405,9 +2550,13 @@ documentsRouter.delete(
         return;
       }
 
-      // Borrar archivo del disco (mejor esfuerzo)
-      if (pdfRecord.localPath && fs.existsSync(pdfRecord.localPath)) {
-        try { fs.unlinkSync(pdfRecord.localPath); } catch { /* ignorar */ }
+      // Borrar de R2 y Drive (mejor esfuerzo)
+      if (pdfRecord.storageKey) {
+        getStorageProvider().delete(pdfRecord.storageKey).catch(() => {});
+      }
+      if (pdfRecord.driveFileId) {
+        const { deleteFile } = await import('../lib/googleDrive.js');
+        deleteFile(pdfRecord.driveFileId).catch(() => {});
       }
 
       await (prisma as any).documentPdf.delete({ where: { id: pdfId } });

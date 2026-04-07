@@ -18,13 +18,10 @@ import {
     getRevisions,
     downloadRevision,
     verifyCredentials,
+    createResumableUploadSession,
 } from '../lib/googleDrive.js';
-import path from 'path';
-import fs from 'fs';
 
 export const driveRouter = Router();
-
-const UPLOADS_DIR = path.resolve('uploads');
 
 const oauthStateMap = new Map<string, string>();
 
@@ -137,14 +134,22 @@ function getMimeType(docType: string): string {
 }
 
 export type SyncDocumentToDriveOptions = {
-    /** Si true, no crea nueva versión ni incrementa; solo sube a Drive y actualiza campos. Usado desde POST /documents/:id/save */
+    /** Si true, no crea nueva versión ni incrementa; solo sube a Drive y actualiza campos. */
     skipNewVersion?: boolean;
 };
 
-// Usado por POST /api/drive/sync/:id y por POST /api/documents/:id/save.
+/**
+ * Sincroniza un documento con Google Drive.
+ * @param documentId  UUID del documento en BD.
+ * @param userId      UUID del usuario que dispara la acción.
+ * @param content     Buffer con el contenido del archivo. Si se omite se lanza error.
+ * @param changeNote  Nota de cambio opcional para la nueva versión.
+ * @param options     Opciones adicionales.
+ */
 export async function syncDocumentToDrive(
     documentId: string,
     userId: string,
+    content: Buffer,
     changeNote?: string,
     options: SyncDocumentToDriveOptions = {},
 ): Promise<{ ok: boolean; driveFileId: string; driveRevisionId: string | null; version: number }> {
@@ -154,23 +159,10 @@ export async function syncDocumentToDrive(
         where: { id: documentId },
         select: {
             id: true, name: true, type: true,
-            localPath: true, driveFileId: true, version: true,
+            driveFileId: true, version: true,
         },
     });
 
-    if (!doc.localPath) {
-        throw new Error('El documento no tiene archivo local para sincronizar.');
-    }
-
-    const filePath = path.isAbsolute(doc.localPath)
-        ? doc.localPath
-        : path.join(UPLOADS_DIR, doc.localPath);
-
-    if (!fs.existsSync(filePath)) {
-        throw new Error('Archivo local no encontrado en el servidor.');
-    }
-
-    const content = fs.readFileSync(filePath);
     const mimeType = getMimeType(doc.type);
     const convenioLinksCount = await prisma.convenioDocument.count({
         where: { documentId },
@@ -302,10 +294,41 @@ driveRouter.get('/status', async (_req: Request, res: Response, next: NextFuncti
     }
 });
 
+// ─── POST /api/drive/upload-url ───────────────────────────────────────────────
+// Inicia sesión resumable en Drive para subida directa cliente→Drive.
+// Flujo: 1) cliente pide URL, 2) backend abre sesión en Drive y responde {uploadUrl, fileId},
+// 3) cliente hace PUT <uploadUrl> con el binario directamente.
+
+const uploadUrlSchema = z.object({
+    name: z.string().min(1).max(500),
+    mimeType: z.string().min(1),
+    folderId: z.string().optional(),
+});
+
+driveRouter.post(
+    '/upload-url',
+    validate(uploadUrlSchema),
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { name, mimeType, folderId } = req.body as z.infer<typeof uploadUrlSchema>;
+
+            const driveReady = await verifyCredentials();
+            if (!driveReady) {
+                res.status(503).json({ error: 'Google Drive no está configurado o no está disponible.' });
+                return;
+            }
+
+            const session = await createResumableUploadSession(name, mimeType, folderId);
+            res.json({ uploadUrl: session.uploadUrl, fileId: session.fileId });
+        } catch (error) {
+            next(error);
+        }
+    },
+);
+
 // ─── POST /api/drive/sync/:documentId ───────────────────────────────────────
-// Sube el archivo local del documento a Google Drive.
-// Si ya tiene driveFileId, actualiza; si no, crea nuevo.
-// Ahora delega en syncDocumentToDrive() para DRY.
+// Sube el archivo (buffer en base64) a Google Drive.
+// El body debe contener: { content: string (base64), changeNote?: string }
 
 driveRouter.post(
     '/sync/:documentId',
@@ -313,14 +336,25 @@ driveRouter.post(
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
+            const docId = Array.isArray(documentId) ? documentId[0] : documentId;
+
+            // El contenido del archivo debe venir como base64 en el body
+            // (para sincronización manual desde editor cuando el cliente ya tiene el buffer)
+            if (!req.body.content) {
+                res.status(400).json({ error: 'Se requiere el campo "content" (base64) con el contenido del archivo.' });
+                return;
+            }
+            const content = Buffer.from(req.body.content, 'base64');
+
             const result = await syncDocumentToDrive(
-                Array.isArray(documentId) ? documentId[0] : documentId,
+                docId,
                 req.user!.id,
+                content,
                 req.body.changeNote,
             );
             res.json({ ...result, lastSyncAt: new Date().toISOString() });
         } catch (error: any) {
-            if (error.message?.includes('no tiene archivo local') || error.message?.includes('no encontrado')) {
+            if (error.message?.includes('no tiene archivo')) {
                 res.status(400).json({ error: error.message });
                 return;
             }
@@ -329,8 +363,10 @@ driveRouter.post(
     },
 );
 
+
 // ─── GET /api/drive/sync/:documentId ────────────────────────────────────────
-// Descarga la versión en Drive y actualiza el archivo local.
+// Pull desde Drive: ya NO escribe en disco del servidor.
+// Solo actualiza la marca de sincronización en BD.
 
 driveRouter.get(
     '/sync/:documentId',
@@ -338,9 +374,10 @@ driveRouter.get(
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
+            const docId = Array.isArray(documentId) ? documentId[0] : documentId;
             const doc = await prisma.document.findUniqueOrThrow({
-                where: { id: documentId },
-                select: { id: true, name: true, type: true, localPath: true, driveFileId: true },
+                where: { id: docId },
+                select: { id: true, driveFileId: true },
             });
 
             if (!doc.driveFileId) {
@@ -348,20 +385,14 @@ driveRouter.get(
                 return;
             }
 
-            const content = await downloadFile(doc.driveFileId);
-
-            const fileName = `${doc.id}.${doc.type}`;
-            const localPath = path.join(UPLOADS_DIR, fileName);
-            fs.writeFileSync(localPath, content);
-
             await prisma.document.update({
-                where: { id: documentId },
-                data: { localPath: fileName, lastSyncAt: new Date(), syncStatus: 'completed' },
+                where: { id: docId },
+                data: { lastSyncAt: new Date(), syncStatus: 'completed' },
             });
 
             await prisma.documentSyncLog.create({
                 data: {
-                    documentId,
+                    documentId: docId,
                     userId: req.user!.id,
                     operation: 'update',
                     status: 'completed',
@@ -369,12 +400,18 @@ driveRouter.get(
                 },
             });
 
-            res.json({ ok: true, localPath: fileName, lastSyncAt: new Date().toISOString() });
+            res.json({
+                ok: true,
+                driveFileId: doc.driveFileId,
+                lastSyncAt: new Date().toISOString(),
+                message: 'Sync actualizado. El archivo se obtiene directamente desde Drive.',
+            });
         } catch (error) {
             next(error);
         }
     },
 );
+
 
 // ─── GET /api/drive/revisions/:documentId ───────────────────────────────────
 // Lista las revisiones del documento en Google Drive.
