@@ -282,7 +282,9 @@ model Document {
   name      String       @db.VarChar(500)
   type      DocumentType
   size      BigInt       @default(0)
+  /// @deprecated — Usar storageKey (R2). Conservado para archivos pre-migración en disco.
   localPath String?      @map("local_path")
+  /// @deprecated — Usar storageKey (R2). Conservado para archivos pre-migración en Drive.
   cloudUrl  String?      @map("cloud_url")
   ownerId   String?      @map("owner_id") @db.Uuid
   groupId   String?      @map("group_id") @db.Uuid
@@ -305,8 +307,13 @@ model Document {
   tags        String[]
   mimeType    String?  @map("mime_type") @db.VarChar(255)
 
-  // ─── Google Drive Sync ────────────────────────────────────────────────
+  // ─── Storage (R2 / Drive legacy) ─────────────────────────────────────
+  /// Clave del objeto en Cloudflare R2 (fuente principal post-migración).
+  /// Formato: "docs/{groupId}/{documentId}.{ext}"
+  storageKey      String?    @map("storage_key") @db.VarChar(512)
+  /// @deprecated — Solo para archivos pre-migración R2. Usar storageKey.
   driveFileId     String?    @map("drive_file_id") @db.VarChar(255)
+  /// @deprecated — Identificador de revisión en Drive (para auditoría legacy).
   driveRevisionId String?    @map("drive_revision_id") @db.VarChar(255)
   lastSyncAt      DateTime?  @map("last_sync_at") @db.Timestamptz()
   syncStatus      SyncStatus @default(pending) @map("sync_status")
@@ -407,8 +414,13 @@ model DocumentVersion {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   documentId String   @map("document_id") @db.Uuid
   version    Int
+  /// @deprecated — Usar storageKey (R2). Conservado para versiones pre-cloud en disco.
   localPath  String?  @map("local_path")
+  /// @deprecated — Usar storageKey (R2). driveFileId de la versión en Drive.
   cloudUrl   String?  @map("cloud_url")
+  /// Clave del snapshot físico en R2 para esta versión.
+  /// Formato: "versions/{groupId}/{documentId}/v{N}.{ext}"
+  storageKey String?  @map("storage_key") @db.VarChar(512)
   size       BigInt   @default(0)
   checksum   String?  @db.VarChar(128)
   changeNote String?  @map("change_note")
@@ -591,8 +603,12 @@ model Backup {
   name           String       @db.VarChar(500)
   type           String       @default("full") @db.VarChar(50)
   status         BackupStatus @default(pending)
+  /// @deprecated — Usar storageKey (R2). Ruta en disco para respaldos legacy.
   filePath       String?      @map("file_path")
+  /// @deprecated — Usar storageKey (R2). driveFileId del zip en Drive.
   cloudUrl       String?      @map("cloud_url")
+  /// Clave del archivo ZIP en R2. Formato: "backups/{name}.zip"
+  storageKey     String?      @map("storage_key") @db.VarChar(512)
   size           BigInt?
   checksum       String?      @db.VarChar(128)
   documentsCount Int?         @default(0) @map("documents_count")
@@ -832,7 +848,12 @@ model DocumentPdf {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   documentId String   @map("document_id") @db.Uuid
   name       String   @db.VarChar(500)
-  localPath  String   @map("local_path")
+  /// @deprecated — Usar storageKey (R2). Ruta en disco para PDFs pre-migración.
+  localPath  String?  @map("local_path")
+  /// @deprecated — driveFileId del PDF en Drive (pre-migración R2).
+  driveFileId String? @map("drive_file_id") @db.VarChar(255)
+  /// Clave del objeto PDF en R2. Formato: "pdfs/{groupId}/{documentId}/{pdfId}.pdf"
+  storageKey String?  @map("storage_key") @db.VarChar(512)
   size       BigInt   @default(0)
   source     String   @default("manual") @db.VarChar(20) // 'manual' | 'share'
   createdBy  String?  @map("created_by") @db.Uuid
