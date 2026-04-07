@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
-import { uploadFileStream } from './googleDrive.js';
+import { getStorageProvider, backupKey } from './storage/index.js';
 
 
 const execAsync = promisify(exec);
@@ -150,27 +150,23 @@ export async function generateSystemBackup(
 
             const stats = fs.statSync(zipFilePath);
 
-            // 3. Upload to Google Drive
+            // 3. Subir ZIP a R2 usando upload por stream (evita OOM con archivos grandes)
             activeBackupsProgress.set(backupRecord.id, 75);
-            const folderId = process.env.GOOGLE_DRIVE_FOLDER_BACKUPS;
-            const driveResult = await uploadFileStream(
-                zipFileName,
-                'application/zip',
-                zipFilePath,
-                folderId
-            );
+            const storage = getStorageProvider();
+            const bKey = backupKey(backupRecord.name);
+            const zipStream = fs.createReadStream(zipFilePath);
+            await storage.uploadStream(bKey, zipStream as any, 'application/zip', stats.size);
 
-            // Cleanup local files after successful upload
+            // Limpiar archivos temporales tras subida exitosa
             if (fs.existsSync(dbDumpPath)) fs.unlinkSync(dbDumpPath);
             if (fs.existsSync(zipFilePath)) fs.unlinkSync(zipFilePath);
 
-            // Update successful record
             await prisma.backup.update({
                 where: { id: backupRecord.id },
                 data: {
                     status: 'completed',
                     size: stats.size,
-                    cloudUrl: driveResult.driveFileId,
+                    storageKey: bKey,
                     completedAt: new Date(),
                 },
             });
