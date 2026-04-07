@@ -1110,6 +1110,28 @@ export const backupsApi = {
   }
 };
 
+// ─── COMPARTIDOS RECIENTEMENTE ──────────────────────────────────────────
+
+export interface RecentlySharedItem {
+  logId: string;
+  entityId: string;
+  entityType: 'document' | 'convenio';
+  entityName: string;
+  entitySubtype?: string;   // tipo del archivo: DOCX, PDF, XLSX, CONVENIO
+  entityStatus?: string;    // fileStatus / estado
+  sharedWith: string;       // email, teléfono u otro identificador
+  shareMethod: 'email' | 'whatsapp' | 'link' | 'system' | 'other';
+  note?: string | null;
+  sharedAt: string;
+  sharedBy: { id: string; name: string; avatarUrl?: string | null } | null;
+}
+
+export const sharesApi = {
+  /** Lista los shares recientes del usuario (y su equipo si es parte de un grupo) */
+  listRecent: (limit = 10): Promise<{ data: RecentlySharedItem[] }> =>
+    apiFetch<{ data: RecentlySharedItem[] }>(`/documents/recently-shared?limit=${limit}`),
+};
+
 // ─── ABIERTO RECIENTEMENTE ──────────────────────────────────────────────
 
 export interface RecentlyOpenedItem {

@@ -3,7 +3,7 @@ import { Document, FileStatus, ShareMethod } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
-import { assignmentsApi, documentsApi, recentlyOpenedApi, activityApi, type ApiDocumentAssignment, type RecentlyOpenedItem, type ApiActivityLog } from "../lib/api";
+import { assignmentsApi, documentsApi, recentlyOpenedApi, activityApi, sharesApi, type ApiDocumentAssignment, type RecentlyOpenedItem, type ApiActivityLog, type RecentlySharedItem } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { matchesSearch } from "../lib/documentSearch";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
@@ -47,6 +47,7 @@ import {
   MessageCircle,
   Link2,
   Share2,
+  UserCheck,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -251,6 +252,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
   const [recentlyOpened, setRecentlyOpened] = useState<RecentlyOpenedItem[]>([]);
   const [recentlyOpenedLoading, setRecentlyOpenedLoading] = useState(false);
+  const [recentlyShared, setRecentlyShared] = useState<RecentlySharedItem[]>([]);
+  const [recentlySharedLoading, setRecentlySharedLoading] = useState(false);
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
   // Onboarding: show wizard to new users
@@ -294,6 +297,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     refreshRecentlyOpened();
   }, [refreshRecentlyOpened]);
+
+  // ── Compartidos recientemente ────────────────────────────────────────────
+  const refreshRecentlyShared = useCallback(() => {
+    setRecentlySharedLoading(true);
+    sharesApi
+      .listRecent(10)
+      .then((res) => setRecentlyShared(res.data ?? []))
+      .catch(() => setRecentlyShared([]))
+      .finally(() => setRecentlySharedLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refreshRecentlyShared();
+    // Polling cada 90s para actualizar shares del equipo
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') refreshRecentlyShared();
+    }, 90_000);
+    return () => clearInterval(interval);
+  }, [refreshRecentlyShared]);
 
   // ── Actividad reciente de documentos (polling 60s) ─────────────────────
   const [recentActivity, setRecentActivity] = useState<ApiActivityLog[]>([]);
@@ -631,9 +653,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           />
         </div>
 
-        {/* ── Pendientes | Abierto recientemente (50/50) ───────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SectionCard title="Pendientes" noPadding className="min-h-[200px] flex flex-col">
+        {/* ── Pendientes | Abierto | Compartidos (1/3 c/u) ─────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SectionCard title="Pendientes" noPadding className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col">
               {loading || assignmentsLoading ? (
                 <div className="p-5 space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -755,7 +777,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <SectionCard
             title="Abierto recientemente"
             noPadding
-            className="min-h-[200px] flex flex-col"
+            className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col"
             action={
               <button
                 type="button"
@@ -852,10 +874,123 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
             </SectionCard>
-        </div>
 
+          {/* ── Compartidos recientemente ──────────────────────────────────── */}
+          <SectionCard
+            title="Compartidos recientemente"
+            noPadding
+            className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col"
+            action={
+              <button
+                type="button"
+                onClick={refreshRecentlyShared}
+                className="text-xs text-slate-400 hover:text-primary transition-colors"
+                aria-label="Actualizar"
+              >
+                <History className="w-3.5 h-3.5" />
+              </button>
+            }
+          >
+              {recentlySharedLoading ? (
+                <div className="py-3 px-5 space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="w-7 h-7 rounded-md shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3 w-3/4 rounded" />
+                        <Skeleton className="h-2.5 w-1/3 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : recentlyShared.length === 0 ? (
+                <div className="py-8 px-6 text-center">
+                  <UserCheck className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Sin compartidos
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                  {recentlyShared.map((item) => {
+                    const isConvenio = item.entityType === 'convenio' || item.entitySubtype === 'CONVENIO';
+                    const { Icon: TypeIcon, color: typeColor, bg: typeBg } = isConvenio
+                      ? { Icon: ScrollText, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" }
+                      : getFileTypeIcon(item.entitySubtype ?? 'DOCX');
 
-        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
+                    const sharedAgo = (() => {
+                      const diff = Date.now() - new Date(item.sharedAt).getTime();
+                      const mins = Math.floor(diff / 60000);
+                      const hrs = Math.floor(mins / 60);
+                      const days = Math.floor(hrs / 24);
+                      if (days > 0) return `Hace ${days}d`;
+                      if (hrs > 0) return `Hace ${hrs}h`;
+                      if (mins > 0) return `Hace ${mins}m`;
+                      return 'Ahora';
+                    })();
+
+                    // Badge de método de compartido simplificado
+                    const methodBadge: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
+                      email: { label: 'Email', icon: <Mail className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
+                      whatsapp: { label: 'WhatsApp', icon: <MessageCircle className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' },
+                      link: { label: 'Enlace', icon: <Link2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800' },
+                      system: { label: 'Sistema', icon: <Share2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' },
+                      other: { label: 'Otro', icon: <Share2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' },
+                    };
+                    const badge = methodBadge[item.shareMethod] ?? methodBadge.other;
+
+                    // Contact display minificado
+                    const genericPatterns = ['compartido via', 'enlace copiado', 'compartido', 'via sistema'];
+                    const isGenericContact = genericPatterns.some(p => item.sharedWith.toLowerCase().includes(p));
+                    const contactDisplay = isGenericContact
+                      ? badge.label
+                      : item.sharedWith.length > 12 ? item.sharedWith.substring(0, 10) + '…' : item.sharedWith;
+
+                    return (
+                      <div
+                        key={`share-${item.logId}`}
+                        onClick={() => {
+                          if (isConvenio) navigate(`/convenios/${item.entityId}`);
+                          else navigate(getDocumentRoute(item.entityId, item.entitySubtype));
+                        }}
+                        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (isConvenio) navigate(`/convenios/${item.entityId}`);
+                            else navigate(getDocumentRoute(item.entityId, item.entitySubtype));
+                          }
+                        }}
+                      >
+                        <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
+                          <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate leading-tight flex items-center gap-1.5">
+                            <span className="truncate">{item.entityName}</span>
+                            <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-semibold border ${badge.cls} shrink-0`} title={item.sharedWith}>
+                              {badge.icon}
+                              {contactDisplay}
+                            </span>
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                            {sharedAgo}
+                            <span className="text-slate-300 dark:text-slate-600">·</span>
+                            <UserCheck className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{item.sharedBy ? item.sharedBy.name.split(' ')[0] : "Sistema"}</span>
+                          </p>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+          </SectionCard>
+        </div>        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
           <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
             <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
           </div>

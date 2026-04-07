@@ -501,6 +501,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [isEditingCurrentVersionNote, setIsEditingCurrentVersionNote] = useState(false);
   const [isSavingVersionNote, setIsSavingVersionNote] = useState(false);
   const versionLoadRequestRef = useRef(0);
+  // Tracks which version is currently loaded in the editor ('current' = latest, or a version id)
+  const [activeVersionId, setActiveVersionId] = useState<string>('current');
 
   // Diff data
   const [diffHtml, setDiffHtml] = useState<string | null>(null);
@@ -790,6 +792,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // ─── Load document blob for SuperDoc ─────────────────────────────────
   const docId = doc?.id;
   const docLocalPath = doc?.localPath;
+  const docDriveFileId = doc?.driveFileId;
   const docType = doc?.type;
 
   const loadDocumentBlobFromUrl = useCallback(async (url: string, errorMessage: string) => {
@@ -818,15 +821,18 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   }, []);
 
   useEffect(() => {
-    if (!docId || !docLocalPath) return;
+    // Cargar blob si el doc está disponible: en Drive (driveFileId) o en disco legado (localPath)
+    if (!docId) return;
     const isDocx = docType?.toLowerCase() === 'docx' || docType?.toLowerCase() === 'doc';
     if (!isDocx) return;
+    // Solo cargar si hay fuente disponible
+    if (!docDriveFileId && !docLocalPath) return;
 
     loadDocumentBlobFromUrl(getDocumentFileUrl(docId), 'No se pudo cargar el documento').catch((err) => {
       console.error('Error loading document blob:', err);
       setError('Error al cargar el archivo para edición');
     });
-  }, [docId, docLocalPath, docType, loadDocumentBlobFromUrl]);
+  }, [docId, docDriveFileId, docLocalPath, docType, loadDocumentBlobFromUrl]);
 
   useEffect(() => {
     if (!doc) {
@@ -899,9 +905,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             const freshDoc = await documentsApi.get(documentId);
             setDoc(freshDoc);
           } catch { /* ignorar error en refresh */ }
+          // Volver al estado "versión actual" tras crear una nueva versión
+          setActiveVersionId('current');
         } else {
           // Guardado normal: actualizar localmente sin ningún fetch
           setDoc(prev => prev ? { ...prev, updatedAt: new Date().toISOString(), size: String(res.size) } : prev);
+          setActiveVersionId('current');
         }
       } else {
         throw new Error(res.syncResult?.error || 'Error al guardar');
@@ -940,6 +949,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   const handleLoadVersion = async (versionId: string) => {
     if (!documentId) return;
+    setActiveVersionId(versionId);
     if (versionId === 'current') {
       try {
         await Promise.all([
@@ -1139,7 +1149,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const isDocx = doc ? (doc.type?.toUpperCase() === 'DOCX' || doc.type?.toUpperCase() === 'DOC') : false;
   const isPdf = doc?.mimeType === 'application/pdf';
   const isImage = doc?.mimeType?.startsWith('image/');
-  const canUseSuperdoc = isDocx && doc?.localPath;
+  // Documento disponible para edición: tiene archivo en Drive (nuevo) o en disco (legado)
+  const canUseSuperdoc = isDocx && (doc?.driveFileId || doc?.localPath);
 
   useLayoutEffect(() => {
     if (loading || error || !doc) {
@@ -1736,8 +1747,36 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               )}
             </div>
             {lgUp ? renderDocNameControl('sidebar') : null}
-            <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
-            {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
+
+            {/* Show metadata for the actively viewed version */}
+            {(() => {
+              if (activeVersionId === 'current') {
+                return (
+                  <>
+                    <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
+                    {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
+                  </>
+                );
+              }
+              const activeVersion = versions.find(v => v.id === activeVersionId);
+              if (activeVersion) {
+                return (
+                  <>
+                    <p className="text-gray-500 text-sm mt-1">
+                      v{activeVersion.version} — {formatFileSize(activeVersion.size)}
+                      <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold align-middle">Vista previa</span>
+                    </p>
+                    {activeVersion.creator && <p className="text-gray-400 text-xs mt-1">Por: {activeVersion.creator.name}</p>}
+                  </>
+                );
+              }
+              return (
+                <>
+                  <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
+                  {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
+                </>
+              );
+            })()}
           </div>
           <nav className="flex flex-col gap-2 grow">
             {([
