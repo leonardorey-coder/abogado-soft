@@ -140,3 +140,9 @@ mark {
   background: linear-gradient(120deg, #78350f 0%, #92400e 100%);
   color: #fde68a;
 }
+
+/* ─── DraftBanner animation ─── */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
