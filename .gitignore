@@ -41,3 +41,7 @@ abogadosoft-600baea8efc9.json
 
 # Respaldos de prueba de documentos en google drive
 backend/backups/
+
+# BD: dumps con datos locales (no versionar)
+infra/db/data.sql
+infra/db/full_dump.sql
