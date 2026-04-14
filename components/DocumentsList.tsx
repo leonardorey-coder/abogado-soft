@@ -11,9 +11,9 @@ import {
 } from "../lib/api";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
 import { getDocumentRoute } from "../lib/routes";
-import { documentSyncVisual } from "../lib/documentSyncUi";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
 import type { AppLayoutOutletContext } from "./AppLayout";
+import { SaveStatusBadge } from "./SaveStatusBadge";
 import { ShareModal } from "./ShareModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
 import { AssignModal } from "./AssignModal";
@@ -381,35 +381,6 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     handleDocumentOpen(doc);
   };
 
-  const renderSyncCell = (doc: Document) => {
-    const v = documentSyncVisual(doc);
-    if (v === "completed") {
-      return (
-        <span className="material-symbols-outlined text-green-500 text-lg" title="Sincronizado con Drive">
-          cloud_done
-        </span>
-      );
-    }
-    if (v === "syncing") {
-      return (
-        <span className="material-symbols-outlined text-amber-500 text-lg animate-pulse" title="Sincronizando…">
-          cloud_sync
-        </span>
-      );
-    }
-    if (v === "failed") {
-      return (
-        <span className="material-symbols-outlined text-red-500 text-lg" title="Error de sincronización">
-          cloud_off
-        </span>
-      );
-    }
-    return (
-      <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-lg" title="Sin sincronizar">
-        cloud_upload
-      </span>
-    );
-  };
 
   const statusButtons = (doc: Document) => {
     const canEdit = hasWritePermission(doc.currentUserPermission);
@@ -607,7 +578,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                     Estado
                   </th>
                   <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[8%] text-center">
-                    Sync
+                    Guardado
                   </th>
                   <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%] text-right">
                     Acciones
@@ -699,7 +670,22 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                                 {doc.lastModified}
                               </td>
                               <td className="px-6 py-4 text-center">{statusButtons(doc)}</td>
-                              <td className="px-6 py-4 text-center">{renderSyncCell(doc)}</td>
+                              <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                                <SaveStatusBadge
+                                  compact
+                                  hasChanges={false}
+                                  isSaving={false}
+                                  lastSavedAt={doc.lastSyncAt ?? null}
+                                  remoteSyncOk={
+                                    doc.syncStatus === 'completed'
+                                      ? true
+                                      : doc.syncStatus === 'failed'
+                                      ? false
+                                      : null
+                                  }
+                                  hasLocalHandle={false}
+                                />
+                              </td>
                               <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                 <div className="inline-flex items-center justify-end gap-1">
                                   <button
@@ -804,8 +790,23 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                               <span className="text-sm font-semibold text-slate-900 dark:text-white">{doc.type}</span>
                             </div>
                             <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">Sync</span>
-                              {renderSyncCell(doc)}
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Guardado</span>
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <SaveStatusBadge
+                                  compact
+                                  hasChanges={false}
+                                  isSaving={false}
+                                  lastSavedAt={doc.lastSyncAt ?? null}
+                                  remoteSyncOk={
+                                    doc.syncStatus === 'completed'
+                                      ? true
+                                      : doc.syncStatus === 'failed'
+                                      ? false
+                                      : null
+                                  }
+                                  hasLocalHandle={false}
+                                />
+                              </div>
                             </div>
                             <div className="flex justify-center pt-1">{statusButtons(doc)}</div>
                           </div>

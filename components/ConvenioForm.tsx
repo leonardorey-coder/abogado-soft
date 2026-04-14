@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { conveniosApi, ApiConvenio } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
+import { useDraftForm } from "../lib/useDraftForm";
+import { DraftBanner } from "./DraftBanner";
 
 const inputClass =
     "w-full bg-background-light dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] rounded-xl px-4 py-3 text-[#111318] dark:text-white font-medium focus:border-primary focus:ring-0 transition-all";
@@ -9,6 +12,8 @@ export const ConvenioForm: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
+    const { user: authUser } = useAuth();
+    const [isRestoringDraft, setIsRestoringDraft] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(isEditing);
@@ -27,6 +32,33 @@ export const ConvenioForm: React.FC = () => {
         notas: "",
         monto: "",
     });
+
+    // ─── Draft recovery ──────────────────────────────────────────────────
+    const { hasDraft, draftMeta, saveDraft, clearDraft, restoreForm } = useDraftForm<typeof formData>({
+        userId: authUser?.id ?? null,
+        resourceId: id ?? 'new',
+        label: formData.numero || (isEditing ? 'Convenio' : 'Nuevo convenio'),
+        type: 'convenio-form',
+        enabled: true,
+    });
+
+    const handleRestoreDraft = useCallback(async () => {
+        setIsRestoringDraft(true);
+        try {
+            const data = await restoreForm();
+            if (data) {
+                setFormData(data);
+                setHasChanges(true);
+            }
+        } finally {
+            setIsRestoringDraft(false);
+        }
+    }, [restoreForm]);
+
+    const handleDiscardDraft = useCallback(async () => {
+        await clearDraft();
+    }, [clearDraft]);
+    // ────────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         if (isEditing && id) {
@@ -50,12 +82,16 @@ export const ConvenioForm: React.FC = () => {
         }
     }, [id, isEditing]);
 
-    const handleChange = (
+    const handleChange = useCallback((
         e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
     ) => {
-        setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+        setFormData((prev) => {
+            const next = { ...prev, [e.target.name]: e.target.value };
+            saveDraft(next);
+            return next;
+        });
         setHasChanges(true);
-    };
+    }, [saveDraft]);
 
     // Auto-save logic
     const formDataRef = useRef(formData);
@@ -105,9 +141,11 @@ export const ConvenioForm: React.FC = () => {
             if (isEditing && id) {
                 delete payload.numero;
                 const res = await conveniosApi.update(id, payload);
+                await clearDraft();
                 navigate(`/convenio/${res.id}`);
             } else {
                 const res = await conveniosApi.create(payload);
+                await clearDraft();
                 navigate(`/convenio/${res.id}`);
             }
         } catch (err: any) {
@@ -128,6 +166,18 @@ export const ConvenioForm: React.FC = () => {
 
     return (
         <main className="max-w-[800px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
+            {/* Draft recovery banner */}
+            {hasDraft && draftMeta && (
+                <DraftBanner
+                    savedAt={draftMeta.savedAt}
+                    resourceLabel={draftMeta.label}
+                    onRestore={handleRestoreDraft}
+                    onDiscard={handleDiscardDraft}
+                    isRestoring={isRestoringDraft}
+                    className="-mx-6 -mt-8 mb-0 rounded-t-none"
+                />
+            )}
+
             <div className="flex flex-col gap-2">
                 <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
                     <Link to="/" className="hover:text-primary">Inicio</Link>

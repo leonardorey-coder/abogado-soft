@@ -2,11 +2,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { documentsApi, activityApi, permissionsApi, ApiDocument, ApiActivityLog, TableData, downloadDocument } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
+import { formatTime, formatDate, formatFileSize } from '../lib/formatters';
 import { HistoryTab } from './HistoryTab';
 import { CommentsTab } from './CommentsTab';
 import { ShareModal } from './ShareModal';
 import { Toast } from './ui';
+import { SaveStatusBadge } from './SaveStatusBadge';
+import { useDraftTable } from '../lib/useDraftTable';
+import { DraftBanner } from './DraftBanner';
 
 type RightPanel = 'NONE' | 'COMMENTS' | 'VERSIONS' | 'HISTORY' | 'DETAILS';
 
@@ -30,6 +33,8 @@ export const DocumentXlsxEditor: React.FC = () => {
   const [tableData, setTableData] = useState<TableData>({ columns: [], rows: [] });
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastRemoteSyncOk, setLastRemoteSyncOk] = useState<boolean | null>(null);
+  const [lastRemoteSyncError, setLastRemoteSyncError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({ message: '', type: 'success', visible: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,6 +48,36 @@ export const DocumentXlsxEditor: React.FC = () => {
 
   const [effectivePermission, setEffectivePermission] = useState<string>('admin');
   const canEdit = effectivePermission === 'write' || effectivePermission === 'admin';
+
+  // ─── Draft recovery ──────────────────────────────────────────────────────
+  const [isRestoringDraft, setIsRestoringDraft] = useState(false);
+  const docVersionEntry = doc?.versions?.find(v => v.version === doc?.version) ?? null;
+  const { hasDraft, draftMeta, saveDraft: saveDraftTable, clearDraft: clearDraftTable, restoreTable } = useDraftTable({
+    userId: authUser?.id ?? null,
+    resourceId: documentId ?? null,
+    versionId: 'current',
+    versionNum: doc?.version ?? null,
+    label: doc?.name ?? '',
+    enabled: canEdit,
+  });
+
+  const handleRestoreDraft = useCallback(async () => {
+    setIsRestoringDraft(true);
+    try {
+      const data = await restoreTable();
+      if (data) {
+        setTableData(data);
+        setHasChanges(true);
+      }
+    } finally {
+      setIsRestoringDraft(false);
+    }
+  }, [restoreTable]);
+
+  const handleDiscardDraft = useCallback(async () => {
+    await clearDraftTable();
+  }, [clearDraftTable]);
+  // ─────────────────────────────────────────────────────────────────────
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -109,7 +144,11 @@ export const DocumentXlsxEditor: React.FC = () => {
       const res = await documentsApi.saveXlsx(documentId, tableData, changeNote, createVersion);
       if (res.ok) {
         setHasChanges(false);
-        if (!isAutoSave) showToast(createVersion ? `Version v${res.version} guardada` : 'Cambios guardados');
+        setLastRemoteSyncOk(res.syncResult?.ok ?? true);
+        setLastRemoteSyncError(res.syncResult?.error ?? null);
+        // Borrar borrador tras guardado exitoso
+        await clearDraftTable();
+        if (!isAutoSave) showToast(createVersion ? `Versión v${res.version} sincronizada` : 'Sincronizado correctamente');
         if (createVersion) {
           await fetchDocument();
           activityApi.list({ page: 1, limit: 100, entityType: 'document', entityId: documentId })
@@ -119,29 +158,43 @@ export const DocumentXlsxEditor: React.FC = () => {
         }
       }
     } catch (err: any) {
+      setLastRemoteSyncOk(false);
+      setLastRemoteSyncError(err.message ?? 'Error desconocido');
       if (!isAutoSave) showToast(`Error al guardar: ${err.message}`, 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [documentId, canEdit, hasChanges, isSaving, tableData, showToast, fetchDocument]);
+  }, [documentId, canEdit, hasChanges, isSaving, tableData, showToast, fetchDocument, clearDraftTable]);
 
   const handleCellChange = (rowId: string, colId: string, value: string) => {
-    setTableData(prev => ({
-      ...prev,
-      rows: prev.rows.map(r => r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: value } } : r),
-    }));
+    setTableData(prev => {
+      const next = {
+        ...prev,
+        rows: prev.rows.map(r => r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: value } } : r),
+      };
+      saveDraftTable(next);
+      return next;
+    });
     setHasChanges(true);
   };
 
   const handleAddRow = () => {
     const newRow = { id: generateRowId(), cells: {} as Record<string, string> };
     tableData.columns.forEach(col => { newRow.cells[col.id] = ''; });
-    setTableData(prev => ({ ...prev, rows: [...prev.rows, newRow] }));
+    setTableData(prev => {
+      const next = { ...prev, rows: [...prev.rows, newRow] };
+      saveDraftTable(next);
+      return next;
+    });
     setHasChanges(true);
   };
 
   const handleDeleteRow = (rowId: string) => {
-    setTableData(prev => ({ ...prev, rows: prev.rows.filter(r => r.id !== rowId) }));
+    setTableData(prev => {
+      const next = { ...prev, rows: prev.rows.filter(r => r.id !== rowId) };
+      saveDraftTable(next);
+      return next;
+    });
     setHasChanges(true);
   };
 
@@ -432,8 +485,8 @@ export const DocumentXlsxEditor: React.FC = () => {
               {canEdit && (
                 <button onClick={() => handleSave(false)} disabled={isSaving || !hasChanges}
                   className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-primary text-white rounded-xl font-bold text-sm sm:text-lg shadow-lg shadow-primary/20 hover:bg-blue-700 hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:hover:scale-100 disabled:cursor-not-allowed shrink-0">
-                  <span className={`material-symbols-outlined text-xl sm:text-2xl ${isSaving ? 'animate-spin' : ''}`}>{isSaving ? 'progress_activity' : 'save'}</span>
-                  <span className="hidden sm:inline">{isSaving ? 'Guardando...' : 'Guardar'}</span>
+                  <span className={`material-symbols-outlined text-xl sm:text-2xl ${isSaving ? 'animate-spin' : ''}`}>{isSaving ? 'progress_activity' : 'cloud_upload'}</span>
+                  <span className="hidden sm:inline">{isSaving ? 'Guardando…' : 'Sincronizar'}</span>
                 </button>
               )}
               {!canEdit && (
@@ -456,15 +509,31 @@ export const DocumentXlsxEditor: React.FC = () => {
                 <span className="hidden sm:inline">Compartir</span>
               </button>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500 shrink-0 ml-4">
-              <span className={`material-symbols-outlined ${hasChanges ? 'text-amber-500' : 'text-green-500'} text-lg`}>
-                {hasChanges ? 'sync_problem' : 'cloud_done'}
-              </span>
-              <span className="hidden sm:inline">{hasChanges ? 'Cambios sin guardar' : `Actualizado: ${formatTimeAgo(doc.updatedAt)}`}</span>
-            </div>
+            <SaveStatusBadge
+              hasChanges={hasChanges}
+              isSaving={isSaving}
+              lastSavedAt={doc.updatedAt}
+              remoteSyncOk={lastRemoteSyncOk}
+              remoteSyncError={lastRemoteSyncError}
+              hasLocalHandle={false}
+              lastLocalSaveAt={null}
+              onSave={canEdit ? () => handleSave(false) : undefined}
+              canSave={canEdit && !isSaving}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto pt-[72px] pb-24 lg:pb-0 flex flex-col">
+            {/* Draft recovery banner */}
+            {hasDraft && draftMeta && (
+              <DraftBanner
+                savedAt={draftMeta.savedAt}
+                resourceLabel={draftMeta.label}
+                versionLabel={draftMeta.versionNum != null ? `v${draftMeta.versionNum}` : 'versión actual'}
+                onRestore={handleRestoreDraft}
+                onDiscard={handleDiscardDraft}
+                isRestoring={isRestoringDraft}
+              />
+            )}
             <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 m-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
               {renderTable()}
             </div>

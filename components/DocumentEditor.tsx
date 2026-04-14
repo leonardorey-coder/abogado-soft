@@ -20,6 +20,9 @@ import { ShareModal } from './ShareModal';
 import { SuperDocPageStrip } from './SuperDocPageStrip';
 import { SuperDocPageSetupModal } from './SuperDocPageSetupModal';
 import { captureDocumentAsPdf } from '../lib/captureDocumentAsPdf';
+import { SaveStatusBadge } from './SaveStatusBadge';
+import { useDraftDoc } from '../lib/useDraftDoc';
+import { DraftBanner } from './DraftBanner';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -110,6 +113,7 @@ interface SuperDocEditorProps {
   onReady?: (editor: SuperDoc) => void;
   onUpdate?: () => void;
   onActiveUsersChange?: (users: ActiveUser[]) => void;
+  onBeforeDestroyBlob?: (blob: Blob | null) => Promise<void> | void;
 }
 
 interface SuperDocEditorRef {
@@ -128,8 +132,17 @@ const TOOLBAR_FONTS = [
   { label: 'Garamond', key: 'Garamond, "Times New Roman", serif' },
 ];
 
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function docxFileFromBlob(blob: Blob, documentName: string): File {
+  const trimmed = documentName.trim() || 'document';
+  const base = trimmed.replace(/\.(docx|doc)$/i, '');
+  const name = `${base}.docx`;
+  return new File([blob], name, { type: DOCX_MIME });
+}
+
 const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
-  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', superdocRole = 'editor', editorMountRef, onReady, onUpdate, onActiveUsersChange }, ref) => {
+  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', superdocRole = 'editor', editorMountRef, onReady, onUpdate, onActiveUsersChange, onBeforeDestroyBlob }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
     const [isReady, setIsReady] = useState(false);
@@ -149,8 +162,10 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
 
     const onReadyRef = useRef(onReady);
     const onUpdateRef = useRef(onUpdate);
+    const onBeforeDestroyBlobRef = useRef(onBeforeDestroyBlob);
     onReadyRef.current = onReady;
     onUpdateRef.current = onUpdate;
+    onBeforeDestroyBlobRef.current = onBeforeDestroyBlob;
 
     useImperativeHandle(ref, () => ({
       export: async (options?: SuperDocExportOptions): Promise<Blob | null> => {
@@ -182,7 +197,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
 
           const superdocConfig: any = {
             selector: containerRef.current!,
-            document: documentBlob,
+            document: docxFileFromBlob(documentBlob, documentName),
             title: documentName,
             user: { name: userName, email: userEmail },
             role: superdocRole,
@@ -227,8 +242,22 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
 
       return () => {
         destroyed = true;
-        superdocRef.current?.destroy();
-        superdocRef.current = null;
+        const instance = superdocRef.current;
+        const beforeDestroy = onBeforeDestroyBlobRef.current;
+        if (instance && beforeDestroy) {
+          void instance.export({ isFinalDoc: false, triggerDownload: false } as any)
+            .then((result) => beforeDestroy(result instanceof Blob ? result : null))
+            .catch(() => {})
+            .finally(() => {
+              instance.destroy();
+              if (superdocRef.current === instance) {
+                superdocRef.current = null;
+              }
+            });
+        } else {
+          instance?.destroy();
+          superdocRef.current = null;
+        }
         setIsReady(false);
       };
     }, [documentBlob, documentId, documentName, userName, userEmail, superdocRole, toolbarDomId]);
@@ -436,6 +465,18 @@ function scrollToFirstMatch(container: HTMLElement | null, searchText: string): 
   setTimeout(tryScroll, 600);
 }
 
+const DOC_ACTIVE_VERSION_SESSION_PREFIX = 'abogado-doc-version:';
+
+function readStoredActiveVersion(documentId: string | undefined): string {
+  if (!documentId || typeof sessionStorage === 'undefined') return 'current';
+  try {
+    const v = sessionStorage.getItem(`${DOC_ACTIVE_VERSION_SESSION_PREFIX}${documentId}`);
+    return v && v !== '' ? v : 'current';
+  } catch {
+    return 'current';
+  }
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTrash }) => {
@@ -485,15 +526,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // Share Modal
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // Unsaved changes
-  const [hasChanges, setHasChanges] = useState(false);
-
   // Active users for real-time collaboration
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false);
   const [localFileHandle, setLocalFileHandle] = useState<FileSystemFileHandle | null>(null);
+  // Sync status tracking
+  const [lastRemoteSyncOk, setLastRemoteSyncOk] = useState<boolean | null>(null);
+  const [lastRemoteSyncError, setLastRemoteSyncError] = useState<string | null>(null);
+  const [lastLocalSaveAt, setLastLocalSaveAt] = useState<Date | null>(null);
 
   // New version
   const [newVersionNote, setNewVersionNote] = useState('');
@@ -502,7 +544,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [isSavingVersionNote, setIsSavingVersionNote] = useState(false);
   const versionLoadRequestRef = useRef(0);
   // Tracks which version is currently loaded in the editor ('current' = latest, or a version id)
-  const [activeVersionId, setActiveVersionId] = useState<string>('current');
+  const [activeVersionId, setActiveVersionId] = useState<string>(() => readStoredActiveVersion(documentId));
+  const [dirtyVersions, setDirtyVersions] = useState<Record<string, true>>({});
+  const [draftDirtyVersions, setDraftDirtyVersions] = useState<Record<string, true>>({});
 
   // Diff data
   const [diffHtml, setDiffHtml] = useState<string | null>(null);
@@ -526,13 +570,130 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   // Track which PDF is currently being shared (by id)
   const [sharingPdfId, setSharingPdfId] = useState<string | null>(null);
 
+  // ─── Draft recovery (DOCX borrador en IndexedDB) ───────────────────────
+  const [isRestoringDraft, setIsRestoringDraft] = useState(false);
+  const isDocxEditable = doc
+    ? (doc.type?.toUpperCase() === 'DOCX' || doc.type?.toUpperCase() === 'DOC') && !!(doc.driveFileId || doc.localPath)
+    : false;
+  const activeVersionNum = doc?.versions?.find(v => v.id === activeVersionId)?.version ?? doc?.version ?? null;
+  const hasChanges = !!dirtyVersions[activeVersionId];
+  const hasPendingDraftSave = !!draftDirtyVersions[activeVersionId];
+
+  const markVersionDirty = useCallback((versionId: string) => {
+    setDirtyVersions((prev) => {
+      if (prev[versionId]) return prev;
+      return { ...prev, [versionId]: true };
+    });
+  }, []);
+
+  const clearVersionDirty = useCallback((versionId: string) => {
+    setDirtyVersions((prev) => {
+      if (!prev[versionId]) return prev;
+      const next = { ...prev };
+      delete next[versionId];
+      return next;
+    });
+  }, []);
+
+  const markVersionDraftDirty = useCallback((versionId: string) => {
+    setDraftDirtyVersions((prev) => {
+      if (prev[versionId]) return prev;
+      return { ...prev, [versionId]: true };
+    });
+  }, []);
+
+  const clearVersionDraftDirty = useCallback((versionId: string) => {
+    setDraftDirtyVersions((prev) => {
+      if (!prev[versionId]) return prev;
+      const next = { ...prev };
+      delete next[versionId];
+      return next;
+    });
+  }, []);
+
+  const { draftMeta, showDraftBanner, dismissDraftBanner, scheduleDraftSave, flushDraftSave, saveProvidedBlob, clearDraft, restoreBlob } = useDraftDoc({
+    userId: authUser?.id ?? null,
+    documentId: documentId ?? null,
+    versionId: activeVersionId,
+    versionNum: activeVersionNum,
+    label: doc?.name ?? '',
+    enabled: canEdit && isDocxEditable && !isSaving,
+    getBlob: async () => {
+      try {
+        return await editorRef.current?.export({ isFinalDoc: false, triggerDownload: false }) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    onPersisted: () => {
+      clearVersionDraftDirty(activeVersionId);
+    },
+  });
+
+  const handleRestoreDraft = useCallback(async () => {
+    setIsRestoringDraft(true);
+    try {
+      const blob = await restoreBlob();
+      if (blob && blob.size > 0) {
+        setDocumentBlob(blob);
+        markVersionDirty(activeVersionId);
+        clearVersionDraftDirty(activeVersionId);
+        dismissDraftBanner();
+      }
+    } finally {
+      setIsRestoringDraft(false);
+    }
+  }, [restoreBlob, markVersionDirty, clearVersionDraftDirty, activeVersionId, dismissDraftBanner]);
+
+  const handleDiscardDraft = useCallback(async () => {
+    await clearDraft();
+    clearVersionDirty(activeVersionId);
+    clearVersionDraftDirty(activeVersionId);
+  }, [clearDraft, clearVersionDirty, clearVersionDraftDirty, activeVersionId]);
+
+  useEffect(() => {
+    if (!documentId) return;
+    try {
+      sessionStorage.setItem(`${DOC_ACTIVE_VERSION_SESSION_PREFIX}${documentId}`, activeVersionId);
+    } catch {
+      /* ignore */
+    }
+  }, [documentId, activeVersionId]);
+
+  useEffect(() => {
+    if (!doc?.versions?.length) return;
+    if (activeVersionId === 'current') return;
+    const exists = doc.versions.some(v => v.id === activeVersionId);
+    if (!exists) setActiveVersionId('current');
+  }, [doc?.versions, activeVersionId]);
+
+  useEffect(() => {
+    if (!hasPendingDraftSave) return;
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') void flushDraftSave();
+    };
+    const onPageHide = () => {
+      void flushDraftSave();
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      void flushDraftSave();
+    };
+  }, [hasPendingDraftSave, flushDraftSave]);
+  // ─────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     setSuperdocInstance(null);
     setActivePageIndex(0);
     setLeftSidebarOpen(true);
-    // Reset focus mode state when navigating to a different document
     setIsFocusMode(false);
     setShowFocusHint(false);
+    setActiveVersionId(readStoredActiveVersion(documentId));
+    setDirtyVersions({});
+    setDraftDirtyVersions({});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
@@ -821,18 +982,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   }, []);
 
   useEffect(() => {
-    // Cargar blob si el doc está disponible: en Drive (driveFileId) o en disco legado (localPath)
-    if (!docId) return;
+    if (!docId || !documentId) return;
     const isDocx = docType?.toLowerCase() === 'docx' || docType?.toLowerCase() === 'doc';
     if (!isDocx) return;
-    // Solo cargar si hay fuente disponible
     if (!docDriveFileId && !docLocalPath) return;
 
-    loadDocumentBlobFromUrl(getDocumentFileUrl(docId), 'No se pudo cargar el documento').catch((err) => {
+    const url = activeVersionId === 'current'
+      ? getDocumentFileUrl(docId)
+      : getDocumentVersionFileUrl(documentId, activeVersionId);
+
+    loadDocumentBlobFromUrl(url, 'No se pudo cargar el documento').catch((err) => {
       console.error('Error loading document blob:', err);
       setError('Error al cargar el archivo para edición');
     });
-  }, [docId, docDriveFileId, docLocalPath, docType, loadDocumentBlobFromUrl]);
+  }, [docId, docDriveFileId, docLocalPath, docType, documentId, activeVersionId, loadDocumentBlobFromUrl]);
 
   useEffect(() => {
     if (!doc) {
@@ -861,6 +1024,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
     try {
       setIsSaving(true);
+      const savingVersionId = activeVersionId;
       const blob = await editorRef.current.export({
         isFinalDoc: false,
         triggerDownload: false
@@ -874,7 +1038,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
       const res = await documentsApi.saveVersion(documentId, blob, fileName, customChangeNote, createVersion);
       if (res.ok) {
-        setHasChanges(false);
+        clearVersionDirty(savingVersionId);
+        clearVersionDraftDirty(savingVersionId);
+        // Borrar borrador local tras guardado exitoso
+        await clearDraft();
+        // Capture remote sync result
+        setLastRemoteSyncOk(res.syncResult?.ok ?? true);
+        setLastRemoteSyncError(res.syncResult?.error ?? null);
 
         // Guardado local:
         // - Guardar y Nueva Versión: pide ubicación solo la primera vez (si el navegador lo soporta)
@@ -892,6 +1062,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             if (localSaveResult.fileHandle && localSaveResult.fileHandle !== localFileHandle) {
               setLocalFileHandle(localSaveResult.fileHandle);
             }
+            // Mark local save time
+            setLastLocalSaveAt(new Date());
           } catch (localSaveError: any) {
             if (localSaveError?.name !== 'AbortError') {
               console.warn('No se pudo guardar la copia local:', localSaveError);
@@ -913,17 +1085,23 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           setActiveVersionId('current');
         }
       } else {
+        setLastRemoteSyncOk(false);
+        setLastRemoteSyncError(res.syncResult?.error ?? 'Error al guardar');
         throw new Error(res.syncResult?.error || 'Error al guardar');
       }
     } catch (err: any) {
       console.error('Error saving document:', err);
+      if (!lastRemoteSyncOk) {
+        setLastRemoteSyncOk(false);
+        setLastRemoteSyncError(err.message ?? 'Error desconocido');
+      }
       if (!isAutoSave) {
         alert(`Error al guardar: ${err.message}`);
       }
     } finally {
       setIsSaving(false);
     }
-  }, [doc, documentId, hasChanges, isSaving, localFileHandle]);
+  }, [doc, documentId, hasChanges, isSaving, localFileHandle, lastRemoteSyncOk, activeVersionId, clearDraft, clearVersionDirty, clearVersionDraftDirty]);
 
   useEffect(() => {
     setLocalFileHandle(null);
@@ -952,20 +1130,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     setActiveVersionId(versionId);
     if (versionId === 'current') {
       try {
-        await Promise.all([
-          fetchDocument(),
-          loadDocumentBlobFromUrl(getDocumentFileUrl(documentId), 'No se pudo cargar la versión actual'),
-        ]);
+        await fetchDocument();
       } catch (err: any) {
         console.error('Error loading current version:', err);
       }
-      return;
-    }
-
-    try {
-      await loadDocumentBlobFromUrl(getDocumentVersionFileUrl(documentId, versionId), 'No se pudo cargar la versión');
-    } catch (err: any) {
-      console.error('Error loading historic version:', err);
     }
   };
 
@@ -1240,9 +1408,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 className={headerBtnPrimary}
               >
                 <span className={`material-symbols-outlined text-lg sm:text-xl ${isSaving ? 'animate-spin' : ''}`}>
-                  {isSaving ? 'progress_activity' : 'save'}
+                  {isSaving ? 'progress_activity' : 'cloud_upload'}
                 </span>
-                <span className="hidden sm:inline">{isSaving ? 'Guardando…' : 'Guardar'}</span>
+                <span className="hidden sm:inline">{isSaving ? 'Guardando…' : 'Sincronizar'}</span>
               </button>
             )}
             {canUseSuperdoc && !canEdit && (
@@ -1297,16 +1465,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           </>
         )}
         {!showDiff && (
-          <div className="hidden md:flex items-center gap-2 sm:gap-3 ml-1 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs shrink-0">
+          <div className="hidden md:flex items-center gap-2 ml-1 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-600">
             {activeUsers.length > 0 && <ActiveUsersIndicator users={activeUsers} />}
-            <div className="flex items-center gap-1 min-w-0">
-              <span className={`material-symbols-outlined shrink-0 text-base ${hasChanges ? 'text-amber-500' : 'text-green-500'}`}>
-                {hasChanges ? 'sync_problem' : 'cloud_done'}
-              </span>
-              <span className="truncate max-w-[10rem] sm:max-w-[14rem]">
-                {hasChanges ? 'Cambios sin guardar' : `Última actualización: ${formatTimeAgo(doc.updatedAt)}`}
-              </span>
-            </div>
+            <SaveStatusBadge
+              hasChanges={hasChanges}
+              isSaving={isSaving}
+              lastSavedAt={doc.updatedAt}
+              remoteSyncOk={lastRemoteSyncOk}
+              remoteSyncError={lastRemoteSyncError}
+              hasLocalHandle={!!localFileHandle}
+              lastLocalSaveAt={lastLocalSaveAt}
+              onSave={canEdit && canUseSuperdoc ? () => handleSaveDocument() : undefined}
+              canSave={canEdit && !isSaving && !!canUseSuperdoc}
+            />
           </div>
         )}
         </div>
@@ -1336,6 +1507,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     isConvertingPdf,
     pdfConvertSuccess,
     handleSaveAsPdf,
+    lastRemoteSyncOk,
+    lastRemoteSyncError,
+    localFileHandle,
+    lastLocalSaveAt,
   ]);
 
   // ─── Loading / Error states ──────────────────────────────────────────
@@ -1526,7 +1701,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 <p className="text-gray-500 font-medium">Cargando documento...</p>
               </div>
             ) : documentBlob ? (
-              <div className="flex flex-1 min-h-[560px] min-w-0 flex-col lg:flex-row">
+              <div className="flex flex-col flex-1 min-h-[560px] min-w-0">
+                {/* Draft recovery banner */}
+                {showDraftBanner && draftMeta && (
+                  <DraftBanner
+                    savedAt={draftMeta.savedAt}
+                    resourceLabel={draftMeta.label}
+                    versionLabel={draftMeta.versionNum != null ? `v${draftMeta.versionNum}` : (activeVersionId !== 'current' ? 'histórica' : 'actual')}
+                    onRestore={handleRestoreDraft}
+                    onDiscard={handleDiscardDraft}
+                    isRestoring={isRestoringDraft}
+                  />
+                )}
+                <div className="flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row">
                 <SuperDocPageStrip
                   editorMountRef={superDocMountRef}
                   activePageIndex={activePageIndex}
@@ -1548,9 +1735,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                     onReady={(sd) => {
                       setSuperdocInstance(sd);
                     }}
-                    onUpdate={() => setHasChanges(true)}
+                    onUpdate={() => {
+                      markVersionDirty(activeVersionId);
+                      markVersionDraftDirty(activeVersionId);
+                      scheduleDraftSave();
+                    }}
                     onActiveUsersChange={setActiveUsers}
+                    onBeforeDestroyBlob={hasPendingDraftSave ? saveProvidedBlob : undefined}
                   />
+                </div>
                 </div>
               </div>
             ) : (
@@ -1788,14 +1981,25 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             ]).map(tab => (
               <button
                 key={tab.key}
+                type="button"
+                aria-current={rightPanel === tab.key ? 'page' : undefined}
                 onClick={() => setRightPanel(rightPanel === tab.key ? 'NONE' : tab.key)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left w-full ${rightPanel === tab.key
-                  ? 'bg-primary text-white font-bold'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-background-light dark:hover:bg-white/5'
-                  }`}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-left w-full transition-[background-color,box-shadow,border-color,color] ${
+                  rightPanel === tab.key
+                    ? 'border-2 border-primary/45 bg-primary/14 text-[#0e0e1b] shadow-sm ring-1 ring-primary/15 dark:border-primary/50 dark:bg-primary/22 dark:text-white dark:ring-primary/25 font-semibold'
+                    : 'border-2 border-transparent text-slate-500 hover:border-slate-200/80 hover:bg-slate-50 dark:text-slate-400 dark:hover:border-white/10 dark:hover:bg-white/[0.04] font-normal'
+                }`}
               >
-                <span className="material-symbols-outlined">{tab.icon}</span>
-                <span>{tab.label}</span>
+                <span
+                  className={`material-symbols-outlined shrink-0 text-[22px] leading-none ${
+                    rightPanel === tab.key
+                      ? 'text-primary dark:text-blue-400'
+                      : 'text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  {tab.icon}
+                </span>
+                <span className={`text-sm ${rightPanel === tab.key ? 'tracking-tight' : ''}`}>{tab.label}</span>
               </button>
             ))}
           </nav>
