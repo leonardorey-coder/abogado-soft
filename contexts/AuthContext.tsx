@@ -12,6 +12,7 @@ import {
   syncUserAfterOAuth,
   type AppUser,
 } from '../lib/supabaseAuth';
+import { draftStorage } from '../lib/draftStorage';
 
 interface AuthContextValue {
   /** Usuario autenticado (perfil de nuestro backend) */
@@ -133,10 +134,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Logout ─────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
+    // Limpiar borradores locales del usuario antes de cerrar sesión
+    if (user?.id) {
+      await draftStorage.deleteAll(user.id).catch(() => {});
+    }
     await supabaseSignOut();
     setUser(null);
     setSession(null);
-  }, []);
+  }, [user]);
 
   // ─── Refrescar datos del usuario ────────────────────────────────────────
   const refreshUser = useCallback(async () => {
