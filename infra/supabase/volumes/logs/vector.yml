@@ -1,0 +1,48 @@
+# ==============================================================================
+# Vector config — colecta logs de los contenedores Supabase
+# Fuente: https://github.com/supabase/supabase/tree/master/docker/volumes/logs
+# ==============================================================================
+
+api:
+  enabled: false
+
+sources:
+  docker_host:
+    type: docker_logs
+    include_containers:
+      - supabase_auth
+      - supabase_rest
+      - supabase_realtime
+      - supabase_storage
+      - supabase_db
+      - supabase_kong
+
+transforms:
+  project_logs:
+    type: remap
+    inputs:
+      - docker_host
+    source: |
+      .project = "abogadosoft"
+      .event_message = del(.message)
+      .appname = del(.container_name)
+      del(.container_id)
+      del(.container_created_at)
+      del(.label)
+      del(.source_type)
+      del(.stream)
+
+sinks:
+  logflare_hosted:
+    type: http
+    inputs:
+      - project_logs
+    encoding:
+      codec: json
+    method: post
+    request:
+      retry_max_duration_secs: 10
+    uri: http://supabase_analytics:4000/api/logs?source_name=docker.raw
+    auth:
+      strategy: bearer
+      token: "${LOGFLARE_LOGGER_BACKEND_API_KEY}"
