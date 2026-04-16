@@ -1,33 +1,48 @@
 # infra/db — Dumps de la BD
 
-Extraídos desde Supabase Cloud (`wtduflglaygwfhttbbyk`) el 2026-04-14.
-Solo schema `public`. Sin owner, sin privileges.
+Extraídos desde Supabase Cloud (`wtduflglaygwfhttbbyk`) el 2026-04-15.
+Cubre schemas `public`, `auth` y `storage`.
 
 ## Archivos
 
 
-| Archivo         | Contenido                                      | Uso                              |
-| --------------- | ---------------------------------------------- | -------------------------------- |
-| `schema.sql`    | DDL puro (tablas, índices, ENUMs, extensiones) | Inspección / comparar con Prisma |
-| `data.sql`      | INSERTs de datos reales (sin DDL)              | Referencia de datos de poblacion |
-| `full_dump.sql` | Schema + datos juntos                          | **Restore completo** — usar este |
+| Archivo            | Schema  | Contenido                                                            | Git        |
+| ------------------ | ------- | -------------------------------------------------------------------- | ---------- |
+| `schema.sql`       | public  | DDL puro (tablas, índices, ENUMs, extensiones)                       | versionado |
+| `data.sql`         | public  | Solo INSERTs de datos reales                                         | ignorado   |
+| `full_dump.sql`    | public  | Schema + datos public                                                | ignorado   |
+| `auth_dump.sql`    | auth    | Schema + datos auth (usuarios, identidades Google, sessions, tokens) | ignorado   |
+| `storage_dump.sql` | storage | Schema + migraciones (sin objetos)                                   | ignorado   |
 
 
-## Restore en Supabase self-hosted (servidor)
+`**auth_dump.sql` contiene:**
+
+- `auth.users` — 5 usuarios
+- `auth.identities` — 5 identidades (Google OAuth)
+- `auth.sessions` — 2 sesiones activas
+- `auth.refresh_tokens` — 44 tokens
+- `auth.schema_migrations` — historial de migraciones GoTrue
+
+## Orden de restore 1:1 en servidor
+
+Respetar orden para FK correctas (`public.users` → `auth.users`):
 
 ```bash
-# 1. Supabase stack corriendo en el servidor
-# 2. Restore completo contra Postgres self-hosted
-psql "postgresql://postgres:PASSWORD@localhost:5432/postgres" \
-  --single-transaction \
-  -f infra/db/full_dump.sql
+PGCONN="postgresql://postgres:PASSWORD@localhost:5432/postgres"
+
+# 1. Auth (GoTrue schema — usuarios e identidades)
+psql "$PGCONN" -f infra/db/auth_dump.sql
+
+# 2. Storage schema (migraciones)
+psql "$PGCONN" -f infra/db/storage_dump.sql
+
+# 3. Public schema (datos de negocio — referencia auth.users)
+psql "$PGCONN" --single-transaction -f infra/db/full_dump.sql
 ```
 
-> Los comentarios de FK circular en `document_comments` / `convenio_comments`
-> desaparecen usando `full_dump.sql` en lugar de `data.sql` suelto,
-> porque el full dump incluye `SET CONSTRAINTS ALL DEFERRED` implícito por orden de tablas.
+> El `scripts/deploy.sh --install` ejecuta este restore automáticamente.
 
 ## Migraciones futuras
 
 No usar estos dumps para migraciones incrementales.
-Usar flujo Supabase CLI → `supabase migration new` → `supabase db push`.
+Flujo: `supabase migration new` → SQL en `supabase/migrations/` → `prisma migrate deploy` en servidor.
