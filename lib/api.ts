@@ -231,6 +231,7 @@ export interface ApiDocument {
   name: string;
   type: string;
   size: string;
+  storageKey?: string | null;
   localPath: string | null;
   cloudUrl: string | null;
   ownerId: string | null;

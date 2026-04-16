@@ -1503,12 +1503,29 @@ documentsRouter.post(
         const diffSummary = await computeDiffSummaryFromBuffers(oldBuffer, fileBuffer, doc.type);
 
         const dKey = docKey(doc.groupId, doc.id, doc.type);
+        const currentVKey = versionKey(doc.groupId, doc.id, doc.version, doc.type);
         // Key para el snapshot de la NUEVA versión (contiene el nuevo contenido)
         const newVKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
+        const currentVersionRecord = await prisma.documentVersion.findFirst({
+          where: { documentId: docId, version: doc.version },
+          select: { storageKey: true },
+        });
+        let currentVersionSnapshotKey: string | undefined;
 
         let syncResult: { ok: boolean; error?: string } | null = null;
         try {
           const storage = getStorageProvider();
+          if (oldBuffer && !currentVersionRecord?.storageKey) {
+            try {
+              await storage.upload(currentVKey, oldBuffer, req.file!.mimetype);
+              currentVersionSnapshotKey = currentVKey;
+            } catch {
+              try {
+                await storage.update(currentVKey, oldBuffer, req.file!.mimetype);
+                currentVersionSnapshotKey = currentVKey;
+              } catch { /* best effort */ }
+            }
+          }
           // 1. Subir el nuevo contenido como snapshot de la nueva versión
           await storage.upload(newVKey, fileBuffer, req.file!.mimetype);
           // 2. Actualizar el archivo principal con el nuevo contenido
@@ -1520,7 +1537,7 @@ documentsRouter.post(
           syncResult = { ok: false, error: (syncError as Error).message };
         }
 
-        await prisma.$transaction([
+        const dbOps: any[] = [
           prisma.document.update({
             where: { id: docId },
             data: {
@@ -1554,7 +1571,28 @@ documentsRouter.post(
               metadata: diffSummary ? ({ diffSummary } as any) : undefined,
             },
           }),
-        ]);
+        ];
+
+        if (oldBuffer && currentVersionSnapshotKey) {
+          dbOps.unshift(
+            prisma.documentVersion.upsert({
+              where: { documentId_version: { documentId: docId, version: doc.version } },
+              update: {
+                size: BigInt(oldBuffer.length),
+                storageKey: currentVersionSnapshotKey,
+              },
+              create: {
+                documentId: docId,
+                version: doc.version,
+                size: BigInt(oldBuffer.length),
+                createdBy: doc.ownerId,
+                storageKey: currentVersionSnapshotKey,
+              } as any,
+            })
+          );
+        }
+
+        await prisma.$transaction(dbOps);
 
         res.json(serializeBigInt({
           ok: true, version: newVersion, size: fileSize, syncResult,
