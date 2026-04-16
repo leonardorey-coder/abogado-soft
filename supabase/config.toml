@@ -1,6 +1,10 @@
 # ==============================================================================
-# Supabase Local Config (supabase init genera este archivo)
+# Supabase Local Config — SOLO PARA DESARROLLO LOCAL (supabase start)
 # Referencia: https://supabase.com/docs/guides/cli/config
+#
+# PRODUCCIÓN: usa infra/supabase/docker-compose.yml (Supabase self-hosted).
+# Este archivo NO se usa en el servidor; la config de prod va en las variables
+# de entorno de infra/supabase/.env.
 # ==============================================================================
 
 project_id = "wtduflglaygwfhttbbyk"
@@ -43,7 +47,7 @@ enable_anonymous_sign_ins = false
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false               # false para desarrollo local
+enable_confirmations = false     # false en dev; en prod self-hosted setear ENABLE_EMAIL_CONFIRMATIONS=true en infra/supabase/.env
 secure_password_change = false
 max_frequency = "1s"
 otp_length = 6

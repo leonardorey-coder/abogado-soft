@@ -19,6 +19,13 @@ bun-debug.log*
 .env
 .env.*
 !.env.example
+!.env.prod.example
+
+# Infra: env de Supabase self-hosted (tiene secrets)
+infra/supabase/.env
+
+# Flag de restore de BD en servidor (local al servidor, no versionar)
+.db_restored
 
 # Supabase CLI cache/state
 supabase/.temp/
@@ -42,6 +49,9 @@ abogadosoft-600baea8efc9.json
 # Respaldos de prueba de documentos en google drive
 backend/backups/
 
-# BD: dumps con datos locales (no versionar)
+# BD: dumps con datos reales (no versionar — contienen usuarios, tokens, etc.)
 infra/db/data.sql
 infra/db/full_dump.sql
+infra/db/auth_dump.sql
+infra/db/storage_dump.sql
+# schema.sql sí se versiona (solo DDL, sin datos)
