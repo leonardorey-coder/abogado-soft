@@ -123,6 +123,18 @@ interface SuperDocEditorRef {
   getSuperDoc: () => SuperDoc | null;
 }
 
+const splitDocumentName = (fullName: string): { baseName: string; extension: string } => {
+  const trimmed = fullName.trim();
+  const lastDot = trimmed.lastIndexOf('.');
+  if (lastDot <= 0 || lastDot === trimmed.length - 1) {
+    return { baseName: trimmed, extension: '' };
+  }
+  return {
+    baseName: trimmed.slice(0, lastDot),
+    extension: trimmed.slice(lastDot),
+  };
+};
+
 const TOOLBAR_FONTS = [
   { label: 'Arial', key: 'Arial, Helvetica, sans-serif' },
   { label: 'Times New Roman', key: '"Times New Roman", Times, serif' },
@@ -304,7 +316,7 @@ const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
         <div className="min-h-0 w-full flex-1 overflow-auto bg-white dark:bg-[#0f0f1a]">
           <div
             ref={setEditorMountRef}
-            className="superdoc-container mx-auto min-h-[480px] w-full max-w-[56rem] overflow-auto"
+            className="superdoc-container mx-auto min-h-[480px] w-full max-w-[56rem] overflow-auto flex justify-center"
           />
         </div>
       </div>
@@ -572,8 +584,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   // ─── Draft recovery (DOCX borrador en IndexedDB) ───────────────────────
   const [isRestoringDraft, setIsRestoringDraft] = useState(false);
+  const hasDocumentFile = !!(doc?.storageKey || doc?.driveFileId || doc?.localPath);
   const isDocxEditable = doc
-    ? (doc.type?.toUpperCase() === 'DOCX' || doc.type?.toUpperCase() === 'DOC') && !!(doc.driveFileId || doc.localPath)
+    ? (doc.type?.toUpperCase() === 'DOCX' || doc.type?.toUpperCase() === 'DOC') && hasDocumentFile
     : false;
   const activeVersionNum = doc?.versions?.find(v => v.id === activeVersionId)?.version ?? doc?.version ?? null;
   const hasChanges = !!dirtyVersions[activeVersionId];
@@ -795,14 +808,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   }, []);
 
   const cancelDocNameEdit = useCallback(() => {
-    if (doc) setDocNameDraft(doc.name);
+    if (doc) setDocNameDraft(splitDocumentName(doc.name).baseName);
     setIsEditingDocName(false);
     setDocNameSaveError(null);
   }, [doc]);
 
   const startDocNameEdit = useCallback(() => {
     if (!doc || !canEdit) return;
-    setDocNameDraft(doc.name);
+    setDocNameDraft(splitDocumentName(doc.name).baseName);
     setDocNameSaveError(null);
     setIsEditingDocName(true);
     requestAnimationFrame(() => {
@@ -816,18 +829,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       setIsEditingDocName(false);
       return;
     }
-    let next = docNameDraft.trim();
-    if (!next) {
+    const { extension } = splitDocumentName(doc.name);
+    const nextBaseName = docNameDraft.trim();
+    if (!nextBaseName) {
       cancelDocNameEdit();
       return;
     }
+    const next = extension ? `${nextBaseName}${extension}` : nextBaseName;
     if (next.length > 500) {
       setDocNameSaveError('Máximo 500 caracteres');
       return;
-    }
-    const t = doc.type?.toLowerCase();
-    if ((t === 'docx' || t === 'doc') && !/\.(docx|doc)$/i.test(next)) {
-      next = `${next}.docx`;
     }
     if (next === doc.name) {
       setIsEditingDocName(false);
@@ -839,7 +850,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     try {
       const updated = await documentsApi.update(documentId, { name: next });
       setDoc(updated);
-      setDocNameDraft(updated.name);
+      setDocNameDraft(splitDocumentName(updated.name).baseName);
       setIsEditingDocName(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Error al guardar el nombre';
@@ -952,6 +963,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   // ─── Load document blob for SuperDoc ─────────────────────────────────
   const docId = doc?.id;
+  const docStorageKey = doc?.storageKey;
   const docLocalPath = doc?.localPath;
   const docDriveFileId = doc?.driveFileId;
   const docType = doc?.type;
@@ -985,7 +997,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     if (!docId || !documentId) return;
     const isDocx = docType?.toLowerCase() === 'docx' || docType?.toLowerCase() === 'doc';
     if (!isDocx) return;
-    if (!docDriveFileId && !docLocalPath) return;
+    if (!docStorageKey && !docDriveFileId && !docLocalPath) return;
 
     const url = activeVersionId === 'current'
       ? getDocumentFileUrl(docId)
@@ -995,7 +1007,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       console.error('Error loading document blob:', err);
       setError('Error al cargar el archivo para edición');
     });
-  }, [docId, docDriveFileId, docLocalPath, docType, documentId, activeVersionId, loadDocumentBlobFromUrl]);
+  }, [docId, docStorageKey, docDriveFileId, docLocalPath, docType, documentId, activeVersionId, loadDocumentBlobFromUrl]);
 
   useEffect(() => {
     if (!doc) {
@@ -1171,12 +1183,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     setLoadingDiff(true);
     try {
       const getVNum = (id: string) => id === 'current' ? doc.version : versions.find(v => v.id === id)?.version;
-      const vNumA = getVNum(selectedVersions[0]); // newer (v2) usually
-      const vNumB = getVNum(selectedVersions[1]); // older (v1) usually
+      const orderedVersions = selectedVersions
+        .map(getVNum)
+        .filter((version): version is number => typeof version === 'number')
+        .sort((a, b) => a - b);
 
-      if (vNumA && vNumB) {
-        // vNumB = older version, vNumA = newer version
-        const res = await documentsApi.getDiff(documentId, vNumB, vNumA);
+      if (orderedVersions.length === 2) {
+        const [olderVersion, newerVersion] = orderedVersions;
+        const res = await documentsApi.getDiff(documentId, olderVersion, newerVersion);
         setDiffHtml(res.html);
       }
     } catch (error) {
@@ -1318,7 +1332,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const isPdf = doc?.mimeType === 'application/pdf';
   const isImage = doc?.mimeType?.startsWith('image/');
   // Documento disponible para edición: tiene archivo en Drive (nuevo) o en disco (legado)
-  const canUseSuperdoc = isDocx && (doc?.driveFileId || doc?.localPath);
+  const canUseSuperdoc = isDocx && hasDocumentFile;
 
   useLayoutEffect(() => {
     if (loading || error || !doc) {
@@ -1568,27 +1582,38 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     }
 
     if (isEditingDocName) {
+      const fixedExtension = splitDocumentName(doc.name).extension;
       return (
         <div className="space-y-1 w-full min-w-0">
-          <input
-            ref={docNameInputRef}
-            value={docNameDraft}
-            onChange={(e) => setDocNameDraft(e.target.value)}
-            onBlur={() => { void commitDocNameEdit(); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                void commitDocNameEdit();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelDocNameEdit();
-              }
-            }}
-            disabled={isSavingDocName}
-            className={inputCls}
-            aria-label="Nombre del documento"
-          />
+          <div className="flex items-center gap-1 w-full min-w-0">
+            <input
+              ref={docNameInputRef}
+              value={docNameDraft}
+              onChange={(e) => setDocNameDraft(e.target.value)}
+              onBlur={() => { void commitDocNameEdit(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void commitDocNameEdit();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelDocNameEdit();
+                }
+              }}
+              disabled={isSavingDocName}
+              className={`${inputCls} min-w-0`}
+              aria-label="Nombre del documento"
+            />
+            {fixedExtension && (
+              <span
+                className="shrink-0 text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400"
+                aria-label="Extensión del documento no editable"
+              >
+                {fixedExtension}
+              </span>
+            )}
+          </div>
           {docNameSaveError && <p className="text-xs text-red-600 dark:text-red-400">{docNameSaveError}</p>}
         </div>
       );

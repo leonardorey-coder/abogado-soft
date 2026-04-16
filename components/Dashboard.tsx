@@ -655,7 +655,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* ── Pendientes | Abierto | Compartidos (1/3 c/u) ─────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <SectionCard title="Pendientes" noPadding className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col">
+          <SectionCard title="Pendientes" noPadding className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col" stickyHeader>
               {loading || assignmentsLoading ? (
                 <div className="p-5 space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -778,6 +778,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             title="Abierto recientemente"
             noPadding
             className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col"
+            stickyHeader
             action={
               <button
                 type="button"
@@ -880,6 +881,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             title="Compartidos recientemente"
             noPadding
             className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col"
+            stickyHeader
             action={
               <button
                 type="button"
@@ -929,7 +931,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       return 'Ahora';
                     })();
 
-                    // Badge de método de compartido simplificado
+                    // Badge y jerarquía sharing-first
                     const methodBadge: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
                       email: { label: 'Email', icon: <Mail className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
                       whatsapp: { label: 'WhatsApp', icon: <MessageCircle className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' },
@@ -939,12 +941,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     };
                     const badge = methodBadge[item.shareMethod] ?? methodBadge.other;
 
-                    // Contact display minificado
                     const genericPatterns = ['compartido via', 'enlace copiado', 'compartido', 'via sistema'];
                     const isGenericContact = genericPatterns.some(p => item.sharedWith.toLowerCase().includes(p));
-                    const contactDisplay = isGenericContact
-                      ? badge.label
-                      : item.sharedWith.length > 12 ? item.sharedWith.substring(0, 10) + '…' : item.sharedWith;
+                    const toLabel = isGenericContact ? `Vía ${badge.label}` : `A ${item.sharedWith}`;
+                    const sharedByLabel = item.sharedBy?.name ?? "Sistema";
+                    const sharedAtTime = new Date(item.sharedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
                     return (
                       <div
@@ -967,20 +968,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
                           <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate leading-tight flex items-center gap-1.5">
-                            <span className="truncate">{item.entityName}</span>
-                            <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-semibold border ${badge.cls} shrink-0`} title={item.sharedWith}>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold border ${badge.cls} shrink-0`} title={`Compartido por ${sharedByLabel}`}>
                               {badge.icon}
-                              {contactDisplay}
+                              {badge.label}
                             </span>
-                          </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+                              <span className="font-semibold">{toLabel}</span>
+                              <span className="text-slate-400 dark:text-slate-500"> · Por {sharedByLabel}</span>
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5 shrink-0" />
                             {sharedAgo}
                             <span className="text-slate-300 dark:text-slate-600">·</span>
-                            <UserCheck className="w-2.5 h-2.5 shrink-0" />
-                            <span className="truncate">{item.sharedBy ? item.sharedBy.name.split(' ')[0] : "Sistema"}</span>
+                            {sharedAtTime}
+                            {isConvenio && (
+                              <>
+                                <span className="text-slate-300 dark:text-slate-600">·</span>
+                                <span className="px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-[9px] font-bold uppercase">
+                                  Convenio
+                                </span>
+                              </>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {item.entityName}
                           </p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />

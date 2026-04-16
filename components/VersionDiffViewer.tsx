@@ -3,7 +3,7 @@
 // Muestra líneas agregadas/eliminadas/sin cambio con navegación entre chunks
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 
 export interface DiffLine {
     type: "added" | "removed" | "unchanged";
@@ -55,15 +55,19 @@ export default function VersionDiffViewer({
     const [error, setError] = useState<string | null>(null);
     const [currentChunk, setCurrentChunk] = useState(0);
     const [viewMode, setViewMode] = useState<"unified" | "split">("unified");
+    const [olderVersion, newerVersion] = useMemo(
+        () => [versionA, versionB].sort((a, b) => a.version - b.version),
+        [versionA, versionB]
+    );
 
     // Cargar diff si no se pasó inicialmente
     useEffect(() => {
         if (initialDiff.length) return;
         setLoading(true);
-        fetchRevisionDiff(documentId, versionA.version, versionB.version, entityType)
+        fetchRevisionDiff(documentId, olderVersion.version, newerVersion.version, entityType)
             .then((d) => { setDiff(d); setLoading(false); })
             .catch((e) => { setError(e.message); setLoading(false); });
-    }, [documentId, versionA.version, versionB.version, entityType]);
+    }, [documentId, initialDiff.length, olderVersion.version, newerVersion.version, entityType]);
 
     // Índices de chunks (bloques de cambios)
     const chunks = diff.reduce<number[]>((acc, line, idx) => {
@@ -111,15 +115,15 @@ export default function VersionDiffViewer({
                     </h2>
                     <div style={{ display: "flex", gap: 24, marginTop: 6, fontSize: 13, color: "#94a3b8" }}>
                         <span>
-                            <span style={{ color: "#ef4444", fontWeight: 600 }}>v{versionA.version}</span>
-                            {" — "}{versionA.creator?.name ?? "Sistema"} · {formatDate(versionA.createdAt)}
-                            {versionA.changeNote && <em style={{ marginLeft: 8 }}>"{versionA.changeNote}"</em>}
+                            <span style={{ color: "#ef4444", fontWeight: 600 }}>v{olderVersion.version}</span>
+                            {" — "}{olderVersion.creator?.name ?? "Sistema"} · {formatDate(olderVersion.createdAt)}
+                            {olderVersion.changeNote && <em style={{ marginLeft: 8 }}>"{olderVersion.changeNote}"</em>}
                         </span>
                         <span style={{ color: "#475569" }}>→</span>
                         <span>
-                            <span style={{ color: "#22c55e", fontWeight: 600 }}>v{versionB.version}</span>
-                            {" — "}{versionB.creator?.name ?? "Sistema"} · {formatDate(versionB.createdAt)}
-                            {versionB.changeNote && <em style={{ marginLeft: 8 }}>"{versionB.changeNote}"</em>}
+                            <span style={{ color: "#22c55e", fontWeight: 600 }}>v{newerVersion.version}</span>
+                            {" — "}{newerVersion.creator?.name ?? "Sistema"} · {formatDate(newerVersion.createdAt)}
+                            {newerVersion.changeNote && <em style={{ marginLeft: 8 }}>"{newerVersion.changeNote}"</em>}
                         </span>
                     </div>
                 </div>
