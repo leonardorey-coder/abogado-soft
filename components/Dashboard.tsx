@@ -296,6 +296,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     refreshRecentlyOpened();
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') refreshRecentlyOpened();
+    }, 60_000);
+    return () => clearInterval(interval);
   }, [refreshRecentlyOpened]);
 
   // ── Compartidos recientemente ────────────────────────────────────────────
@@ -816,6 +820,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     const { Icon: TypeIcon, color: typeColor, bg: typeBg } = isConvenio
                       ? { Icon: ScrollText, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" }
                       : getFileTypeIcon(item.type ?? 'docx');
+                    const openedByLabel = item.openedBy?.name ?? 'Alguien del equipo';
 
                     const openedAgo = (() => {
                       const diff = Date.now() - new Date(item.openedAt).getTime();
@@ -852,10 +857,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
                           <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 space-y-1">
                           <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">
                             {item.name}
                           </p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <UserAvatar
+                              name={openedByLabel}
+                              avatarUrl={item.openedBy?.avatarUrl}
+                              className="w-4 h-4 rounded-full object-cover shrink-0"
+                            />
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              Abierto por <span className="font-medium text-slate-700 dark:text-slate-300">{openedByLabel}</span>
+                            </p>
+                          </div>
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
                             <Clock className="w-2.5 h-2.5 shrink-0" />
                             {openedAgo}

@@ -190,12 +190,27 @@ documentsRouter.get(
     try {
       const limit = Math.min(parseInt(req.query.limit as string || '10', 10), 30);
       const userId = req.user!.id;
+      const userGroup = await prisma.groupMember.findFirst({
+        where: { userId },
+        select: { groupId: true },
+      });
+      const userIds: string[] = [userId];
+
+      if (userGroup) {
+        const groupMembers = await prisma.groupMember.findMany({
+          where: { groupId: userGroup.groupId },
+          select: { userId: true },
+        });
+        for (const member of groupMembers) {
+          if (!userIds.includes(member.userId)) userIds.push(member.userId);
+        }
+      }
 
       // Get the most recent unique documents/convenios opened (DOCUMENT_VIEWED)
       // using a subquery to deduplicate by entityId keeping the most recent
       const recentLogs = await prisma.activityLog.findMany({
         where: {
-          userId,
+          userId: { in: userIds },
           activity: 'DOCUMENT_VIEWED',
           entityId: { not: null },
         },
@@ -207,6 +222,7 @@ documentsRouter.get(
           entityName: true,
           createdAt: true,
           metadata: true,
+          user: { select: { id: true, name: true, avatarUrl: true } },
         },
       });
 
@@ -242,6 +258,7 @@ documentsRouter.get(
                 ...doc,
                 entityType: 'document',
                 openedAt: log.createdAt,
+                openedBy: log.user,
               });
             }
           } else if (log.entityType === 'convenio') {
@@ -262,6 +279,7 @@ documentsRouter.get(
                 name: `${conv.numero} – ${conv.institucion}`,
                 entityType: 'convenio',
                 openedAt: log.createdAt,
+                openedBy: log.user,
               });
             }
           }

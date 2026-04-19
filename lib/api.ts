@@ -1146,6 +1146,7 @@ export interface RecentlyOpenedItem {
   entityType: 'document' | 'convenio';
   owner?: { id: string; name: string } | null;
   responsable?: { id: string; name: string } | null;
+  openedBy?: { id: string; name: string; avatarUrl?: string | null } | null;
 }
 
 export const recentlyOpenedApi = {
