@@ -57,6 +57,8 @@ export interface Document {
   collaborationStatus?: CollaborationStatus;
   sharingStatus?: SharingStatus;
   expirationDate?: string;
+  /** ISO string (e.g. "2026-04-25T00:00:00.000Z") — used by calendar to group by date */
+  expirationDateRaw?: string;
   documentPermissions?: DocumentPermissionEntry[];
   currentUserPermission?: DocumentPermissionLevel;
   lastEditor?: string;

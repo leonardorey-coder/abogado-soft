@@ -73,6 +73,7 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
     expirationDate: doc.expirationDate
       ? new Date(doc.expirationDate).toLocaleDateString('es-MX')
       : undefined,
+    expirationDateRaw: doc.expirationDate ?? undefined,
     documentPermissions: permissions,
     currentUserPermission: doc.effectivePermission as DocumentPermissionLevel | undefined,
     ownerId: doc.ownerId ?? undefined,
