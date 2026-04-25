@@ -15,9 +15,11 @@ import { OnboardingWizard, isOnboardingDone } from "./OnboardingWizard";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { UserAvatar } from "./UserAvatar";
+import { DashboardCalendar } from "./DashboardCalendar";
+import { TeamAvatarRow } from "./TeamAvatarRow";
+import { AssignWithDeadlinePopup, type AssignDropPayload } from "./AssignWithDeadlinePopup";
 import {
   PageHeader,
-  StatCard,
   FilterBar,
   StatusBadge,
   SectionCard,
@@ -248,6 +250,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
   const [assignmentsReceived, setAssignmentsReceived] = useState<ApiDocumentAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [dragAssignPayload, setDragAssignPayload] = useState<AssignDropPayload | null>(null);
+  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
   const [quickNewDocLoading, setQuickNewDocLoading] = useState(false);
   const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
   const [recentlyOpened, setRecentlyOpened] = useState<RecentlyOpenedItem[]>([]);
@@ -623,6 +627,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
 
         {/* ── Stats Row ────────────────────────────────────────────────── */}
+        {/*
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
             label="Activos"
@@ -656,6 +661,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setFilter("TODOS")}
           />
         </div>
+        */}
 
         {/* ── Pendientes | Abierto | Compartidos (1/3 c/u) ─────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1019,7 +1025,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
           </SectionCard>
-        </div>        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
+        </div>
+
+        {/* ── Equipo + Calendario ─────────────────────────────────────── */}
+        {/* ── Calendario (ancho completo cuando no hay fila de avatares en el grid) ── */}
+        <DashboardCalendar
+          documents={documents}
+          assignments={assignmentsReceived}
+        />
+
+        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
           <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
             <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
           </div>
@@ -1082,6 +1097,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   return (
                     <div
                       key={doc.id}
+                      draggable="true"
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "text/plain",
+                          JSON.stringify({
+                            __abogadosoft_doc: true,
+                            documentId: doc.id,
+                            documentName: doc.name,
+                            documentType: doc.type,
+                          }),
+                        );
+                        e.dataTransfer.effectAllowed = "link";
+                        setIsDraggingDoc(true);
+                      }}
+                      onDragEnd={() => setIsDraggingDoc(false)}
                       onClick={() => handleDocumentClick(doc)}
                       className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors group lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4 lg:items-center"
                       role="button"
@@ -1410,6 +1440,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }}
         />
       )}
+
+      {/* Assign with Deadline Popup (drag & drop desde tabla) */}
+      {dragAssignPayload && (
+        <AssignWithDeadlinePopup
+          payload={dragAssignPayload}
+          onClose={() => setDragAssignPayload(null)}
+          onSuccess={() => {
+            refreshAssignments();
+            void onRefresh();
+          }}
+        />
+      )}
+
+      {/* ── Floating Team Avatar overlay (aparece durante drag) ──────────── */}
+      <div
+        className={[
+          "fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none",
+          "transition-all duration-300 ease-in-out",
+          isDraggingDoc
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0",
+        ].join(" ")}
+      >
+        {/* lg: offset del sidebar de 240px / sm: sin offset */}
+        <div className="pointer-events-auto w-full max-w-[1200px] px-4 sm:px-6 pb-4 lg:pl-[calc(240px+1.5rem)]">
+          <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-600/60 p-3">
+            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5 px-1">
+              Suelta sobre un miembro para asignar
+            </p>
+            <TeamAvatarRow
+              compact
+              onAssignDrop={(payload) => {
+                setIsDraggingDoc(false);
+                setDragAssignPayload(payload);
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Onboarding Wizard */}
       {showOnboarding && (
