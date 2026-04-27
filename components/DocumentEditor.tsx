@@ -1015,16 +1015,46 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
       return;
     }
     let cancelled = false;
-    import('../lib/supabaseAuth').then(({ supabase }) => {
-      supabase.auth.getSession().then(({ data }) => {
-        if (cancelled) return;
-        const token = data.session?.access_token;
-        const url = getDocumentFileUrl(doc.id);
-        setIframeUrl(token ? `${url}?token=${token}` : url);
+    let createdUrl: string | null = null;
+    const isPdfDoc = doc.mimeType === 'application/pdf';
+    const isImageDoc = !!doc.mimeType?.startsWith('image/');
+
+    if (isPdfDoc || isImageDoc) {
+      (async () => {
+        try {
+          const { supabase } = await import('../lib/supabaseAuth');
+          const session = (await supabase.auth.getSession()).data.session;
+          const token = session?.access_token;
+          const res = await fetch(getDocumentFileUrl(doc.id), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          if (cancelled) return;
+          const typedBlob = blob.type
+            ? blob
+            : new Blob([blob], { type: doc.mimeType || 'application/pdf' });
+          createdUrl = URL.createObjectURL(typedBlob);
+          setIframeUrl(createdUrl);
+        } catch (err) {
+          console.error('Error cargando vista previa:', err);
+          if (!cancelled) setIframeUrl('');
+        }
+      })();
+    } else {
+      import('../lib/supabaseAuth').then(({ supabase }) => {
+        supabase.auth.getSession().then(({ data }) => {
+          if (cancelled) return;
+          const token = data.session?.access_token;
+          const url = getDocumentFileUrl(doc.id);
+          setIframeUrl(token ? `${url}?token=${token}` : url);
+        });
       });
-    });
+    }
+
     return () => {
       cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
   }, [doc]);
 
@@ -1784,7 +1814,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               </p>
               {iframeUrl ? (
                 <iframe
-                  src={iframeUrl}
+                  src={isPdf ? `${iframeUrl}#view=FitH` : iframeUrl}
                   className="w-full h-[600px] border border-gray-200 dark:border-gray-700 rounded-lg bg-white"
                   title={doc?.name || 'Documento'}
                 />
@@ -1952,7 +1982,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             leftSidebarOpen ? 'lg:flex' : 'lg:hidden'
           }`}
         >
-          <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
+          <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
             <span className="material-symbols-outlined text-xl">arrow_back</span>
             Atrás
           </button>
