@@ -23,6 +23,7 @@ import { captureDocumentAsPdf } from '../lib/captureDocumentAsPdf';
 import { SaveStatusBadge } from './SaveStatusBadge';
 import { useDraftDoc } from '../lib/useDraftDoc';
 import { DraftBanner } from './DraftBanner';
+import { getViewerLabel } from '../lib/viewerIdentity';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -2002,7 +2003,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                 return (
                   <>
                     <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
-                    {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
+                    {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {getViewerLabel({ subjectId: doc.owner.id, subjectName: doc.owner.name, currentUserId: authUser?.id, fallback: "Sistema" })}</p>}
                   </>
                 );
               }
@@ -2014,14 +2015,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                       v{activeVersion.version} — {formatFileSize(activeVersion.size)}
                       <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold align-middle">Vista previa</span>
                     </p>
-                    {activeVersion.creator && <p className="text-gray-400 text-xs mt-1">Por: {activeVersion.creator.name}</p>}
+                    {activeVersion.creator && <p className="text-gray-400 text-xs mt-1">Por: {getViewerLabel({ subjectId: activeVersion.creator.id, subjectName: activeVersion.creator.name, currentUserId: authUser?.id, fallback: "Sistema" })}</p>}
                   </>
                 );
               }
               return (
                 <>
                   <p className="text-gray-500 text-sm mt-1">v{doc.version} — {formatFileSize(doc.size)}</p>
-                  {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {doc.owner.name}</p>}
+                  {doc.owner && <p className="text-gray-400 text-xs mt-1">Por: {getViewerLabel({ subjectId: doc.owner.id, subjectName: doc.owner.name, currentUserId: authUser?.id, fallback: "Sistema" })}</p>}
                 </>
               );
             })()}
@@ -2304,7 +2305,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                       <p className="font-bold text-[#0e0e1b] dark:text-white mt-1">{formatDate(v.createdAt)}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{v.changeNote ?? 'Sin nota de cambio'}</p>
                       <p className="text-xs text-gray-400 mt-2 border-t pt-2 border-dashed border-gray-200 dark:border-gray-700 flex justify-between">
-                        <span>Por: {v.creator?.name ?? 'Sistema'}</span>
+                        <span>
+                          Por:{" "}
+                          {getViewerLabel({
+                            subjectId: v.creator?.id,
+                            subjectName: v.creator?.name,
+                            currentUserId: authUser?.id,
+                            fallback: "Sistema",
+                          })}
+                        </span>
                         <span>{formatFileSize(v.size)}</span>
                       </p>
                     </div>

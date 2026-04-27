@@ -10,6 +10,7 @@ import { Toast } from './ui';
 import { SaveStatusBadge } from './SaveStatusBadge';
 import { useDraftTable } from '../lib/useDraftTable';
 import { DraftBanner } from './DraftBanner';
+import { getViewerLabel } from '../lib/viewerIdentity';
 
 type RightPanel = 'NONE' | 'COMMENTS' | 'VERSIONS' | 'HISTORY' | 'DETAILS';
 
@@ -385,7 +386,13 @@ export const DocumentXlsxEditor: React.FC = () => {
             <p className="font-bold text-[#0e0e1b] dark:text-white mt-1">{formatDate(v.createdAt)}</p>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{v.changeNote ?? 'Sin nota'}</p>
             <p className="text-xs text-gray-400 mt-2 border-t pt-2 border-dashed border-gray-200 dark:border-gray-700">
-              Por: {v.creator?.name ?? 'Sistema'} -- {formatFileSize(v.size)}
+              Por: {getViewerLabel({
+                subjectId: v.creator?.id,
+                subjectName: v.creator?.name,
+                currentUserId: authUser?.id,
+                fallback: "Sistema",
+              })}{" "}
+              -- {formatFileSize(v.size)}
             </p>
           </div>
         ))}

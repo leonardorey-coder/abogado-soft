@@ -4,6 +4,8 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { getViewerLabel } from "../lib/viewerIdentity";
 
 export interface DiffLine {
     type: "added" | "removed" | "unchanged";
@@ -50,6 +52,7 @@ export default function VersionDiffViewer({
     onClose,
     entityType = 'documents'
 }: VersionDiffViewerProps) {
+    const { user } = useAuth();
     const [diff, setDiff] = useState<DiffLine[]>(initialDiff);
     const [loading, setLoading] = useState(!initialDiff.length);
     const [error, setError] = useState<string | null>(null);
@@ -116,13 +119,25 @@ export default function VersionDiffViewer({
                     <div style={{ display: "flex", gap: 24, marginTop: 6, fontSize: 13, color: "#94a3b8" }}>
                         <span>
                             <span style={{ color: "#ef4444", fontWeight: 600 }}>v{olderVersion.version}</span>
-                            {" — "}{olderVersion.creator?.name ?? "Sistema"} · {formatDate(olderVersion.createdAt)}
+                            {" — "}{getViewerLabel({
+                                subjectId: olderVersion.creator?.id,
+                                subjectName: olderVersion.creator?.name,
+                                currentUserId: user?.id,
+                                fallback: "Sistema",
+                            })}{" "}
+                            · {formatDate(olderVersion.createdAt)}
                             {olderVersion.changeNote && <em style={{ marginLeft: 8 }}>"{olderVersion.changeNote}"</em>}
                         </span>
                         <span style={{ color: "#475569" }}>→</span>
                         <span>
                             <span style={{ color: "#22c55e", fontWeight: 600 }}>v{newerVersion.version}</span>
-                            {" — "}{newerVersion.creator?.name ?? "Sistema"} · {formatDate(newerVersion.createdAt)}
+                            {" — "}{getViewerLabel({
+                                subjectId: newerVersion.creator?.id,
+                                subjectName: newerVersion.creator?.name,
+                                currentUserId: user?.id,
+                                fallback: "Sistema",
+                            })}{" "}
+                            · {formatDate(newerVersion.createdAt)}
                             {newerVersion.changeNote && <em style={{ marginLeft: 8 }}>"{newerVersion.changeNote}"</em>}
                         </span>
                     </div>
