@@ -8,6 +8,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { UserAvatar } from "./UserAvatar";
+import { getViewerLabel } from "../lib/viewerIdentity";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -680,7 +681,13 @@ export const TeamPage: React.FC = () => {
                         {assign.document?.name || 'Documento sin nombre'}
                       </p>
                       <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">
-                        Asignado por: {assign.assigner?.name || 'Usuario'} • {formatTimeAgo(assign.createdAt)}
+                        Asignado por: {getViewerLabel({
+                          subjectId: assign.assigner?.id,
+                          subjectName: assign.assigner?.name,
+                          currentUserId: currentUser?.id,
+                          fallback: "Usuario",
+                        })}{" "}
+                        • {formatTimeAgo(assign.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -730,7 +737,14 @@ export const TeamPage: React.FC = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-[#111318] dark:text-white text-sm">
-                        <strong>{item.user?.name ?? "Sistema"}</strong>
+                        <strong>
+                          {getViewerLabel({
+                            subjectId: item.user?.id,
+                            subjectName: item.user?.name,
+                            currentUserId: currentUser?.id,
+                            fallback: "Sistema",
+                          })}
+                        </strong>
                         {" "}
                         {translateActivity(item.activity)}
                         {entityName && (

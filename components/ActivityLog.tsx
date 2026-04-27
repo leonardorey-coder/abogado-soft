@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { activityApi, ApiActivityLog } from "../lib/api";
 import DiffSummaryPreview from "./DiffSummaryPreview";
+import { useAuth } from "../contexts/AuthContext";
+import { getViewerLabel } from "../lib/viewerIdentity";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +165,7 @@ function getEntityLink(entry: ApiActivityLog): string | null {
 
 export const ActivityLog: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Data
   const [logs, setLogs] = useState<ApiActivityLog[]>([]);
@@ -588,7 +591,14 @@ export const ActivityLog: React.FC = () => {
                         <div className="flex flex-col flex-1 rounded-xl bg-white dark:bg-gray-900 border border-[#dbdfe6] dark:border-gray-800 p-4 shadow-sm group-hover:shadow-md transition-shadow">
                           <div className="flex justify-between items-start mb-1">
                             <p className="text-[#111318] dark:text-white font-medium text-sm">
-                              <span className="font-bold">{entry.user?.name || "Sistema"}</span>
+                              <span className="font-bold">
+                                {getViewerLabel({
+                                  subjectId: entry.userId,
+                                  subjectName: entry.user?.name,
+                                  currentUserId: user?.id,
+                                  fallback: "Sistema",
+                                })}
+                              </span>
                               {" "}
                               {getSpanishActivityName(entry.activity)}
                               {entry.entityName && (

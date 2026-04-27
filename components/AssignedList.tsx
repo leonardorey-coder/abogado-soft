@@ -6,6 +6,8 @@ import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
 import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
 import { Skeleton } from "./ui";
+import { useAuth } from "../contexts/AuthContext";
+import { getViewerLabel } from "../lib/viewerIdentity";
 import {
   AlertTriangle,
   CalendarClock,
@@ -118,6 +120,7 @@ function getAssignmentDocumentType(assignment: ApiDocumentAssignment): DocumentT
 
 export const AssignedList: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [assignments, setAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [allAssignments, setAllAssignments] = useState<ApiDocumentAssignment[]>([]);
@@ -450,7 +453,17 @@ export const AssignedList: React.FC = () => {
                         <UserCheck className="h-3 w-3 shrink-0" />
                       )}
                       {tab === "RECIBIDOS" ? (
-                        <span>De: <span className="font-medium text-slate-700 dark:text-slate-300">{a.assigner?.name || "Desconocido"}</span></span>
+                        <span>
+                          De:{" "}
+                          <span className="font-medium text-slate-700 dark:text-slate-300">
+                            {getViewerLabel({
+                              subjectId: a.assigner?.id,
+                              subjectName: a.assigner?.name,
+                              currentUserId: user?.id,
+                              fallback: "Desconocido",
+                            })}
+                          </span>
+                        </span>
                       ) : (
                         <span>
                           Para:{" "}
@@ -460,10 +473,22 @@ export const AssignedList: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                               className="font-medium text-primary hover:underline"
                             >
-                              {a.assignee.name || "Desconocido"}
+                              {getViewerLabel({
+                                subjectId: a.assignee?.id,
+                                subjectName: a.assignee?.name,
+                                currentUserId: user?.id,
+                                fallback: "Desconocido",
+                              })}
                             </Link>
                           ) : (
-                            <span className="font-medium text-slate-700 dark:text-slate-300">{a.assignee?.name || "Desconocido"}</span>
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              {getViewerLabel({
+                                subjectId: a.assignee?.id,
+                                subjectName: a.assignee?.name,
+                                currentUserId: user?.id,
+                                fallback: "Desconocido",
+                              })}
+                            </span>
                           )}
                         </span>
                       )}

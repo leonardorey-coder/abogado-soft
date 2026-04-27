@@ -17,6 +17,7 @@ import { useToast } from "../contexts/ToastContext";
 import { UserAvatar } from "./UserAvatar";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
+import { getViewerInitial, getViewerLabel } from "../lib/viewerIdentity";
 import {
   PageHeader,
   FilterBar,
@@ -821,7 +822,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {doc.name}
                               </p>
                               <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                                {a.assigner?.name ?? "Asignado"} · {statusLabel}
+                                {getViewerLabel({
+                                  subjectId: a.assigner?.id,
+                                  subjectName: a.assigner?.name,
+                                  currentUserId: user?.id,
+                                  fallback: "Asignado",
+                                })}{" "}
+                                · {statusLabel}
                               </p>
                             </div>
                             <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
@@ -902,7 +909,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     const genericPatterns = ['compartido via', 'enlace copiado', 'compartido', 'via sistema'];
                     const isGenericContact = genericPatterns.some(p => item.sharedWith.toLowerCase().includes(p));
                     const toLabel = isGenericContact ? `Vía ${badge.label}` : `A ${item.sharedWith}`;
-                    const sharedByLabel = item.sharedBy?.name ?? "Sistema";
+                    const sharedByLabel = getViewerLabel({
+                      subjectId: item.sharedBy?.id,
+                      subjectName: item.sharedBy?.name,
+                      currentUserId: user?.id,
+                      fallback: "Sistema",
+                    });
                     const sharedAtTime = new Date(item.sharedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
                     return (
@@ -1039,7 +1051,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {entry.entityName ?? "Documento"}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          <span className="font-medium text-slate-700 dark:text-slate-300">{entry.user?.name ?? "Sistema"}</span>
+                          <span className="font-medium text-slate-700 dark:text-slate-300">
+                            {getViewerLabel({
+                              subjectId: entry.userId,
+                              subjectName: entry.user?.name,
+                              currentUserId: user?.id,
+                              fallback: "Sistema",
+                            })}
+                          </span>
                           {" · "}
                           {changeLabelMap[entry.activity] ?? "Actualizó"}
                           {" · "}
@@ -1155,7 +1174,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Avatar */}
                     <div className="flex-shrink-0 relative">
                       <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
-                        {(entry.user?.name ?? 'S').charAt(0).toUpperCase()}
+                        {getViewerInitial({
+                          subjectId: entry.userId,
+                          subjectName: entry.user?.name,
+                          currentUserId: user?.id,
+                          fallback: "Sistema",
+                        })}
                       </div>
                       <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center">
                         <span className="material-symbols-outlined text-[9px] text-primary">{icon}</span>
@@ -1164,7 +1188,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Text */}
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-slate-700 dark:text-slate-300 leading-tight truncate">
-                        <span className="font-semibold">{entry.user?.name ?? 'Sistema'}</span>
+                        <span className="font-semibold">
+                          {getViewerLabel({
+                            subjectId: entry.userId,
+                            subjectName: entry.user?.name,
+                            currentUserId: user?.id,
+                            fallback: "Sistema",
+                          })}
+                        </span>
                         {' '}
                         <span className="text-slate-500">{actionLabel}</span>
                         {entry.entityId && (

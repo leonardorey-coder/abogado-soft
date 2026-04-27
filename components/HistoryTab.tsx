@@ -2,6 +2,8 @@ import React from 'react';
 import { formatTime, formatDate, formatFileSize, formatTimeAgo } from '../lib/formatters';
 import { ApiActivityLog } from '../lib/api';
 import DiffSummaryPreview from './DiffSummaryPreview';
+import { useAuth } from '../contexts/AuthContext';
+import { getViewerInitial, getViewerLabel } from '../lib/viewerIdentity';
 
 export interface GenericVersion {
     id: string;
@@ -9,7 +11,7 @@ export interface GenericVersion {
     createdAt: string | Date;
     changeNote?: string | null;
     size?: number | bigint;
-    creator?: { name: string } | null;
+    creator?: { id?: string; name: string } | null;
 }
 
 interface HistoryTabProps {
@@ -60,6 +62,7 @@ type HistoryEvent =
     | { id: string; type: 'activity'; createdAt: string; activity: ApiActivityLog };
 
 export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs = [] }) => {
+    const { user } = useAuth();
     const events: HistoryEvent[] = [
         ...versions.map((v) => ({
             id: `version-${v.id}`,
@@ -102,10 +105,34 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <div className="size-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-gray-300">
-                                            {(event.type === 'version' ? (event.version.creator?.name ?? '?') : (event.activity.user?.name ?? 'S')).charAt(0)}
+                                            {event.type === 'version'
+                                                ? getViewerInitial({
+                                                    subjectId: event.version.creator?.id,
+                                                    subjectName: event.version.creator?.name,
+                                                    currentUserId: user?.id,
+                                                    fallback: "?",
+                                                })
+                                                : getViewerInitial({
+                                                    subjectId: event.activity.userId,
+                                                    subjectName: event.activity.user?.name,
+                                                    currentUserId: user?.id,
+                                                    fallback: "Sistema",
+                                                })}
                                         </div>
                                         <span className="text-xs font-semibold dark:text-gray-300 truncate">
-                                            {event.type === 'version' ? (event.version.creator?.name ?? 'Sistema') : (event.activity.user?.name ?? 'Sistema')}
+                                            {event.type === 'version'
+                                                ? getViewerLabel({
+                                                    subjectId: event.version.creator?.id,
+                                                    subjectName: event.version.creator?.name,
+                                                    currentUserId: user?.id,
+                                                    fallback: "Sistema",
+                                                })
+                                                : getViewerLabel({
+                                                    subjectId: event.activity.userId,
+                                                    subjectName: event.activity.user?.name,
+                                                    currentUserId: user?.id,
+                                                    fallback: "Sistema",
+                                                })}
                                         </span>
                                     </div>
                                 </div>
