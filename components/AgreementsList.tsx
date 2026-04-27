@@ -17,12 +17,30 @@ import {
 } from "lucide-react";
 import { Button, Skeleton } from "./ui";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
+import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
 import type { AppLayoutOutletContext } from "./AppLayout";
 
 type EstadoConvenio = "ACTIVO" | "PENDIENTE" | "EXPIRADO";
 type FilterEstado = "TODOS" | EstadoConvenio;
 
 const PER_PAGE = 10;
+
+const typeFilterToDocumentType = (type: DocumentTypeFilterValue) => {
+  if (type === "TODOS") return undefined;
+  return type.toLowerCase();
+};
+
+const estadoFilterToApiEstado = (estado: FilterEstado) => {
+  if (estado === "TODOS") return undefined;
+  return estado.toLowerCase();
+};
+
+const normalizeConvenioEstado = (estado: string | null | undefined): EstadoConvenio => {
+  const normalized = estado?.toUpperCase();
+  if (normalized === "ACTIVO" || normalized === "PENDIENTE" || normalized === "EXPIRADO") return normalized;
+  if (normalized === "VENCIDO" || normalized === "CANCELADO") return "EXPIRADO";
+  return "PENDIENTE";
+};
 
 const tabConfig: Record<EstadoConvenio, { label: string; cls: string }> = {
   ACTIVO: {
@@ -74,8 +92,10 @@ export const AgreementsList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<FilterEstado>("TODOS");
+  const [typeFilter, setTypeFilter] = useState<DocumentTypeFilterValue>("TODOS");
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [counts, setCounts] = useState({ todos: 0, activos: 0, pendientes: 0, expirados: 0 });
+  const [typeCounts, setTypeCounts] = useState<DocumentTypeCounts>({ TODOS: 0, DOCX: 0, XLSX: 0, PDF: 0 });
 
   const fetchConvenios = useCallback(async () => {
     try {
@@ -83,7 +103,8 @@ export const AgreementsList: React.FC = () => {
       const res = await conveniosApi.list({
         page,
         limit: PER_PAGE,
-        estado: filter !== "TODOS" ? filter : undefined,
+        estado: estadoFilterToApiEstado(filter),
+        documentType: typeFilterToDocumentType(typeFilter),
         search: searchQuery || undefined,
       });
       setConvenios(res.data);
@@ -94,15 +115,16 @@ export const AgreementsList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, filter, searchQuery]);
+  }, [page, filter, typeFilter, searchQuery]);
 
   const fetchCounts = useCallback(async () => {
     try {
+      const selectedDocumentType = typeFilterToDocumentType(typeFilter);
       const [all, a, p, e] = await Promise.all([
-        conveniosApi.list({ limit: 1 }),
-        conveniosApi.list({ limit: 1, estado: "ACTIVO" }),
-        conveniosApi.list({ limit: 1, estado: "PENDIENTE" }),
-        conveniosApi.list({ limit: 1, estado: "EXPIRADO" }),
+        conveniosApi.list({ limit: 1, documentType: selectedDocumentType }),
+        conveniosApi.list({ limit: 1, estado: "activo", documentType: selectedDocumentType }),
+        conveniosApi.list({ limit: 1, estado: "pendiente", documentType: selectedDocumentType }),
+        conveniosApi.list({ limit: 1, estado: "expirado", documentType: selectedDocumentType }),
       ]);
       setCounts({
         todos: all.pagination.total,
@@ -110,10 +132,21 @@ export const AgreementsList: React.FC = () => {
         pendientes: p.pagination.total,
         expirados: e.pagination.total,
       });
+      const [docx, xlsx, pdf] = await Promise.all([
+        conveniosApi.list({ limit: 1, documentType: "docx" }),
+        conveniosApi.list({ limit: 1, documentType: "xlsx" }),
+        conveniosApi.list({ limit: 1, documentType: "pdf" }),
+      ]);
+      setTypeCounts({
+        TODOS: all.pagination.total,
+        DOCX: docx.pagination.total,
+        XLSX: xlsx.pagination.total,
+        PDF: pdf.pagination.total,
+      });
     } catch (err) {
       console.error("Error cargando conteos:", err);
     }
-  }, []);
+  }, [typeFilter]);
 
   useEffect(() => {
     fetchConvenios();
@@ -125,7 +158,7 @@ export const AgreementsList: React.FC = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, searchQuery]);
+  }, [filter, typeFilter, searchQuery]);
 
   const from = (page - 1) * PER_PAGE + 1;
   const to = Math.min(page * PER_PAGE, total);
@@ -182,8 +215,16 @@ export const AgreementsList: React.FC = () => {
           </Button>
         </div>
 
-        {/* Pills */}
-        <div className="flex items-center gap-3">
+        {/* Filtros */}
+        <div className="flex flex-wrap items-end gap-3">
+          <DocumentTypeFilter
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setPage(1);
+            }}
+            counts={typeCounts}
+          />
           <div className="flex gap-2 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
             {(
               [
@@ -264,7 +305,7 @@ export const AgreementsList: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {sortedConvenios.map((c) => {
-              const estado = ((c.estado as EstadoConvenio) || "PENDIENTE");
+              const estado = normalizeConvenioEstado(c.estado);
               const tab = tabConfig[estado] ?? tabConfig.PENDIENTE;
               const attached = c.documents?.[0]?.document;
               const monto = formatMonto(c.monto);

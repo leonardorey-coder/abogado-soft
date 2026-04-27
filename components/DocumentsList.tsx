@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { DateRangeFilter } from "./DateRangeFilter";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
+import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
 import { documentsApi as _docApiForPreview, type ApiDocument } from "../lib/api";
 import { useToast } from "../contexts/ToastContext";
 
@@ -52,6 +53,11 @@ interface DocumentsListProps {
 }
 
 type DocPageFilter = "TODOS" | "ACTIVOS" | "PENDIENTES" | "INACTIVOS";
+
+const typeFilterToApiType = (type: DocumentTypeFilterValue) => {
+  if (type === "TODOS") return undefined;
+  return type.toLowerCase();
+};
 
 const getFileTypeIcon = (type: string) => {
   switch (type) {
@@ -149,9 +155,11 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
   const perPage = 10;
   const [filter, setFilter] = useState<DocPageFilter>("TODOS");
+  const [typeFilter, setTypeFilter] = useState<DocumentTypeFilterValue>("TODOS");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const fileStatus = filterToApiStatus(filter);
+  const documentType = typeFilterToApiType(typeFilter);
 
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
   const { addToast } = useToast();
@@ -168,6 +176,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     updateStatus,
   } = useDocuments({
     search: searchQuery,
+    type: documentType,
     fileStatus,
     limit: perPage,
     from: dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined,
@@ -193,6 +202,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
   });
 
   const [counts, setCounts] = useState({ todos: 0, activos: 0, pendientes: 0, inactivos: 0 });
+  const [typeCounts, setTypeCounts] = useState<DocumentTypeCounts>({ TODOS: 0, DOCX: 0, XLSX: 0, PDF: 0 });
   const [assignOpenCount, setAssignOpenCount] = useState(0);
   const [pendingAssignments, setPendingAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [recentlyOpened, setRecentlyOpened] = useState<RecentlyOpenedItem[]>([]);
@@ -215,24 +225,39 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
   const fetchCounts = useCallback(async () => {
     try {
+      const selectedType = typeFilterToApiType(typeFilter);
       const [all, a, p, i, assignRes] = await Promise.all([
-        documentsApi.list({ limit: 1, page: 1 }),
-        documentsApi.list({ limit: 1, page: 1, fileStatus: "ACTIVO" }),
-        documentsApi.list({ limit: 1, page: 1, fileStatus: "PENDIENTE" }),
-        documentsApi.list({ limit: 1, page: 1, fileStatus: "INACTIVO" }),
-        assignmentsApi.listReceived({ limit: 1, page: 1, pendingWork: true }),
+        documentsApi.list({ limit: 1, page: 1, type: selectedType }),
+        documentsApi.list({ limit: 1, page: 1, type: selectedType, fileStatus: "ACTIVO" }),
+        documentsApi.list({ limit: 1, page: 1, type: selectedType, fileStatus: "PENDIENTE" }),
+        documentsApi.list({ limit: 1, page: 1, type: selectedType, fileStatus: "INACTIVO" }),
+        assignmentsApi.listReceived({ limit: selectedType ? 100 : 1, page: 1, pendingWork: true }),
       ]);
+      const selectedAssignOpenCount = selectedType
+        ? assignRes.data.filter((assignment) => assignment.document?.type?.toLowerCase() === selectedType).length
+        : assignRes.pagination.total;
       setCounts({
         todos: all.pagination.total,
         activos: a.pagination.total,
         pendientes: p.pagination.total,
         inactivos: i.pagination.total,
       });
-      setAssignOpenCount(assignRes.pagination.total);
+      setAssignOpenCount(selectedAssignOpenCount);
+      const [docx, xlsx, pdf] = await Promise.all([
+        documentsApi.list({ limit: 1, page: 1, type: "docx" }),
+        documentsApi.list({ limit: 1, page: 1, type: "xlsx" }),
+        documentsApi.list({ limit: 1, page: 1, type: "pdf" }),
+      ]);
+      setTypeCounts({
+        TODOS: all.pagination.total,
+        DOCX: docx.pagination.total,
+        XLSX: xlsx.pagination.total,
+        PDF: pdf.pagination.total,
+      });
     } catch (err) {
       console.error("Error cargando conteos:", err);
     }
-  }, []);
+  }, [typeFilter]);
 
   const refreshRecentlyOpened = useCallback(() => {
     recentlyOpenedApi
@@ -264,7 +289,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, filter, setPage]);
+  }, [searchQuery, filter, typeFilter, setPage]);
 
   useEffect(() => {
     return () => {
@@ -319,6 +344,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
           ...pendingAssignedDocuments.filter(
             (assignedDoc) =>
               !documents.some((doc) => doc.id === assignedDoc.id) &&
+              (typeFilter === "TODOS" || assignedDoc.type === typeFilter) &&
               (!searchQuery.trim() || assignedDoc.name.toLowerCase().includes(searchQuery.toLowerCase())),
           ),
         ]
@@ -527,8 +553,16 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
           </Button>
         </div>
 
-        {/* Pills + Fecha */}
-        <div className="flex items-center gap-3">
+        {/* Filtros */}
+        <div className="flex flex-wrap items-end gap-3">
+          <DocumentTypeFilter
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setPage(1);
+            }}
+            counts={typeCounts}
+          />
           <div className="flex gap-2 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
             {(
               [

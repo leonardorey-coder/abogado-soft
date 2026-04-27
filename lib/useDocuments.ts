@@ -109,6 +109,7 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
 interface UseDocumentsOptions {
   autoFetch?: boolean;
   search?: string;
+  type?: string;
   fileStatus?: string;
   limit?: number;
   from?: string;
@@ -133,7 +134,7 @@ interface UseDocumentsReturn {
 }
 
 export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsReturn {
-  const { autoFetch = true, search, fileStatus, limit = 20, from, to, onDeleted } = options;
+  const { autoFetch = true, search, type, fileStatus, limit = 20, from, to, onDeleted } = options;
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +150,7 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
         page,
         limit,
         search: search || undefined,
+        type: type || undefined,
         fileStatus: fileStatus || undefined,
         from: from || undefined,
         to: to || undefined,
@@ -164,7 +166,7 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, fileStatus, from, to]);
+  }, [page, limit, search, type, fileStatus, from, to]);
 
   useEffect(() => {
     if (autoFetch) {

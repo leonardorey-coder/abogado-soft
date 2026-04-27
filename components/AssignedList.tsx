@@ -1,58 +1,89 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { assignmentsApi, ApiDocumentAssignment } from "../lib/api";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
+import { startDocDrag, endDocDrag } from "../lib/docDrag";
+import { CloudDocThumbnail } from "./CloudDocThumbnail";
+import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
+import { Skeleton } from "./ui";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  Edit2,
+  Eye,
+  FolderOpen,
+  MessageSquare,
+  User,
+  UserCheck,
+  XCircle,
+} from "lucide-react";
 
-const getStatusStyle = (status: string) => {
-  switch (status) {
-    case "pendiente": return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800";
-    case "visto": return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
-    case "editado": return "bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800";
-    case "completado": return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
-    case "rechazado": return "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
-    case "revisado": return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800";
-    default: return "bg-gray-100 text-gray-600 border-gray-200";
-  }
-};
-
-const statusLabel = (s: string) => {
-  switch (s) {
-    case "pendiente": return "Pendiente";
-    case "visto": return "Visto";
-    case "editado": return "Editado";
-    case "completado": return "Completado";
-    case "rechazado": return "Rechazado";
-    case "revisado": return "Revisado";
-    default: return s;
-  }
-};
-
-const statusIcon = (s: string) => {
-  switch (s) {
-    case "pendiente": return "schedule";
-    case "visto": return "visibility";
-    case "editado": return "edit_note";
-    case "completado": return "check_circle";
-    case "rechazado": return "cancel";
-    case "revisado": return "fact_check";
-    default: return "help";
-  }
-};
-
-const getFileIcon = (type: string) => {
-  switch (type?.toUpperCase()) {
-    case "DOCX": case "DOC": return { icon: "description", color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" };
-    case "PDF": return { icon: "picture_as_pdf", color: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" };
-    case "XLSX": case "XLS": return { icon: "table_view", color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" };
-    default: return { icon: "article", color: "bg-slate-100 text-slate-600" };
-  }
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type FilterAssigned = "TODOS" | "pendiente" | "visto" | "editado" | "completado" | "rechazado";
 type TabAssigned = "RECIBIDOS" | "ENVIADOS";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const statusConfig: Record<
+  string,
+  { label: string; cls: string; tabCls: string; Icon: React.ElementType }
+> = {
+  pendiente: {
+    label: "Pendiente",
+    cls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    tabCls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    Icon: Clock,
+  },
+  visto: {
+    label: "Visto",
+    cls: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    tabCls: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    Icon: Eye,
+  },
+  editado: {
+    label: "Editado",
+    cls: "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+    tabCls: "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+    Icon: Edit2,
+  },
+  completado: {
+    label: "Completado",
+    cls: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300",
+    tabCls: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300",
+    Icon: CheckCircle2,
+  },
+  rechazado: {
+    label: "Rechazado",
+    cls: "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300",
+    tabCls: "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300",
+    Icon: XCircle,
+  },
+  revisado: {
+    label: "Revisado",
+    cls: "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+    tabCls: "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+    Icon: CheckCircle2,
+  },
+};
+
+const fallbackStatus = {
+  label: "Desconocido",
+  cls: "border-slate-200 bg-slate-100 text-slate-500",
+  tabCls: "border-slate-200 bg-slate-100 text-slate-500",
+  Icon: Clock,
+};
+
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function formatTimeAgo(iso: string) {
@@ -63,7 +94,7 @@ function formatTimeAgo(iso: string) {
   if (hours < 24) return `Hace ${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `Hace ${days}d`;
-  return `Hace ${Math.floor(days / 7)}w`;
+  return `Hace ${Math.floor(days / 7)}sem`;
 }
 
 function isOverdue(dueDate: string | null | undefined) {
@@ -71,12 +102,28 @@ function isOverdue(dueDate: string | null | undefined) {
   return new Date(dueDate).getTime() < Date.now();
 }
 
+const isTerminal = (s: string) => ["completado", "rechazado"].includes(s);
+const canComplete = (s: string) => ["visto", "editado"].includes(s);
+const canReject = (s: string) => ["pendiente", "visto", "editado"].includes(s);
+
+function getAssignmentDocumentType(assignment: ApiDocumentAssignment): DocumentTypeFilterValue | null {
+  const type = assignment.document?.type?.toUpperCase();
+  if (type === "DOC" || type === "DOCX" || type === "TXT" || type === "RTF") return "DOCX";
+  if (type === "XLS" || type === "XLSX") return "XLSX";
+  if (type === "PDF") return "PDF";
+  return null;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export const AssignedList: React.FC = () => {
   const navigate = useNavigate();
+
   const [assignments, setAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [allAssignments, setAllAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterAssigned>("TODOS");
+  const [typeFilter, setTypeFilter] = useState<DocumentTypeFilterValue>("TODOS");
   const [tab, setTab] = useState<TabAssigned>("RECIBIDOS");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -84,44 +131,56 @@ export const AssignedList: React.FC = () => {
   const fetchAssignments = useCallback(async () => {
     try {
       setLoading(true);
-      const statusParam = filter !== "TODOS" ? filter : undefined;
       const fetchFn = tab === "RECIBIDOS" ? assignmentsApi.listReceived : assignmentsApi.listSent;
-      const res = await fetchFn({ limit: 100, status: statusParam });
-      setAssignments(res.data);
-
-      // Fetch all (no filter) for accurate counts
-      if (filter !== "TODOS") {
-        const allRes = await fetchFn({ limit: 100 });
-        setAllAssignments(allRes.data);
-      } else {
-        setAllAssignments(res.data);
-      }
+      const res = await fetchFn({ limit: 100 });
+      const all = res.data;
+      setAllAssignments(all);
+      setAssignments(
+        all.filter((assignment) => {
+          const matchesStatus = filter === "TODOS" || assignment.status === filter;
+          const matchesType = typeFilter === "TODOS" || getAssignmentDocumentType(assignment) === typeFilter;
+          return matchesStatus && matchesType;
+        }),
+      );
     } catch (err) {
       console.error("Error cargando asignaciones:", err);
     } finally {
       setLoading(false);
     }
-  }, [filter, tab]);
+  }, [filter, tab, typeFilter]);
 
-  useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
+  useEffect(() => {
+    fetchAssignments();
+  }, [fetchAssignments]);
+
+  const assignmentsForStatusCounts = typeFilter === "TODOS"
+    ? allAssignments
+    : allAssignments.filter((a) => getAssignmentDocumentType(a) === typeFilter);
 
   const counts = {
-    todos: allAssignments.length,
-    pendientes: allAssignments.filter(a => a.status === "pendiente").length,
-    vistos: allAssignments.filter(a => a.status === "visto").length,
-    editados: allAssignments.filter(a => a.status === "editado").length,
-    completados: allAssignments.filter(a => a.status === "completado").length,
-    rechazados: allAssignments.filter(a => a.status === "rechazado").length,
+    todos: assignmentsForStatusCounts.length,
+    pendientes: assignmentsForStatusCounts.filter((a) => a.status === "pendiente").length,
+    vistos: assignmentsForStatusCounts.filter((a) => a.status === "visto").length,
+    editados: assignmentsForStatusCounts.filter((a) => a.status === "editado").length,
+    completados: assignmentsForStatusCounts.filter((a) => a.status === "completado").length,
+    rechazados: assignmentsForStatusCounts.filter((a) => a.status === "rechazado").length,
+  };
+
+  const typeCounts: DocumentTypeCounts = {
+    TODOS: allAssignments.length,
+    DOCX: allAssignments.filter((a) => getAssignmentDocumentType(a) === "DOCX").length,
+    XLSX: allAssignments.filter((a) => getAssignmentDocumentType(a) === "XLSX").length,
+    PDF: allAssignments.filter((a) => getAssignmentDocumentType(a) === "PDF").length,
   };
 
   const handleDocumentClick = (a: ApiDocumentAssignment) => {
     const doc = a.document;
-    if (doc?.id) {
-      setOpeningId(a.id);
-      setTimeout(() => {
-        navigate(getDocumentRoute(doc.id, doc.type));
-      }, 400);
-    }
+    if (!doc?.id) return;
+    setOpeningId(a.id);
+    setTimeout(() => {
+      navigate(getDocumentRoute(doc.id, doc.type));
+      setOpeningId(null);
+    }, 250);
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
@@ -131,15 +190,14 @@ export const AssignedList: React.FC = () => {
       await fetchAssignments();
     } catch (err: any) {
       console.error("Error actualizando estado:", err);
-      const msg = err?.message || "Error al actualizar estado.";
-      alert(msg);
+      alert(err?.message || "Error al actualizar estado.");
     } finally {
       setUpdatingId(null);
     }
   };
 
   const handleRevoke = async (id: string) => {
-    if (!confirm("¿Estás seguro de que deseas revocar y eliminar esta asignación?")) return;
+    if (!confirm("¿Revocar y eliminar esta asignación?")) return;
     try {
       setUpdatingId(id);
       await assignmentsApi.delete(id);
@@ -152,7 +210,13 @@ export const AssignedList: React.FC = () => {
     }
   };
 
-  const pills: { key: FilterAssigned; label: string; count: number; icon: string; color: string }[] = [
+  const pills: {
+    key: FilterAssigned;
+    label: string;
+    count: number;
+    icon: string;
+    color: string;
+  }[] = [
     { key: "TODOS", label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
     { key: "pendiente", label: "Pendientes", count: counts.pendientes, icon: "schedule", color: "text-amber-600" },
     { key: "visto", label: "Vistos", count: counts.vistos, icon: "visibility", color: "text-blue-600" },
@@ -161,194 +225,332 @@ export const AssignedList: React.FC = () => {
     { key: "rechazado", label: "Rechazados", count: counts.rechazados, icon: "cancel", color: "text-red-600" },
   ];
 
-  // Can the assignee take action?
-  const canComplete = (s: string) => ["visto", "editado"].includes(s);
-  const canReject = (s: string) => ["pendiente", "visto", "editado"].includes(s);
-  const isTerminal = (s: string) => ["completado", "rechazado"].includes(s);
-
   return (
-    <main className="max-w-[1200px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
-      <div className="flex flex-col gap-2">
-        <nav className="flex gap-2 text-sm font-medium text-[#616f89] dark:text-[#a0aec0] mb-1">
-          <Link to="/" className="hover:text-primary">Inicio</Link>
-          <span>/</span><span className="text-[#111318] dark:text-white">Asignados</span>
-        </nav>
-        <h1 className="text-[#111318] dark:text-white text-3xl font-black tracking-tight">Documentos Asignados</h1>
-        <p className="text-[#616f89] dark:text-[#a0aec0] text-lg">Gestiona las asignaciones de documentos.</p>
-      </div>
-
-      {/* Tab selector */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#dbdfe6] dark:border-[#2d3748] pb-4">
-        <h3 className="text-2xl font-bold flex items-center gap-2 text-[#111318] dark:text-white">
-          <span className="material-symbols-outlined text-primary">assignment</span>Listado de Asignaciones
-        </h3>
-
-        <div className="relative isolate flex p-1 bg-[#e2e6eb] dark:bg-[#101622] rounded-xl">
-          {/* Sliding background pill */}
-          <div
-            className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white dark:bg-[#1a212f] rounded-lg shadow-sm transition-transform duration-300 ease-out z-[-1]"
-            style={{
-              transform: `translateX(${tab === "RECIBIDOS" ? "0%" : "100%"})`
-            }}
-          />
-          <button
-            onClick={() => { setTab("RECIBIDOS"); setFilter("TODOS"); }}
-            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "RECIBIDOS" ? "text-primary" : "text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white"}`}
-          >
-            Mis Asignaciones
-          </button>
-          <button
-            onClick={() => { setTab("ENVIADOS"); setFilter("TODOS"); }}
-            className={`flex-1 px-4 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-32 ${tab === "ENVIADOS" ? "text-primary" : "text-[#616f89] hover:text-[#111318] dark:text-[#a0aec0] dark:hover:text-white"}`}
-          >
-            Enviados
-          </button>
+    <main className="max-w-[1200px] w-full mx-auto px-4 sm:px-6 py-6 flex-1 space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap justify-between items-end gap-4">
+        <div className="flex flex-col gap-1 min-w-0">
+          <nav className="flex gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+            <Link to="/" className="hover:text-primary transition-colors">
+              Inicio
+            </Link>
+            <span>/</span>
+            <span className="text-slate-900 dark:text-white">Asignados</span>
+          </nav>
+          <h1 className="text-slate-900 dark:text-white text-2xl sm:text-3xl font-black tracking-tight">
+            Documentos asignados
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Gestiona las asignaciones de documentos de tu despacho.
+          </p>
         </div>
       </div>
 
-      {/* Filter pills */}
-      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-        {pills.map(pill => (
-          <button key={pill.key} type="button" onClick={() => setFilter(pill.key)} className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all whitespace-nowrap ${filter === pill.key ? "bg-primary text-white" : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"}`}>
-            <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "" : pill.color}`}>{pill.icon}</span>
-            {pill.label} ({pill.count})
+      {/* Tab slider */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative isolate flex p-1 bg-slate-100 dark:bg-slate-800/60 rounded-xl self-start">
+          <div
+            className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white dark:bg-slate-700 rounded-lg shadow-sm transition-transform duration-300 ease-out"
+            style={{ transform: `translateX(${tab === "RECIBIDOS" ? "0%" : "100%"})` }}
+          />
+          <button
+            type="button"
+            onClick={() => { setTab("RECIBIDOS"); setFilter("TODOS"); }}
+            className={`relative z-10 flex items-center gap-1.5 px-5 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-36 justify-center ${
+              tab === "RECIBIDOS"
+                ? "text-primary"
+                : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Recibidos
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => { setTab("ENVIADOS"); setFilter("TODOS"); }}
+            className={`relative z-10 flex items-center gap-1.5 px-5 py-2 font-bold text-sm rounded-lg transition-colors duration-300 w-36 justify-center ${
+              tab === "ENVIADOS"
+                ? "text-primary"
+                : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            Enviados
+          </button>
+        </div>
+
+        {allAssignments.length > 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {assignments.length} de {allAssignments.length} asignación
+            {allAssignments.length !== 1 ? "es" : ""}
+            {filter !== "TODOS" || typeFilter !== "TODOS" ? " (filtrado)" : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Pills */}
+      <div className="flex flex-wrap items-end gap-3">
+        <DocumentTypeFilter value={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
+        <div className="flex gap-2 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
+          {pills.map((pill) => (
+            <button
+              key={pill.key}
+              type="button"
+              onClick={() => setFilter(pill.key)}
+              className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold shadow-sm transition-all shrink-0 ${
+                filter === pill.key
+                  ? "bg-primary text-white"
+                  : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"
+              }`}
+            >
+              <span
+                className={`material-symbols-outlined text-[18px] leading-none ${
+                  filter === pill.key ? "" : pill.color
+                }`}
+              >
+                {pill.icon}
+              </span>
+              {pill.label} ({pill.count})
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="animate-pulse bg-white dark:bg-[#1a212f] p-4 sm:p-6 rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-              <div className="flex items-start justify-between mb-4"><div className="h-12 w-12 sm:h-16 sm:w-16 bg-slate-200 dark:bg-slate-700 rounded-xl" /><div className="h-6 w-20 bg-slate-200 dark:bg-slate-700 rounded" /></div>
-              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-3" />
-              <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4" />
-              <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-xl mt-4" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/60 overflow-hidden"
+            >
+              <Skeleton className="aspect-[4/3] w-full rounded-none" />
+              <div className="p-4 space-y-2">
+                <Skeleton className="h-3 w-3/4 rounded" />
+                <Skeleton className="h-2.5 w-1/2 rounded" />
+                <Skeleton className="h-2.5 w-2/3 rounded" />
+                <Skeleton className="h-9 w-full rounded-xl mt-1" />
+              </div>
             </div>
           ))}
         </div>
       ) : assignments.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] p-8 sm:p-12 text-center shadow-sm">
-          <span className="material-symbols-outlined text-4xl text-[#616f89] dark:text-[#a0aec0] block mb-2">folder_off</span>
-          <p className="text-[#616f89] dark:text-[#a0aec0] font-medium">No hay documentos asignados en esta categoría.</p>
+        <div className="py-16 text-center">
+          <FolderOpen className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+          <p className="font-semibold text-slate-700 dark:text-slate-200">
+            No hay asignaciones
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            {filter !== "TODOS"
+              ? "No hay asignaciones en esta categoría."
+              : tab === "RECIBIDOS"
+                ? "Aún no te han asignado documentos."
+                : "Aún no has enviado asignaciones."}
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" role="list">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {assignments.map((a) => {
-            const docType = a.document?.type || "docx";
-            const { icon, color } = getFileIcon(docType);
+            const doc = a.document;
             const overdue = isOverdue(a.dueDate) && !isTerminal(a.status);
             const isUpdating = updatingId === a.id;
+            const isOpening = openingId === a.id;
+            const sc = statusConfig[a.status] ?? fallbackStatus;
+            const StatusIcon = sc.Icon;
 
             return (
-              <article key={a.id} role="listitem" onClick={() => handleDocumentClick(a)} className={`min-w-0 bg-white dark:bg-[#1a212f] p-4 sm:p-6 rounded-2xl border transition-all cursor-pointer group shadow-sm relative flex flex-col h-full overflow-hidden ${overdue ? "border-red-300 dark:border-red-800" : openingId === a.id ? "border-primary ring-2 ring-primary/20 bg-slate-50 dark:bg-[#101622]" : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary"}`}>
-                {openingId === a.id && (
-                  <div className="absolute inset-0 z-10 bg-white/60 dark:bg-[#1a212f]/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 animate-pulse">
-                    <div className="w-10 h-10 rounded-full border-4 border-primary border-t-transparent animate-spin mb-3"></div>
-                    <div className="h-3 bg-slate-300 dark:bg-slate-600 rounded w-3/4 mb-2"></div>
-                    <div className="h-2 bg-slate-300 dark:bg-slate-600 rounded w-1/2"></div>
+              <article
+                key={a.id}
+                className={`group relative mt-3 cursor-pointer rounded-2xl border bg-white shadow-sm transition-colors hover:border-primary/40 hover:bg-slate-50/60 dark:bg-slate-800/60 dark:hover:bg-slate-800 flex flex-col ${
+                  overdue
+                    ? "border-red-300 dark:border-red-700/60"
+                    : "border-slate-200 dark:border-slate-700/60"
+                }`}
+                onClick={() => handleDocumentClick(a)}
+                role="button"
+                tabIndex={0}
+                draggable={!!doc}
+                onDragStart={(e) => {
+                  if (!doc) return;
+                  startDocDrag(e, { id: doc.id, name: doc.name, type: doc.type });
+                }}
+                onDragEnd={() => endDocDrag()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleDocumentClick(a);
+                  }
+                }}
+              >
+                {/* Pestaña de estado */}
+                <div
+                  className={`absolute left-4 top-0 z-10 -translate-y-full rounded-t-lg border border-b-0 px-2.5 py-0.5 text-[11px] font-semibold ${sc.tabCls}`}
+                >
+                  {sc.label}
+                </div>
+
+                {/* Thumbnail */}
+                <div className="relative">
+                  {doc ? (
+                    <CloudDocThumbnail doc={doc} />
+                  ) : (
+                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-2xl border-b border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 flex items-center justify-center">
+                      <ClipboardList className="h-12 w-12 text-slate-300 dark:text-slate-700" />
+                      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1 bg-gradient-to-t from-black/20 to-transparent pointer-events-none">
+                        <p className="text-[10px] font-bold text-white/90">ASIGNACIÓN</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Badge estado esquina */}
+                  <div
+                    className={`absolute right-2 top-2 z-10 rounded-md border p-1 ${sc.cls}`}
+                    title={sc.label}
+                  >
+                    <StatusIcon className="h-3.5 w-3.5" />
                   </div>
-                )}
-                <header className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-                  <div className={`p-3 sm:p-4 ${color} rounded-xl shrink-0`} aria-hidden><span className="material-symbols-outlined text-[24px] sm:text-[32px] font-bold">{icon}</span></div>
-                  <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] font-black uppercase border ${getStatusStyle(a.status)}`}>
-                      <span className="material-symbols-outlined text-[10px] sm:text-xs">{statusIcon(a.status)}</span>
-                      {statusLabel(a.status)}
+
+                  {/* Badge vencido */}
+                  {overdue && (
+                    <div
+                      className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-1.5 py-0.5 dark:border-red-700 dark:bg-red-900/30"
+                      title="Asignación vencida"
+                    >
+                      <AlertTriangle className="h-3 w-3 text-red-600 dark:text-red-400" />
+                      <span className="text-[9px] font-black uppercase text-red-600 dark:text-red-400">Vencido</span>
+                    </div>
+                  )}
+
+                  {/* Spinner apertura */}
+                  {isOpening && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 dark:bg-slate-900/60 backdrop-blur-[1px]">
+                      <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Body */}
+                <div className="flex flex-col gap-2 p-3 flex-1">
+                  {/* Nombre documento */}
+                  <p
+                    className="text-sm font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2"
+                    title={doc?.name}
+                  >
+                    {(doc?.name || "Sin documento").split("_").map((part, i) =>
+                      i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>,
+                    )}
+                  </p>
+
+                  {/* Meta */}
+                  <div className="flex flex-col gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      {tab === "RECIBIDOS" ? (
+                        <User className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <UserCheck className="h-3 w-3 shrink-0" />
+                      )}
+                      {tab === "RECIBIDOS" ? (
+                        <span>De: <span className="font-medium text-slate-700 dark:text-slate-300">{a.assigner?.name || "Desconocido"}</span></span>
+                      ) : (
+                        <span>
+                          Para:{" "}
+                          {a.assignee?.id ? (
+                            <Link
+                              to={`/equipo/usuario/${a.assignee.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {a.assignee.name || "Desconocido"}
+                            </Link>
+                          ) : (
+                            <span className="font-medium text-slate-700 dark:text-slate-300">{a.assignee?.name || "Desconocido"}</span>
+                          )}
+                        </span>
+                      )}
                     </span>
-                    {overdue && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800">
-                        <span className="material-symbols-outlined text-[10px] sm:text-xs">warning</span>VENCIDO
+
+                    <span className="flex items-center gap-1.5">
+                      <CalendarDays className="h-3 w-3 shrink-0" />
+                      {formatTimeAgo(a.createdAt)} · {formatDate(a.createdAt)}
+                    </span>
+
+                    {a.dueDate && (
+                      <span
+                        className={`flex items-center gap-1.5 font-semibold ${
+                          overdue ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
+                        }`}
+                      >
+                        <CalendarClock className="h-3 w-3 shrink-0" />
+                        {overdue ? "Venció" : "Vence"} {formatDate(a.dueDate)}
+                      </span>
+                    )}
+
+                    {a.notes && (
+                      <span className="flex items-start gap-1.5 italic">
+                        <MessageSquare className="h-3 w-3 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">"{a.notes}"</span>
                       </span>
                     )}
                   </div>
-                </header>
-                <h3 className="text-lg sm:text-xl font-extrabold mb-2 sm:mb-3 text-[#111318] dark:text-white break-normal leading-tight flex-grow min-w-0">
-                  {(a.document?.name || "Documento").split("_").map((part, i) => i === 0 ? part : <React.Fragment key={i}><wbr />_{part}</React.Fragment>)}
-                </h3>
-                <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-1">
-                  <span className="material-symbols-outlined text-base sm:text-lg shrink-0">{tab === "RECIBIDOS" ? "person" : "person_check"}</span>
-                  {tab === "RECIBIDOS" ? (
-                    <span>De: {a.assigner?.name || "Desconocido"}</span>
-                  ) : (
-                    <span>Para:{" "}
-                      {a.assignee?.id ? (
-                        <Link
-                          to={`/equipo/usuario/${a.assignee.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-primary hover:underline font-semibold transition-colors"
-                        >
-                          {a.assignee.name || "Desconocido"}
-                        </Link>
-                      ) : (
-                        <span>{a.assignee?.name || "Desconocido"}</span>
-                      )}
-                    </span>
-                  )}
-                </p>
-                <p className="flex items-center gap-2 text-[#616f89] dark:text-[#a0aec0] font-medium text-xs sm:text-sm mb-2 sm:mb-3">
-                  <span className="material-symbols-outlined text-base sm:text-lg shrink-0">calendar_today</span>
-                  <span>{formatTimeAgo(a.createdAt)} · {formatDate(a.createdAt)}</span>
-                </p>
-                {a.dueDate && (
-                  <div className={`mb-2 sm:mb-3 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border text-[10px] sm:text-xs font-bold ${overdue ? "text-red-600 bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/50" : "text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50"}`} role="alert">
-                    <span className="material-symbols-outlined text-sm sm:text-lg shrink-0">{overdue ? "warning" : "event"}</span>
-                    <span>{overdue ? "Venció" : "Vence"} el {formatDate(a.dueDate)}</span>
-                  </div>
-                )}
-                {a.notes && <p className="text-xs sm:text-sm text-[#616f89] dark:text-[#a0aec0] mb-2 sm:mb-3 italic line-clamp-2">"{a.notes}"</p>}
 
-                <footer className="mt-auto pt-3 sm:pt-4 border-t border-[#dbdfe6] dark:border-[#2d3748] flex gap-2">
-                  {/* View button – always available */}
-                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDocumentClick(a); }} className="flex-1 min-h-[36px] sm:min-h-[44px] py-2 sm:py-3 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 sm:gap-2">
-                    <span className="material-symbols-outlined text-base sm:text-lg">visibility</span>Ver
-                  </button>
-
-                  {tab === "RECIBIDOS" && !isTerminal(a.status) && (
-                    <>
-                      {canComplete(a.status) && (
-                        <button
-                          type="button"
-                          disabled={isUpdating}
-                          onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "completado"); }}
-                          className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1"
-                          title="Marcar como completado"
-                        >
-                          <span className="material-symbols-outlined text-base sm:text-lg">{isUpdating ? "sync" : "check_circle"}</span>
-                        </button>
-                      )}
-                      {canReject(a.status) && (
-                        <button
-                          type="button"
-                          disabled={isUpdating}
-                          onClick={(e) => { e.stopPropagation(); handleUpdateStatus(a.id, "rechazado"); }}
-                          className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1"
-                          title="Rechazar asignación"
-                        >
-                          <span className="material-symbols-outlined text-base sm:text-lg">{isUpdating ? "sync" : "close"}</span>
-                        </button>
-                      )}
-                    </>
-                  )}
-
-                  {tab === "ENVIADOS" && (
-                    <button type="button" disabled={isUpdating} onClick={(e) => { e.stopPropagation(); handleRevoke(a.id); }} className="min-h-[36px] sm:min-h-[44px] py-2 px-3 sm:py-3 sm:px-4 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 sm:gap-2" title="Revocar asignación">
-                      <span className="material-symbols-outlined text-base sm:text-lg">block</span>
+                  {/* Footer acciones */}
+                  <div
+                    className="mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/60 flex gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleDocumentClick(a)}
+                      className="flex-1 min-h-[34px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary hover:bg-blue-700 text-white text-xs font-bold transition-colors"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Ver
                     </button>
-                  )}
-                </footer>
+
+                    {tab === "RECIBIDOS" && !isTerminal(a.status) && (
+                      <>
+                        {canComplete(a.status) && (
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus(a.id, "completado")}
+                            className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-bold transition-colors"
+                            title="Marcar completado"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {canReject(a.status) && (
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus(a.id, "rechazado")}
+                            className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 text-xs font-bold transition-colors"
+                            title="Rechazar"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {tab === "ENVIADOS" && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleRevoke(a.id)}
+                        className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 text-xs font-bold transition-colors"
+                        title="Revocar asignación"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </article>
             );
           })}
         </div>
-      )}
-
-      {allAssignments.length > 0 && (
-        <p className="text-[#616f89] dark:text-[#a0aec0] text-sm font-medium">
-          Mostrando {assignments.length} de {allAssignments.length} documento{allAssignments.length !== 1 ? "s" : ""} asignado{allAssignments.length !== 1 ? "s" : ""}
-          {filter !== "TODOS" ? " (filtrado)" : ""}.
-        </p>
       )}
     </main>
   );

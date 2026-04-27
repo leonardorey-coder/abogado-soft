@@ -11,6 +11,8 @@ interface CloudDocThumbnailProps {
 }
 
 export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
+  const docType = (doc.type || "").toUpperCase();
+  const docExt = doc.name.split(".").pop()?.toLowerCase() ?? "";
   const wrapperRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -76,15 +78,15 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
           return;
         }
 
-        const ext = doc.name.split(".").pop()?.toLowerCase() ?? doc.type.toLowerCase();
+        const ext = docExt || docType.toLowerCase();
 
-        if (doc.type === "PDF" || ext === "pdf") {
+        if (docType === "PDF" || ext === "pdf") {
           createdUrl = URL.createObjectURL(file);
           if (!cancelled) setPdfUrl(createdUrl);
           return;
         }
 
-        if (doc.type === "XLSX" || ext === "xlsx" || ext === "xls") {
+        if (docType === "XLSX" || ext === "xlsx" || ext === "xls") {
           const XLSX = await import("xlsx");
           const buffer = await file.arrayBuffer();
           if (cancelled) return;
@@ -96,7 +98,7 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
           return;
         }
 
-        if (doc.type === "DOCX" || ext === "docx" || ext === "doc") {
+        if (docType === "DOCX" || ext === "docx" || ext === "doc") {
           await new Promise((res) => requestAnimationFrame(res));
           if (cancelled) return;
           if (!docxRef.current) {
@@ -139,7 +141,9 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
     };
   }, [doc.id, doc.name, doc.type, visible]);
 
-  const isDocx = doc.type === "DOCX" || doc.name.toLowerCase().endsWith(".doc");
+  const isPdf = docType === "PDF" || docExt === "pdf";
+  const isXlsx = docType === "XLSX" || docExt === "xlsx" || docExt === "xls";
+  const isDocx = docType === "DOCX" || docExt === "docx" || docExt === "doc";
   const showSkeleton = !visible || loading;
 
   return (
@@ -147,7 +151,7 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
       ref={wrapperRef}
       className="relative aspect-[4/3] w-full overflow-hidden rounded-t-2xl border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
     >
-      {visible && doc.type === "PDF" && pdfUrl && (
+      {visible && isPdf && pdfUrl && (
         <iframe
           title={`Vista previa de ${doc.name}`}
           src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
@@ -186,7 +190,7 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50 dark:bg-slate-900">
           <FileText
             className={`h-12 w-12 opacity-25 ${
-              doc.type === "PDF" ? "text-red-500" : doc.type === "XLSX" ? "text-emerald-500" : "text-blue-500"
+              isPdf ? "text-red-500" : isXlsx ? "text-emerald-500" : "text-blue-500"
             }`}
           />
           <span className="text-[10px] font-medium text-slate-400">
@@ -203,7 +207,7 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
       )}
 
       <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1 bg-gradient-to-t from-black/20 to-transparent pointer-events-none">
-        <p className="text-[10px] font-bold text-white/90">{doc.type}</p>
+        <p className="text-[10px] font-bold text-white/90">{docType || docExt.toUpperCase()}</p>
       </div>
     </div>
   );
