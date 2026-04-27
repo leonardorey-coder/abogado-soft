@@ -78,6 +78,10 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
     currentUserPermission: doc.effectivePermission as DocumentPermissionLevel | undefined,
     ownerId: doc.ownerId ?? undefined,
     lastEditor: doc.owner?.name ?? 'Juan Pérez', // Default mock if owner not found
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    storageKey: doc.storageKey ?? null,
+    localPath: doc.localPath ?? null,
     syncStatus: normalizeSyncStatus(doc.syncStatus),
     driveFileId: doc.driveFileId ?? null,
     lastSyncAt: doc.lastSyncAt ?? null,

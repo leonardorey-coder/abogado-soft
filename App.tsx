@@ -12,6 +12,7 @@ const LoginPage = lazy(() => import("./components/LoginPage").then(m => ({ defau
 const RegisterPage = lazy(() => import("./components/RegisterPage").then(m => ({ default: m.RegisterPage })));
 const CompleteProfilePage = lazy(() => import("./components/CompleteProfilePage").then(m => ({ default: m.CompleteProfilePage })));
 const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+const MiEscritorio = lazy(() => import("./components/MiEscritorio").then(m => ({ default: m.MiEscritorio })));
 const DocumentsList = lazy(() => import("./components/DocumentsList").then(m => ({ default: m.DocumentsList })));
 const AssignedList = lazy(() => import("./components/AssignedList").then(m => ({ default: m.AssignedList })));
 const AgreementsList = lazy(() => import("./components/AgreementsList").then(m => ({ default: m.AgreementsList })));
@@ -56,6 +57,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
                 <Route index element={<Dashboard />} />
+                <Route path="/mi-escritorio" element={<MiEscritorio />} />
                 <Route path="/documentos" element={<DocumentsList />} />
                 <Route path="/asignados" element={<AssignedList />} />
                 <Route path="/convenios" element={<AgreementsList />} />

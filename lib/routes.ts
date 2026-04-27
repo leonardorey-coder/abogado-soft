@@ -6,6 +6,7 @@ export const ROUTES: Record<ViewState, string> = {
     [ViewState.REGISTER]: '/registro',
     [ViewState.COMPLETE_PROFILE]: '/completar-perfil',
     [ViewState.DASHBOARD]: '/',
+    [ViewState.DESKTOP]: '/mi-escritorio',
     [ViewState.DOCUMENTS]: '/documentos',
     [ViewState.ASIGNED]: '/asignados',
     [ViewState.AGREEMENTS]: '/convenios',

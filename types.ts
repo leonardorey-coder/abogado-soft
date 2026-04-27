@@ -1,5 +1,6 @@
 export enum ViewState {
   DASHBOARD = 'DASHBOARD',
+  DESKTOP = 'DESKTOP',
   DOCUMENTS = 'DOCUMENTS',
   ASIGNED = 'ASIGNED',
   AGREEMENTS = 'AGREEMENTS',
@@ -70,6 +71,10 @@ export interface Document {
   assignments?: { id: string; status: string; assignee: { id: string; name: string; email: string; avatarUrl?: string | null } }[];
   // Historial de shares recientes
   recentShares?: DocumentShare[];
+  createdAt?: string;
+  updatedAt?: string;
+  storageKey?: string | null;
+  localPath?: string | null;
 }
 
 export interface DocumentVersion {

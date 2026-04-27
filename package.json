@@ -9,6 +9,7 @@
     "dev:api": "cd backend && bun run dev",
     "dev:full": "concurrently \"vite\" \"cd backend && bun run dev\"",
     "dev:electron": "concurrently \"vite\" \"cd backend && bun run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:full": "concurrently \"bun run dev\" \"bun run dev:api\" \"wait-on http://localhost:3000 && bun run electron\"",
     "build": "vite build",
     "build:api": "cd backend && bun run build",
     "preview": "vite preview",

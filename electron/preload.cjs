@@ -4,8 +4,6 @@
 // ============================================================================
 
 const { contextBridge, ipcRenderer } = require('electron');
-const fs = require('node:fs');
-const path = require('node:path');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     /**
@@ -14,18 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
      * @param {ArrayBuffer} buffer — Contenido del archivo como ArrayBuffer.
      * @returns {{ ok: boolean, error?: string }}
      */
-    saveFile: (filePath, buffer) => {
-        try {
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(filePath, Buffer.from(buffer));
-            return { ok: true };
-        } catch (err) {
-            return { ok: false, error: err.message };
-        }
-    },
+    saveFile: (filePath, buffer) => ipcRenderer.invoke('fs:saveFile', filePath, buffer),
 
     /**
      * Abre un diálogo nativo para seleccionar carpeta.
@@ -33,19 +20,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
      */
     selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 
+    /** Carpetas comunes del sistema para configurar accesos rápidos. */
+    getKnownFolders: () => ipcRenderer.invoke('app:getKnownFolders'),
+
+    /** Abre un archivo local con la aplicación predeterminada del sistema. */
+    openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
+
     /**
      * Une segmentos de ruta de forma nativa.
      * @param {...string} segments
      * @returns {string}
      */
-    pathJoin: (...segments) => path.join(...segments),
+    pathJoin: (...segments) => ipcRenderer.invoke('path:join', ...segments),
 
     /**
      * Verifica si una ruta/directorio existe.
      * @param {string} targetPath
      * @returns {boolean}
      */
-    pathExists: (targetPath) => fs.existsSync(targetPath),
+    pathExists: (targetPath) => ipcRenderer.invoke('fs:pathExists', targetPath),
+
+    /** Lista archivos soportados dentro de una carpeta local. */
+    listFolderFiles: (folderPath) => ipcRenderer.invoke('fs:listFolderFiles', folderPath),
+
+    /** Lee un archivo local para previsualizarlo o subirlo. */
+    readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
 
     /** Indica que estamos en Electron */
     isElectron: true,

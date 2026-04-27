@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  Monitor,
   FileText,
   ClipboardList,
   Handshake,
@@ -25,6 +26,7 @@ export interface NavItem {
 export const navigationConfig: NavItem[] = [
   // ── Trabajo ──
   { label: "Inicio",      path: "/",           icon: LayoutDashboard, group: "work",       mobileVisible: true,  end: true },
+  { label: "Mi escritorio", path: "/mi-escritorio", icon: Monitor,     group: "work",       mobileVisible: false },
   { label: "Documentos",  path: "/documentos", icon: FileText,        group: "work",       mobileVisible: true  },
   { label: "Asignados",   path: "/asignados",  icon: ClipboardList,   group: "work",       mobileVisible: true  },
   { label: "Convenios",   path: "/convenios",  icon: Handshake,       group: "work",       mobileVisible: true  },
