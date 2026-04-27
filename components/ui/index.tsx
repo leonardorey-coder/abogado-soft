@@ -61,7 +61,7 @@ interface SectionCardProps {
 }
 
 export const SectionCard: React.FC<SectionCardProps> = ({ title, children, className = "", noPadding, action, stickyHeader = false }) => (
-  <div className={`bg-white dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700/60 shadow-sm ${className}`}>
+  <div className={`bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm ${className}`}>
     {title && (
       <div className={`px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2 bg-white dark:bg-slate-800/95 ${stickyHeader ? "sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/95 dark:supports-[backdrop-filter]:bg-slate-800/95" : ""}`}>
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>

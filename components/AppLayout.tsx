@@ -26,6 +26,9 @@ import { ToastProvider } from "../contexts/ToastContext";
 import { ToastContainer } from "./ToastContainer";
 import { NotificationsDrawer } from "./NotificationsDrawer";
 import { GlobalSearchModal } from "./GlobalSearchModal";
+import { TeamAvatarRow } from "./TeamAvatarRow";
+import { AssignWithDeadlinePopup, type AssignDropPayload } from "./AssignWithDeadlinePopup";
+import { DOC_DRAG_END_EVENT, DOC_DRAG_START_EVENT } from "../lib/docDrag";
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -259,6 +262,19 @@ const TopBar: React.FC<TopBarProps> = ({
 }) => {
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const handleEditorBack = () => {
+    const fromPath = (location.state as { from?: string } | null)?.from;
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    if (fromPath) {
+      navigate(fromPath);
+      return;
+    }
+    navigate("/documentos");
+  };
 
   return (
     <header id="app-top-bar" className="sticky top-0 z-30 min-h-[4rem] shrink-0 flex items-center gap-1 px-2 sm:gap-2 sm:px-4 bg-white dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 pt-safe pb-2 sm:pb-0">
@@ -277,7 +293,7 @@ const TopBar: React.FC<TopBarProps> = ({
         <>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={handleEditorBack}
             className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white sm:w-10"
             aria-label="Regresar"
           >
@@ -615,6 +631,25 @@ export const AppLayout: React.FC = () => {
   // Sidebar open state (mobile)
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // ── Drag-and-drop global de documentos a avatares ──
+  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
+  const [dragAssignPayload, setDragAssignPayload] = useState<AssignDropPayload | null>(null);
+
+  useEffect(() => {
+    const onStart = () => setIsDraggingDoc(true);
+    const onEnd = () => setIsDraggingDoc(false);
+    window.addEventListener(DOC_DRAG_START_EVENT, onStart);
+    window.addEventListener(DOC_DRAG_END_EVENT, onEnd);
+    window.addEventListener("dragend", onEnd);
+    window.addEventListener("drop", onEnd);
+    return () => {
+      window.removeEventListener(DOC_DRAG_START_EVENT, onStart);
+      window.removeEventListener(DOC_DRAG_END_EVENT, onEnd);
+      window.removeEventListener("dragend", onEnd);
+      window.removeEventListener("drop", onEnd);
+    };
+  }, []);
+
   // Detect editor routes — hide sidebar completely
   const isEditorRoute = location.pathname.includes("/documento/");
 
@@ -868,6 +903,43 @@ export const AppLayout: React.FC = () => {
           onMarkRead={handleMarkRead}
           onMarkAllRead={handleMarkAllRead}
         />
+
+        {/* Drag-and-drop overlay: floating team avatar bar */}
+        {!isEditorRoute && (
+          <div
+            className={[
+              "fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none",
+              "transition-all duration-300 ease-in-out",
+              isDraggingDoc ? "translate-y-0 opacity-100" : "translate-y-full opacity-0",
+            ].join(" ")}
+          >
+            <div className="pointer-events-auto w-full max-w-[1200px] px-4 sm:px-6 pb-4 lg:pl-[calc(240px+1.5rem)]">
+              <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-600/60 p-3">
+                <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5 px-1">
+                  Suelta sobre un miembro para asignar
+                </p>
+                <TeamAvatarRow
+                  compact
+                  onAssignDrop={(payload) => {
+                    setIsDraggingDoc(false);
+                    setDragAssignPayload(payload);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {dragAssignPayload && (
+          <AssignWithDeadlinePopup
+            payload={dragAssignPayload}
+            onClose={() => setDragAssignPayload(null)}
+            onSuccess={() => {
+              setDragAssignPayload(null);
+              void refreshDocuments();
+            }}
+          />
+        )}
 
         {/* Toast container */}
         <ToastContainer />

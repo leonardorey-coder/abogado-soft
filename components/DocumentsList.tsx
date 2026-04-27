@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Document, FileStatus, ShareMethod, DocumentPermissionLevel } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
@@ -6,10 +6,12 @@ import {
   documentsApi,
   assignmentsApi,
   recentlyOpenedApi,
+  getShareableDocumentFile,
   type ApiDocumentAssignment,
   type RecentlyOpenedItem,
 } from "../lib/api";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
+import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import { getDocumentRoute } from "../lib/routes";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
 import type { AppLayoutOutletContext } from "./AppLayout";
@@ -133,6 +135,192 @@ function truncateContact(contact: string, maxLen = 18): string {
     }
   }
   return contact.substring(0, maxLen - 3) + "...";
+}
+
+// ─── Thumbnail preview para documentos en la nube ────────────────────────────
+
+const PREVIEW_PAPER_WIDTH = 816;
+const MAX_PREVIEW_BYTES = 8 * 1024 * 1024; // 8 MB
+
+function CloudDocThumbnail({ doc }: { doc: { id: string; name: string; type: string } }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const docxRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [xlsxHtml, setXlsxHtml] = useState<string | null>(null);
+  const [textPreview, setTextPreview] = useState<string | null>(null);
+  const [docxReady, setDocxReady] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [scale, setScale] = useState(0.32);
+
+  // Lazy load: activa cuando entra en viewport
+  useEffect(() => {
+    const target = wrapperRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  // Scale dinámico según ancho real del contenedor
+  useLayoutEffect(() => {
+    const target = wrapperRef.current;
+    if (!target) return;
+    const update = () => { const w = target.clientWidth; if (w > 0) setScale(w / PREVIEW_PAPER_WIDTH); };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(target);
+    return () => ro.disconnect();
+  }, []);
+
+  // Carga del contenido desde la nube
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    let createdUrl: string | null = null;
+
+    setPdfUrl(null); setXlsxHtml(null); setTextPreview(null);
+    setDocxReady(false); setUnsupported(false); setFailed(false);
+    if (docxRef.current) docxRef.current.innerHTML = "";
+
+    async function load() {
+      try {
+        setLoading(true);
+        const file = await getShareableDocumentFile(doc.id, doc.name);
+        if (cancelled) return;
+
+        if (file.size > MAX_PREVIEW_BYTES) { if (!cancelled) setUnsupported(true); return; }
+
+        const ext = doc.name.split(".").pop()?.toLowerCase() ?? doc.type.toLowerCase();
+
+        if (doc.type === "PDF" || ext === "pdf") {
+          createdUrl = URL.createObjectURL(file);
+          if (!cancelled) setPdfUrl(createdUrl);
+          return;
+        }
+
+        if (doc.type === "XLSX" || ext === "xlsx" || ext === "xls") {
+          const XLSX = await import("xlsx");
+          const buffer = await file.arrayBuffer();
+          if (cancelled) return;
+          const wb = XLSX.read(buffer, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          if (!ws) throw new Error("Hoja vacía");
+          const html = XLSX.utils.sheet_to_html(ws, { editable: false });
+          if (!cancelled) setXlsxHtml(html);
+          return;
+        }
+
+        if (doc.type === "DOCX" || ext === "docx" || ext === "doc") {
+          await new Promise((res) => requestAnimationFrame(res));
+          if (cancelled) return;
+          if (!docxRef.current) { if (!cancelled) setFailed(true); return; }
+          docxRef.current.innerHTML = "";
+          const { renderAsync } = await import("docx-preview");
+          await renderAsync(file, docxRef.current, undefined, {
+            className: "cloud-docx-preview",
+            inWrapper: true,
+            ignoreWidth: false,
+            ignoreHeight: true,
+            ignoreFonts: false,
+            breakPages: false,
+            useBase64URL: true,
+            experimental: true,
+          });
+          if (!cancelled) setDocxReady(true);
+          return;
+        }
+
+        if (ext === "txt" || ext === "rtf") {
+          if (!cancelled) setTextPreview((await file.text()).slice(0, 4000));
+          return;
+        }
+
+        if (!cancelled) setUnsupported(true);
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => { cancelled = true; if (createdUrl) URL.revokeObjectURL(createdUrl); };
+  }, [doc.id, doc.name, doc.type, visible]);
+
+  const isDocx = doc.type === "DOCX" || doc.name.toLowerCase().endsWith(".doc");
+  const showSkeleton = !visible || loading;
+
+  return (
+    <div ref={wrapperRef} className="relative aspect-[4/3] w-full overflow-hidden rounded-t-2xl border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+      {/* PDF */}
+      {visible && doc.type === "PDF" && pdfUrl && (
+        <iframe
+          title={`Vista previa de ${doc.name}`}
+          src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+          loading="lazy"
+          className="absolute inset-0 h-full w-full bg-white"
+        />
+      )}
+
+      {/* DOCX */}
+      {visible && isDocx && (
+        <div
+          className="pointer-events-none absolute left-0 top-0 origin-top-left bg-white text-slate-900"
+          style={{ width: PREVIEW_PAPER_WIDTH, transform: `scale(${scale})` }}
+        >
+          <div ref={docxRef} />
+        </div>
+      )}
+
+      {/* XLSX */}
+      {visible && xlsxHtml && (
+        <div
+          className="pointer-events-none absolute left-0 top-0 origin-top-left bg-white p-4 text-[12px] text-slate-900 [&_table]:w-auto [&_table]:border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1"
+          style={{ width: PREVIEW_PAPER_WIDTH, transform: `scale(${scale})` }}
+          dangerouslySetInnerHTML={{ __html: xlsxHtml }}
+        />
+      )}
+
+      {/* TXT / RTF */}
+      {visible && textPreview && (
+        <div
+          className="pointer-events-none absolute left-0 top-0 origin-top-left whitespace-pre-wrap bg-white p-6 font-mono text-[12px] leading-tight text-slate-900"
+          style={{ width: PREVIEW_PAPER_WIDTH, transform: `scale(${scale})` }}
+        >
+          {textPreview}
+        </div>
+      )}
+
+      {/* Fallback: icono de tipo */}
+      {(failed || unsupported) && !loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50 dark:bg-slate-900">
+          <FileText className={`h-12 w-12 opacity-25 ${doc.type === "PDF" ? "text-red-500" : doc.type === "XLSX" ? "text-emerald-500" : "text-blue-500"}`} />
+          <span className="text-[10px] font-medium text-slate-400">
+            {unsupported ? "Archivo muy grande" : "Sin vista previa"}
+          </span>
+        </div>
+      )}
+
+      {/* Skeleton */}
+      {showSkeleton && !failed && !unsupported && (
+        <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+      )}
+      {visible && !loading && isDocx && !docxReady && !failed && !unsupported && (
+        <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+      )}
+
+      {/* Badge de tipo sobre la miniatura */}
+      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1 bg-gradient-to-t from-black/20 to-transparent pointer-events-none">
+        <p className="text-[10px] font-bold text-white/90">{doc.type}</p>
+      </div>
+    </div>
+  );
 }
 
 export const DocumentsList: React.FC<DocumentsListProps> = ({
@@ -478,6 +666,16 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     );
   };
 
+  const sortedDocuments = [...documentsForList].sort((a, b) =>
+    a.name.localeCompare(b.name, "es", { sensitivity: "base" }),
+  );
+
+  const tabConfig: Record<string, { label: string; cls: string }> = {
+    ACTIVO:   { label: "Activo",   cls: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300" },
+    PENDIENTE:{ label: "Pendiente",cls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
+    INACTIVO: { label: "Inactivo", cls: "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400" },
+  };
+
   return (
     <>
       {isDraggingOver && (
@@ -494,21 +692,20 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
         </div>
       )}
 
-      <main className="max-w-[1200px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 space-y-6">
+      <main className="max-w-[1200px] w-full mx-auto px-4 sm:px-6 py-6 flex-1 space-y-6">
+        {/* Header */}
         <div className="flex flex-wrap justify-between items-end gap-4">
-          <div className="flex flex-col gap-2 min-w-0">
-            <nav className="flex gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-              <Link to="/" className="hover:text-primary">
-                Inicio
-              </Link>
+          <div className="flex flex-col gap-1 min-w-0">
+            <nav className="flex gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+              <Link to="/" className="hover:text-primary transition-colors">Inicio</Link>
               <span>/</span>
               <span className="text-slate-900 dark:text-white">Documentos</span>
             </nav>
             <h1 className="text-slate-900 dark:text-white text-2xl sm:text-3xl font-black tracking-tight">
-              Gestión de Documentos
+              Todos los documentos
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base">
-              Administre y visualice los documentos del despacho con total claridad.
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Administra y visualiza todos los documentos del despacho.
             </p>
           </div>
           <Button icon={Plus} onClick={() => openUploadModal()} className="shrink-0">
@@ -516,10 +713,9 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
           </Button>
         </div>
 
-        {/* Pills + Fecha en un wrapper flex sin overflow para que el dropdown de Fecha no quede clipado */}
-        <div className="flex items-center gap-3 pb-2">
-          {/* Pills scrollables */}
-          <div className="flex gap-3 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
+        {/* Pills + Fecha */}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2 items-center overflow-x-auto no-scrollbar flex-1 min-w-0">
             {(
               [
                 { key: "TODOS" as const, label: "Todos", count: counts.todos, icon: "check_circle", color: "" },
@@ -532,340 +728,201 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                 key={pill.key}
                 type="button"
                 onClick={() => setFilter(pill.key)}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm transition-all shrink-0 ${
+                className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold shadow-sm transition-all shrink-0 ${
                   filter === pill.key
                     ? "bg-primary text-white"
                     : "bg-white dark:bg-[#1a212f] border-2 border-[#dbdfe6] dark:border-[#2d3748] text-[#111318] dark:text-white hover:border-primary"
                 }`}
               >
-                <span className={`material-symbols-outlined text-xl ${filter === pill.key ? "" : pill.color}`}>
+                <span className={`material-symbols-outlined text-[18px] leading-none ${filter === pill.key ? "" : pill.color}`}>
                   {pill.icon}
                 </span>
                 {pill.label} ({pill.count})
               </button>
             ))}
           </div>
-
-          {/* Date range filter — fuera del overflow para que su dropdown no quede clipado */}
           <div className="shrink-0">
             <DateRangeFilter
               from={dateFrom}
               to={dateTo}
-              onChange={(f, t) => {
-                setDateFrom(f);
-                setDateTo(t);
-                setPage(1);
-              }}
+              onChange={(f, t) => { setDateFrom(f); setDateTo(t); setPage(1); }}
             />
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm flex flex-col overflow-hidden">
-          <div className="hidden md:block overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700/60">
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[35%]">
-                    Nombre
-                  </th>
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%]">
-                    Tipo
-                  </th>
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[20%]">
-                    Última modificación
-                  </th>
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[18%] text-center">
-                    Estado
-                  </th>
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[8%] text-center">
-                    Guardado
-                  </th>
-                  <th className="px-6 py-4 text-slate-900 dark:text-white text-sm font-extrabold uppercase tracking-wider w-[12%] text-right">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700/60">
-                {loading
-                  ? Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-5 w-3/4 rounded" />
-                        </td>
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-5 w-12 rounded" />
-                        </td>
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-5 w-24 rounded" />
-                        </td>
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-8 w-28 mx-auto rounded" />
-                        </td>
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-5 w-8 mx-auto rounded" />
-                        </td>
-                        <td className="px-6 py-4">
-                          <Skeleton className="h-8 w-10 ml-auto rounded" />
-                        </td>
-                      </tr>
-                    ))
-                : documentsForList.length === 0
-                    ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                            {searchQuery.trim() ? (
-                              <>
-                                <Search className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                                <p className="font-semibold text-slate-700 dark:text-slate-200">Sin resultados</p>
-                                <p className="text-sm mt-1">No hay documentos para &quot;{searchQuery}&quot;</p>
-                              </>
-                            ) : (
-                              <>
-                                <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                                <p className="font-semibold text-slate-700 dark:text-slate-200">No hay documentos</p>
-                                <p className="text-sm mt-1">Suba un documento para comenzar</p>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    : (
-                        documentsForList.map((doc) => {
-                          const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
-                          const isRecent = recentDocIds.has(doc.id);
-                          return (
-                            <tr
-                              key={doc.id}
-                              onClick={(e) => handleRowClick(e, doc)}
-                              className="transition-colors cursor-pointer relative hover:bg-slate-50 dark:hover:bg-slate-700/20"
-                            >
-                              <td className="px-6 py-4">
-                                <div className="flex items-start gap-3 min-w-0">
-                                  <div
-                                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}
-                                  >
-                                    <TypeIcon className={`w-4 h-4 ${typeColor}`} />
-                                  </div>
-                                  <div className="min-w-0 flex flex-col">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-slate-900 dark:text-white font-bold text-sm truncate max-w-[200px] sm:max-w-[280px]">
-                                        {doc.name}
-                                      </span>
-                                      {renderPermissionBadge(doc)}
-                                      {isRecent && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 shrink-0">
-                                          <History className="w-3 h-3" />
-                                          Reciente
-                                        </span>
-                                      )}
-                                    </div>
-                                    {renderShareBadges(doc)}
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium text-sm">
-                                {doc.type}
-                              </td>
-                              <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-sm">
-                                {doc.lastModified}
-                              </td>
-                              <td className="px-6 py-4 text-center">{statusButtons(doc)}</td>
-                              <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                <SaveStatusBadge
-                                  compact
-                                  hasChanges={false}
-                                  isSaving={false}
-                                  lastSavedAt={doc.lastSyncAt ?? null}
-                                  remoteSyncOk={
-                                    doc.syncStatus === 'completed'
-                                      ? true
-                                      : doc.syncStatus === 'failed'
-                                      ? false
-                                      : null
-                                  }
-                                  hasLocalHandle={false}
-                                />
-                              </td>
-                              <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                <div className="inline-flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => void handlePreview(doc)}
-                                    className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                                    title="Vista previa"
-                                    aria-label="Vista previa"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                  </button>
-                                  <ActionMenu
-                                    items={buildDocumentActionMenuItems(doc, {
-                                      onOpen: () => handleDocumentOpen(doc),
-                                      onShare: () => setShareDocument(doc),
-                                      onAssign: () => setAssignDocument(doc),
-                                      onPermissions: () => setPermissionsDocument(doc),
-                                      onDelete: () => handleDelete(doc),
-                                      confirmDeleteDocId,
-                                      confirmDeleteSecondsLeft,
-                                    })}
-                                    onClose={() => {
-                                      if (confirmDeleteDocId === doc.id) {
-                                        setConfirmDeleteDocId(null);
-                                        setConfirmDeleteSecondsLeft(0);
-                                        if (deleteConfirmTimerRef.current) {
-                                          window.clearInterval(deleteConfirmTimerRef.current);
-                                          deleteConfirmTimerRef.current = null;
-                                        }
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-              </tbody>
-            </table>
+        {/* Grid de miniaturas */}
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/60 overflow-hidden">
+                <Skeleton className="aspect-[3/4] w-full rounded-none" />
+                <div className="p-3 space-y-2">
+                  <Skeleton className="h-3 w-3/4 rounded" />
+                  <Skeleton className="h-2.5 w-1/2 rounded" />
+                  <Skeleton className="h-7 w-full rounded-lg" />
+                </div>
+              </div>
+            ))}
           </div>
+        ) : sortedDocuments.length === 0 ? (
+          <div className="py-16 text-center">
+            {searchQuery.trim() ? (
+              <>
+                <Search className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-slate-700 dark:text-slate-200">Sin resultados</p>
+                <p className="text-sm text-slate-500 mt-1">No hay documentos para &quot;{searchQuery}&quot;</p>
+              </>
+            ) : (
+              <>
+                <FolderOpen className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-slate-700 dark:text-slate-200">No hay documentos</p>
+                <p className="text-sm text-slate-500 mt-1">Sube un documento para comenzar</p>
+                <button
+                  type="button"
+                  onClick={() => openUploadModal()}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nuevo Documento
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {sortedDocuments.map((doc) => {
+              const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
+              const tab = tabConfig[doc.fileStatus ?? "ACTIVO"] ?? tabConfig.ACTIVO;
+              const canEdit = hasWritePermission(doc.currentUserPermission);
 
-          <div className="md:hidden flex flex-col divide-y divide-slate-200 dark:divide-slate-700/60">
-            {loading
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="p-4 animate-pulse flex flex-col gap-3">
-                    <Skeleton className="h-6 w-3/4 rounded" />
-                    <Skeleton className="h-4 w-1/2 rounded" />
-                    <Skeleton className="h-8 w-full mt-2 rounded" />
+              return (
+                <article
+                  key={doc.id}
+                  className="group relative mt-3 cursor-pointer rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors hover:border-primary/40 hover:bg-slate-50/60 dark:border-slate-700/60 dark:bg-slate-800/60 dark:hover:bg-slate-800 flex flex-col"
+                  onClick={() => handleDocumentOpen(doc)}
+                  role="button"
+                  tabIndex={0}
+                  draggable
+                  onDragStart={(e) => startDocDrag(e, { id: doc.id, name: doc.name, type: doc.type })}
+                  onDragEnd={() => endDocDrag()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleDocumentOpen(doc); }
+                  }}
+                >
+                  {/* Pestaña estado */}
+                  <div className={`absolute left-4 top-0 z-10 -translate-y-full rounded-t-lg border border-b-0 px-2.5 py-0.5 text-[11px] font-semibold ${tab.cls}`}>
+                    {tab.label}
                   </div>
-                ))
-              : documentsForList.length === 0
-                ? (
-                    <div className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                      {searchQuery.trim() ? (
-                        <>
-                          <Search className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                          <p className="font-semibold">Sin resultados para &quot;{searchQuery}&quot;</p>
-                        </>
-                      ) : (
-                        <>
-                          <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                          <p className="font-semibold">No hay documentos</p>
-                        </>
-                      )}
-                    </div>
-                  )
-                : (
-                    documentsForList.map((doc) => {
-                      const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
-                      const isRecent = recentDocIds.has(doc.id);
-                      return (
-                        <div
-                          key={doc.id}
-                          onClick={(e) => handleRowClick(e, doc)}
-                          className="p-4 flex flex-col gap-3 cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/20"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}>
-                              <TypeIcon className={`w-5 h-5 ${typeColor}`} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-slate-900 dark:text-white font-bold text-base leading-tight">
-                                {doc.name}
-                              </h4>
-                              <div className="flex flex-wrap items-center gap-1 mt-1">
-                                {renderPermissionBadge(doc)}
-                                {isRecent && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-primary/10 text-primary border border-primary/20">
-                                    <History className="w-3 h-3" />
-                                    Reciente
-                                  </span>
-                                )}
-                              </div>
-                              {renderShareBadges(doc)}
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{doc.lastModified}</p>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">Tipo</span>
-                              <span className="text-sm font-semibold text-slate-900 dark:text-white">{doc.type}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">Guardado</span>
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <SaveStatusBadge
-                                  compact
-                                  hasChanges={false}
-                                  isSaving={false}
-                                  lastSavedAt={doc.lastSyncAt ?? null}
-                                  remoteSyncOk={
-                                    doc.syncStatus === 'completed'
-                                      ? true
-                                      : doc.syncStatus === 'failed'
-                                      ? false
-                                      : null
-                                  }
-                                  hasLocalHandle={false}
-                                />
-                              </div>
-                            </div>
-                            <div className="flex justify-center pt-1">{statusButtons(doc)}</div>
-                          </div>
-                          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                            <ActionMenu
-                              items={buildDocumentActionMenuItems(doc, {
-                                onOpen: () => handleDocumentOpen(doc),
-                                onShare: () => setShareDocument(doc),
-                                onAssign: () => setAssignDocument(doc),
-                                onPermissions: () => setPermissionsDocument(doc),
-                                onDelete: () => handleDelete(doc),
-                                confirmDeleteDocId,
-                                confirmDeleteSecondsLeft,
-                              })}
-                              onClose={() => {
-                                if (confirmDeleteDocId === doc.id) {
-                                  setConfirmDeleteDocId(null);
-                                  setConfirmDeleteSecondsLeft(0);
-                                  if (deleteConfirmTimerRef.current) {
-                                    window.clearInterval(deleteConfirmTimerRef.current);
-                                    deleteConfirmTimerRef.current = null;
-                                  }
-                                }
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-          </div>
 
-          <div className="px-4 sm:px-6 py-4 bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between border-t border-slate-200 dark:border-slate-700/60">
+                  {/* Miniatura real del documento */}
+                  <div className="relative">
+                    <CloudDocThumbnail doc={doc} />
+                    <div className="absolute right-2 top-2 z-10 rounded-md border border-blue-200 bg-blue-50 p-1 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex flex-col gap-2 p-3 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2">
+                      {doc.name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">{doc.lastModified}</p>
+
+                    {renderShareBadges(doc)}
+
+                    {/* Botones de estado */}
+                    <div
+                      className="inline-flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg mt-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => canEdit && void handleSetFileStatus(doc, status)}
+                          disabled={!canEdit}
+                          className={`flex-1 py-1 rounded text-[9px] font-bold uppercase border transition-colors ${
+                            doc.fileStatus === status
+                              ? status === "ACTIVO"
+                                ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
+                                : status === "PENDIENTE"
+                                  ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
+                                  : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
+                              : canEdit
+                                ? "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
+                                : "bg-transparent text-slate-400 border-transparent cursor-not-allowed"
+                          }`}
+                          title={status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pendiente" : "Inactivo"}
+                        >
+                          {status === "ACTIVO" ? "Act." : status === "PENDIENTE" ? "Pend." : "Inac."}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Acciones */}
+                  <div
+                    className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ActionMenu
+                      items={buildDocumentActionMenuItems(doc, {
+                        onOpen: () => handleDocumentOpen(doc),
+                        onShare: () => setShareDocument(doc),
+                        onAssign: () => setAssignDocument(doc),
+                        onPermissions: () => setPermissionsDocument(doc),
+                        onDelete: () => handleDelete(doc),
+                        confirmDeleteDocId,
+                        confirmDeleteSecondsLeft,
+                      })}
+                      onClose={() => {
+                        if (confirmDeleteDocId === doc.id) {
+                          setConfirmDeleteDocId(null);
+                          setConfirmDeleteSecondsLeft(0);
+                          if (deleteConfirmTimerRef.current) {
+                            window.clearInterval(deleteConfirmTimerRef.current);
+                            deleteConfirmTimerRef.current = null;
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Paginación */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page <= 1}
-              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-300 hover:border-primary disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:border-primary disabled:opacity-40 transition-colors"
             >
               Anterior
             </button>
-            <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tabular-nums">
+            <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
               Página <span className="text-primary">{page}</span> de {totalPages}
             </span>
             <button
               type="button"
               onClick={() => setPage(Math.min(totalPages, page + 1))}
               disabled={page >= totalPages}
-              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm font-bold text-primary hover:border-primary disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-primary hover:border-primary disabled:opacity-40 transition-colors"
             >
               Siguiente
             </button>
           </div>
-        </div>
+        )}
 
-        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
-          Mostrando {documentsForList.length} de {filter === "PENDIENTES" ? pillPendientesTotal : total} documentos
+        <p className="text-slate-400 dark:text-slate-500 text-xs">
+          {sortedDocuments.length} de {filter === "PENDIENTES" ? pillPendientesTotal : total} documentos
           {filter !== "TODOS" ? " (filtrado)" : ""}
-          {searchQuery.trim() ? ` · búsqueda: "${searchQuery}"` : ""}.
+          {searchQuery.trim() ? ` · búsqueda: "${searchQuery}"` : ""}
         </p>
       </main>
 

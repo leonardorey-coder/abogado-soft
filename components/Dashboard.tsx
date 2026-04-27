@@ -3,7 +3,7 @@ import { Document, FileStatus, ShareMethod } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
-import { assignmentsApi, documentsApi, recentlyOpenedApi, activityApi, sharesApi, type ApiDocumentAssignment, type RecentlyOpenedItem, type ApiActivityLog, type RecentlySharedItem } from "../lib/api";
+import { assignmentsApi, documentsApi, activityApi, sharesApi, type ApiDocumentAssignment, type ApiActivityLog, type RecentlySharedItem } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { matchesSearch } from "../lib/documentSearch";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
@@ -16,8 +16,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { UserAvatar } from "./UserAvatar";
 import { DashboardCalendar } from "./DashboardCalendar";
-import { TeamAvatarRow } from "./TeamAvatarRow";
-import { AssignWithDeadlinePopup, type AssignDropPayload } from "./AssignWithDeadlinePopup";
+import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import {
   PageHeader,
   FilterBar,
@@ -50,6 +49,15 @@ import {
   Link2,
   Share2,
   UserCheck,
+  Eye,
+  PenLine,
+  GitBranch,
+  Lock,
+  UserCog,
+  Download,
+  Trash2,
+  RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -66,6 +74,8 @@ interface DashboardProps {
   searchQuery?: string;
   onOpenDocument?: (docId: string, docType?: string) => void;
 }
+
+type RecentChangeFilter = "TODOS" | "ABRIO" | "EDICION" | "ESTADO" | "ASIGNACION";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -250,14 +260,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
   const [assignmentsReceived, setAssignmentsReceived] = useState<ApiDocumentAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
-  const [dragAssignPayload, setDragAssignPayload] = useState<AssignDropPayload | null>(null);
-  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
   const [quickNewDocLoading, setQuickNewDocLoading] = useState(false);
   const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
-  const [recentlyOpened, setRecentlyOpened] = useState<RecentlyOpenedItem[]>([]);
-  const [recentlyOpenedLoading, setRecentlyOpenedLoading] = useState(false);
   const [recentlyShared, setRecentlyShared] = useState<RecentlySharedItem[]>([]);
   const [recentlySharedLoading, setRecentlySharedLoading] = useState(false);
+  const [recentChangeFilter, setRecentChangeFilter] = useState<RecentChangeFilter>("TODOS");
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
   // Onboarding: show wizard to new users
@@ -287,24 +294,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     refreshAssignments();
   }, [refreshAssignments, documents.length]);
-
-  // ── Abierto recientemente ──────────────────────────────────────────────
-  const refreshRecentlyOpened = useCallback(() => {
-    setRecentlyOpenedLoading(true);
-    recentlyOpenedApi
-      .list(8)
-      .then((res) => setRecentlyOpened(res.data ?? []))
-      .catch(() => setRecentlyOpened([]))
-      .finally(() => setRecentlyOpenedLoading(false));
-  }, []);
-
-  useEffect(() => {
-    refreshRecentlyOpened();
-    const interval = setInterval(() => {
-      if (document.visibilityState !== 'hidden') refreshRecentlyOpened();
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, [refreshRecentlyOpened]);
 
   // ── Compartidos recientemente ────────────────────────────────────────────
   const refreshRecentlyShared = useCallback(() => {
@@ -559,6 +548,67 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { key: "INACTIVOS", label: "Inactivos", icon: AlertCircle, count: counts.inactivos },
   ];
 
+  const changeActivityByFilter: Record<RecentChangeFilter, string[]> = {
+    TODOS: ["DOCUMENT_VIEWED", "DOCUMENT_UPDATED", "DOCUMENT_VERSION_CREATED", "DOCUMENT_PERMISSION_CHANGED", "DOCUMENT_ASSIGNED"],
+    ABRIO: ["DOCUMENT_VIEWED"],
+    EDICION: ["DOCUMENT_UPDATED", "DOCUMENT_VERSION_CREATED"],
+    ESTADO: ["DOCUMENT_PERMISSION_CHANGED"],
+    ASIGNACION: ["DOCUMENT_ASSIGNED"],
+  };
+  const recentChangePills: FilterPill[] = [
+    { key: "TODOS", label: "Todos" },
+    { key: "ABRIO", label: "Aperturas" },
+    { key: "EDICION", label: "Edición" },
+    { key: "ESTADO", label: "Estado" },
+    { key: "ASIGNACION", label: "Asignación" },
+  ];
+  const changeLabelMap: Record<string, string> = {
+    DOCUMENT_VIEWED: "Abrió",
+    DOCUMENT_UPDATED: "Editó",
+    DOCUMENT_VERSION_CREATED: "Nueva versión",
+    DOCUMENT_PERMISSION_CHANGED: "Cambió permisos",
+    DOCUMENT_ASSIGNED: "Cambió asignación",
+    DOCUMENT_SHARED: "Compartió",
+    DOCUMENT_DOWNLOADED: "Descargó",
+    DOCUMENT_DELETED: "Eliminó",
+    DOCUMENT_RESTORED: "Restauró",
+    DOCUMENT_COMMENT_ADDED: "Comentó",
+  };
+  const changeIconMap: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
+    DOCUMENT_VIEWED:            { Icon: Eye,          color: "text-sky-600 dark:text-sky-400",      bg: "bg-sky-50 dark:bg-sky-900/20" },
+    DOCUMENT_UPDATED:           { Icon: PenLine,      color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-900/20" },
+    DOCUMENT_VERSION_CREATED:   { Icon: GitBranch,    color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+    DOCUMENT_PERMISSION_CHANGED:{ Icon: Lock,         color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-900/20" },
+    DOCUMENT_ASSIGNED:          { Icon: UserCog,      color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+    DOCUMENT_SHARED:            { Icon: Share2,       color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-50 dark:bg-blue-900/20" },
+    DOCUMENT_DOWNLOADED:        { Icon: Download,     color: "text-teal-600 dark:text-teal-400",     bg: "bg-teal-50 dark:bg-teal-900/20" },
+    DOCUMENT_DELETED:           { Icon: Trash2,       color: "text-red-600 dark:text-red-400",       bg: "bg-red-50 dark:bg-red-900/20" },
+    DOCUMENT_RESTORED:          { Icon: RotateCcw,    color: "text-green-600 dark:text-green-400",   bg: "bg-green-50 dark:bg-green-900/20" },
+    DOCUMENT_COMMENT_ADDED:     { Icon: MessageSquare,color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" },
+  };
+  const fallbackChangeIcon = { Icon: History, color: "text-slate-500 dark:text-slate-400", bg: "bg-slate-100 dark:bg-slate-800" };
+  const recentChanges = Array.from(
+    recentActivity
+      .filter((entry) => (entry.entityType ?? "").toLowerCase() === "document")
+      .filter((entry) => changeActivityByFilter[recentChangeFilter].includes(entry.activity))
+      .reduce((acc, entry) => {
+        const bucketMinute = new Date(entry.createdAt);
+        bucketMinute.setSeconds(0, 0);
+        // Evita duplicados visuales cuando se registran dos eventos equivalentes casi al mismo tiempo.
+        const dedupeKey = [
+          entry.activity,
+          entry.entityId ?? "no-entity",
+          entry.userId ?? "no-user",
+          bucketMinute.toISOString(),
+        ].join("|");
+        if (!acc.has(dedupeKey)) {
+          acc.set(dedupeKey, entry);
+        }
+        return acc;
+      }, new Map<string, ApiActivityLog>())
+      .values(),
+  ).slice(0, 8);
+
   // ─── Render ───────────────────────────────────────────────────────────
 
   return (
@@ -784,119 +834,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </SectionCard>
 
-          <SectionCard
-            title="Abierto recientemente"
-            noPadding
-            className="min-h-[200px] max-h-[350px] overflow-y-auto flex flex-col"
-            stickyHeader
-            action={
-              <button
-                type="button"
-                onClick={refreshRecentlyOpened}
-                className="text-xs text-slate-400 hover:text-primary transition-colors"
-                aria-label="Actualizar"
-              >
-                <History className="w-3.5 h-3.5" />
-              </button>
-            }
-          >
-              {recentlyOpenedLoading ? (
-                <div className="py-3 px-5 space-y-3">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <Skeleton className="w-7 h-7 rounded-md shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <Skeleton className="h-3 w-3/4 rounded" />
-                        <Skeleton className="h-2.5 w-1/3 rounded" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : recentlyOpened.length === 0 ? (
-                <div className="py-8 px-6 text-center">
-                  <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Ningún archivo abierto aún
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                  {recentlyOpened.map((item) => {
-                    const isConvenio = item.entityType === 'convenio';
-                    const { Icon: TypeIcon, color: typeColor, bg: typeBg } = isConvenio
-                      ? { Icon: ScrollText, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" }
-                      : getFileTypeIcon(item.type ?? 'docx');
-                    const openedByLabel = item.openedBy?.name ?? 'Alguien del equipo';
-
-                    const openedAgo = (() => {
-                      const diff = Date.now() - new Date(item.openedAt).getTime();
-                      const mins = Math.floor(diff / 60000);
-                      const hrs = Math.floor(mins / 60);
-                      const days = Math.floor(hrs / 24);
-                      if (days > 0) return `Hace ${days}d`;
-                      if (hrs > 0) return `Hace ${hrs}h`;
-                      if (mins > 0) return `Hace ${mins}m`;
-                      return 'Ahora mismo';
-                    })();
-
-                    return (
-                      <div
-                        key={`recent-${item.id}`}
-                        onClick={() => {
-                          if (isConvenio) {
-                            navigate(`/convenios/${item.id}`);
-                          } else {
-                            navigate(getDocumentRoute(item.id, item.type));
-                          }
-                        }}
-                        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            if (isConvenio) navigate(`/convenios/${item.id}`);
-                            else navigate(getDocumentRoute(item.id, item.type));
-                          }
-                        }}
-                      >
-                        <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
-                          <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
-                        </div>
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">
-                            {item.name}
-                          </p>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <UserAvatar
-                              name={openedByLabel}
-                              avatarUrl={item.openedBy?.avatarUrl}
-                              className="w-4 h-4 rounded-full object-cover shrink-0"
-                            />
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                              Abierto por <span className="font-medium text-slate-700 dark:text-slate-300">{openedByLabel}</span>
-                            </p>
-                          </div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
-                            <Clock className="w-2.5 h-2.5 shrink-0" />
-                            {openedAgo}
-                            <span className="text-slate-300 dark:text-slate-600">·</span>
-                            {new Date(item.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                            {isConvenio && (
-                              <span className="ml-1 px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-[9px] font-bold uppercase">
-                                Convenio
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                        <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </SectionCard>
-
           {/* ── Compartidos recientemente ──────────────────────────────────── */}
           <SectionCard
             title="Compartidos recientemente"
@@ -1025,240 +962,99 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
           </SectionCard>
+
+          <DashboardCalendar
+            documents={documents}
+            assignments={assignmentsReceived}
+          />
         </div>
 
-        {/* ── Equipo + Calendario ─────────────────────────────────────── */}
-        {/* ── Calendario (ancho completo cuando no hay fila de avatares en el grid) ── */}
-        <DashboardCalendar
-          documents={documents}
-          assignments={assignmentsReceived}
-        />
+        <SectionCard title="Cambios recientes" noPadding className="overflow-hidden shadow-sm">
+            <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
+              <FilterBar pills={recentChangePills} active={recentChangeFilter} onChange={(value) => setRecentChangeFilter(value as RecentChangeFilter)} />
+            </div>
 
-        <SectionCard title="Documentos Recientes" noPadding className="overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
-            <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
-          </div>
-
-          <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] gap-4 items-center px-5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/60">
-            <span>Documento</span>
-            <span className="text-center whitespace-nowrap">Estado</span>
-            <span className="sr-only">Acciones</span>
-          </div>
-
-          <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4"
-                >
-                  <div className="flex items-center gap-3 min-w-0 lg:col-span-1">
-                    <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
-                    <div className="flex-1 space-y-2 min-w-0">
-                      <Skeleton className="h-4 w-3/4 max-w-md rounded" />
-                      <Skeleton className="h-3 w-1/3 rounded" />
+            <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+              {activityLoading && recentChanges.length === 0 ? (
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3 w-3/4 rounded" />
+                        <Skeleton className="h-2.5 w-1/3 rounded" />
+                      </div>
                     </div>
-                  </div>
-                  <Skeleton className="h-8 w-36 rounded-lg justify-self-end hidden lg:block" />
-                  <Skeleton className="h-8 w-8 rounded-lg justify-self-end hidden lg:block" />
+                  ))}
                 </div>
-              ))
-            ) : filteredDocumentsForList.length === 0 ? (
-              <EmptyState
-                icon={searchQuery.trim() ? Search : FolderOpen}
-                title={
-                  searchQuery.trim()
-                    ? "Sin resultados de búsqueda"
-                    : "No hay documentos"
-                }
-                description={
-                  searchQuery.trim()
-                    ? `No se encontraron documentos para "${searchQuery}"`
-                    : "Suba un documento para comenzar"
-                }
-                variant={searchQuery.trim() ? "search" : "empty"}
-                action={
-                  !searchQuery.trim() ? (
-                    <Button
-                      icon={Plus}
-                      onClick={() => onOpenUploadModal?.()}
-                    >
-                      Nuevo Documento
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <>
-                {filteredDocumentsForList.map((doc) => {
-                  const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
-                  const isExpiring = doc.fileStatus === "PENDIENTE" && doc.expirationDate;
-
+              ) : recentChanges.length === 0 ? (
+                <div className="py-8 px-6 text-center">
+                  <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Sin cambios recientes para este filtro</p>
+                </div>
+              ) : (
+                recentChanges.map((entry) => {
+                  const changeAt = new Date(entry.createdAt);
+                  const timeAgo = (() => {
+                    const diff = Date.now() - changeAt.getTime();
+                    const mins = Math.floor(diff / 60000);
+                    const hrs = Math.floor(mins / 60);
+                    const days = Math.floor(hrs / 24);
+                    if (days > 0) return `Hace ${days}d`;
+                    if (hrs > 0) return `Hace ${hrs}h`;
+                    if (mins > 0) return `Hace ${mins}m`;
+                    return "Ahora mismo";
+                  })();
+                  const { Icon: ChangeIcon, color: changeColor, bg: changeBg } =
+                    changeIconMap[entry.activity] ?? fallbackChangeIcon;
                   return (
                     <div
-                      key={doc.id}
-                      draggable="true"
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData(
-                          "text/plain",
-                          JSON.stringify({
-                            __abogadosoft_doc: true,
-                            documentId: doc.id,
-                            documentName: doc.name,
-                            documentType: doc.type,
-                          }),
-                        );
-                        e.dataTransfer.effectAllowed = "link";
-                        setIsDraggingDoc(true);
-                      }}
-                      onDragEnd={() => setIsDraggingDoc(false)}
-                      onClick={() => handleDocumentClick(doc)}
-                      className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors group lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4 lg:items-center"
+                      key={entry.id}
+                      className="flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors"
+                      onClick={() => entry.entityId && navigate(`/documento/${entry.entityId}`)}
                       role="button"
                       tabIndex={0}
+                      draggable={!!entry.entityId}
+                      onDragStart={(e) => {
+                        if (!entry.entityId) return;
+                        startDocDrag(e, {
+                          id: entry.entityId,
+                          name: entry.entityName ?? "Documento",
+                          type: "DOCX",
+                        });
+                      }}
+                      onDragEnd={() => endDocDrag()}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
+                        if ((e.key === "Enter" || e.key === " ") && entry.entityId) {
                           e.preventDefault();
-                          handleDocumentClick(doc);
+                          navigate(`/documento/${entry.entityId}`);
                         }
                       }}
                     >
-                      <div className="flex items-start sm:items-center gap-3 min-w-0">
-                        <div
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${typeBg}`}
-                        >
-                          <TypeIcon className={`w-4.5 h-4.5 ${typeColor}`} />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                            {doc.name}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                            <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0">
-                              <Calendar className="w-3 h-3" />
-                              {doc.lastModified}
-                            </span>
-                            {doc.lastEditor && (
-                              <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 min-w-0">
-                                <Edit3 className="w-3 h-3 shrink-0" />
-                                <span className="truncate">{doc.lastEditor}</span>
-                              </span>
-                            )}
-                            {isExpiring && (
-                              <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 font-medium shrink-0">
-                                <AlertCircle className="w-3 h-3" />
-                                Vence {doc.expirationDate}
-                              </span>
-                            )}
-                          </div>
-                          {renderShareBadges(doc)}
-                          {doc.assignments && doc.assignments.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 mt-2">
-                              {doc.assignments.map((a) => (
-                                <span
-                                  key={a.id}
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 max-w-full"
-                                  title={`${a.assignee.name} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
-                                >
-                                  <UserAvatar
-                                    name={a.assignee.name}
-                                    avatarUrl={a.assignee.avatarUrl}
-                                    className="w-4 h-4 rounded-full object-cover shrink-0"
-                                  />
-                                  <span className="font-medium truncate">{a.assignee.name}</span>
-                                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0">
-                                    {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${changeBg}`}>
+                        <ChangeIcon className={`w-4 h-4 ${changeColor}`} />
                       </div>
-
-                      <div className="flex items-center justify-between gap-2 pl-12 sm:pl-[3.25rem] lg:pl-0 lg:contents">
-                        <div
-                          className="flex items-center gap-1 sm:gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
-                            <button
-                              key={status}
-                              type="button"
-                              onClick={() => handleSetFileStatus(doc, status)}
-                              className={`px-2 py-1 sm:px-2 sm:py-1 rounded text-[10px] font-bold uppercase border transition-colors ${
-                                doc.fileStatus === status
-                                  ? status === "ACTIVO"
-                                    ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
-                                    : status === "PENDIENTE"
-                                      ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
-                                      : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
-                                  : "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
-                              }`}
-                              title={status === "ACTIVO" ? "Marcar activo" : status === "PENDIENTE" ? "Marcar pendiente" : "Marcar inactivo"}
-                            >
-                              {status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pend." : "Inact."}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <ActionMenu
-                            items={buildDocumentActionMenuItems(doc, {
-                              onOpen: () => handleDocumentClick(doc),
-                              onShare: () => setShareDocument(doc),
-                              onAssign: () => setAssignDocument(doc),
-                              onPermissions: () => setPermissionsDocument(doc),
-                              onDelete: () => handleDelete(doc),
-                              confirmDeleteDocId,
-                              confirmDeleteSecondsLeft,
-                            })}
-                            onClose={() => {
-                              if (confirmDeleteDocId === doc.id) {
-                                setConfirmDeleteDocId(null);
-                                setConfirmDeleteSecondsLeft(0);
-                                if (deleteConfirmTimerRef.current) {
-                                  window.clearInterval(deleteConfirmTimerRef.current);
-                                  deleteConfirmTimerRef.current = null;
-                                }
-                              }
-                            }}
-                          />
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                          {entry.entityName ?? "Documento"}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                          <span className="font-medium text-slate-700 dark:text-slate-300">{entry.user?.name ?? "Sistema"}</span>
+                          {" · "}
+                          {changeLabelMap[entry.activity] ?? "Actualizó"}
+                          {" · "}
+                          {timeAgo}
+                        </p>
                       </div>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                        {changeAt.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
                     </div>
                   );
-                })}
-
-                <div
-                  onClick={() => onOpenUploadModal?.()}
-                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-t-2 border-dashed border-slate-200 dark:border-slate-700/60"
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenUploadModal?.();
-                    }
-                  }}
-                >
-                  <div className="w-9 h-9 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
-                    <Plus className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      Nuevo Documento
-                    </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">
-                      Subir archivo o crear nuevo
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </SectionCard>
+                })
+              )}
+            </div>
+          </SectionCard>
 
         {/* ── Actividad Reciente de Documentos (con polling en tiempo real) ── */}
         <SectionCard
@@ -1440,45 +1236,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }}
         />
       )}
-
-      {/* Assign with Deadline Popup (drag & drop desde tabla) */}
-      {dragAssignPayload && (
-        <AssignWithDeadlinePopup
-          payload={dragAssignPayload}
-          onClose={() => setDragAssignPayload(null)}
-          onSuccess={() => {
-            refreshAssignments();
-            void onRefresh();
-          }}
-        />
-      )}
-
-      {/* ── Floating Team Avatar overlay (aparece durante drag) ──────────── */}
-      <div
-        className={[
-          "fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none",
-          "transition-all duration-300 ease-in-out",
-          isDraggingDoc
-            ? "translate-y-0 opacity-100"
-            : "translate-y-full opacity-0",
-        ].join(" ")}
-      >
-        {/* lg: offset del sidebar de 240px / sm: sin offset */}
-        <div className="pointer-events-auto w-full max-w-[1200px] px-4 sm:px-6 pb-4 lg:pl-[calc(240px+1.5rem)]">
-          <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-600/60 p-3">
-            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5 px-1">
-              Suelta sobre un miembro para asignar
-            </p>
-            <TeamAvatarRow
-              compact
-              onAssignDrop={(payload) => {
-                setIsDraggingDoc(false);
-                setDragAssignPayload(payload);
-              }}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* Onboarding Wizard */}
       {showOnboarding && (
