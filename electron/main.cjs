@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, ShareMenu } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -15,6 +15,11 @@ function getMimeType(filePath) {
   if (ext === '.txt') return 'text/plain';
   if (ext === '.rtf') return 'application/rtf';
   return 'application/octet-stream';
+}
+
+function safeFileName(fileName) {
+  const base = path.basename(fileName || 'documento');
+  return base.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_') || 'documento';
 }
 
 function createWindow() {
@@ -69,6 +74,40 @@ ipcMain.handle('shell:openPath', async (_event, filePath) => {
   }
   const error = await shell.openPath(filePath);
   return error ? { ok: false, error } : { ok: true };
+});
+
+ipcMain.handle('share:file', async (event, payload = {}) => {
+  try {
+    if (process.platform !== 'darwin' || typeof ShareMenu !== 'function') {
+      return { ok: false, error: 'El menú nativo de compartir solo está disponible en macOS.' };
+    }
+
+    const { fileName, buffer, title, text, url, x, y } = payload;
+    if (!buffer || !fileName) {
+      return { ok: false, error: 'Archivo inválido para compartir' };
+    }
+
+    const shareDir = path.join(app.getPath('temp'), 'sidoc-shares');
+    fs.mkdirSync(shareDir, { recursive: true });
+    const filePath = path.join(shareDir, `${Date.now()}-${safeFileName(fileName)}`);
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+
+    const sharingItem = { filePaths: [filePath] };
+    if (text || title) sharingItem.texts = [text || title];
+    if (url) sharingItem.urls = [url];
+    const shareMenu = new ShareMenu(sharingItem);
+    const browserWindow = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+    const popupOptions = {};
+    if (browserWindow) popupOptions.browserWindow = browserWindow;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      popupOptions.x = Math.round(x);
+      popupOptions.y = Math.round(y);
+    }
+    shareMenu.popup(popupOptions);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message ?? 'No se pudo abrir el menú de compartir' };
+  }
 });
 
 ipcMain.handle('fs:saveFile', async (_event, filePath, buffer) => {

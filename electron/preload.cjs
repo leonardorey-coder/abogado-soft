@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     /** Abre un archivo local con la aplicación predeterminada del sistema. */
     openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
 
+    /** Abre el menú nativo de compartir con un archivo temporal. */
+    shareFile: (payload) => ipcRenderer.invoke('share:file', payload),
+
     /**
      * Une segmentos de ruta de forma nativa.
      * @param {...string} segments

@@ -21,12 +21,23 @@ interface ElectronLocalFile {
   mimeType: string;
 }
 
+interface ElectronShareFilePayload {
+  fileName: string;
+  buffer: ArrayBuffer;
+  title?: string;
+  text?: string;
+  url?: string;
+  x?: number;
+  y?: number;
+}
+
 interface Window {
   electronAPI?: {
     saveFile: (filePath: string, buffer: ArrayBuffer) => Promise<{ ok: boolean; error?: string }>;
     selectFolder: () => Promise<string | null>;
     getKnownFolders: () => Promise<ElectronKnownFolders>;
     openPath: (filePath: string) => Promise<ElectronOpenPathResult>;
+    shareFile: (payload: ElectronShareFilePayload) => Promise<ElectronOpenPathResult>;
     pathJoin: (...segments: string[]) => Promise<string>;
     pathExists: (targetPath: string) => Promise<boolean>;
     listFolderFiles: (folderPath: string) => Promise<{ ok: boolean; files: ElectronLocalFile[]; error?: string }>;

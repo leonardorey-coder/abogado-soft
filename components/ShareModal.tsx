@@ -54,6 +54,22 @@ function isPdfCompatible(document: Document): boolean {
   return !!(ext && PDF_COMPATIBLE_TYPES.includes(ext));
 }
 
+async function shareFileViaElectron(
+  file: File,
+  options: { title: string; text: string; url?: string; x?: number; y?: number },
+): Promise<boolean> {
+  const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+  if (!api?.isElectron || typeof api.shareFile !== "function") return false;
+
+  const result = await api.shareFile({
+    fileName: file.name,
+    buffer: await file.arrayBuffer(),
+    ...options,
+  });
+  if (!result.ok) throw new Error(result.error || "No se pudo abrir el menú de compartir");
+  return true;
+}
+
 export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onShareLogged, onPdfConverted, generatePdf }) => {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -111,40 +127,48 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
     }
   };
 
-  const handleSystemShare = async () => {
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        setSharing(true);
-        // Intentar obtener el archivo para compartirlo
-        const file = await getShareableDocumentFile(document.id, document.name);
+  const handleSystemShare = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    try {
+      setSharing(true);
+      // Intentar obtener el archivo para compartirlo
+      const file = await getShareableDocumentFile(document.id, document.name);
+      const title = document.name;
+      const text = `Compartir documento: ${document.name}`;
 
-        let shareData: ShareData = {
-          title: document.name,
-          text: `Compartir documento: ${document.name}`,
-        };
+      const sharedWithElectron = await shareFileViaElectron(file, {
+        title,
+        text,
+        url: shareUrl,
+        x: event.clientX,
+        y: event.clientY,
+      });
 
-        // Si el navegador soporta compartir el archivo lo enviamos
+      if (!sharedWithElectron) {
+        if (typeof navigator === "undefined" || !navigator.share) {
+          throw new Error("Tu navegador no soporta compartir documentos.");
+        }
+
+        const shareData: ShareData = { title, text };
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           shareData.files = [file];
         } else {
-          // Fallback a solo enviar la URL si no soporta archivo
           shareData.url = shareUrl;
         }
 
         await navigator.share(shareData);
-        // Registrar el share como método "system" (Web Share API)
-        await logShare("Compartido via sistema", "system");
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          alert("Error al compartir el archivo. Es posible que tu navegador no soporte compartir documentos.");
-        }
-      } finally {
-        setSharing(false);
       }
+
+      await logShare("Compartido via sistema", "system");
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        alert("Error al compartir el archivo. Es posible que tu navegador no soporte compartir documentos.");
+      }
+    } finally {
+      setSharing(false);
     }
   };
 
-  const handleShareAsPdf = async () => {
+  const handleShareAsPdf = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (sharingPdf) return;
     setPdfError(null);
     setSharingPdf(true);
@@ -209,21 +233,36 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
       const pdfName = pdfRecord.name;
       const pdfFile = new File([pdfBlob], pdfName, { type: 'application/pdf' });
 
-      // Intentar Web Share API; fallback a descarga directa
+      const title = pdfName;
+      const text = `Compartir documento: ${pdfName}`;
+      const sharedWithElectron = await shareFileViaElectron(pdfFile, {
+        title,
+        text,
+        url: getDocumentPdfFileUrl(document.id, pdfRecord.id),
+        x: event.clientX,
+        y: event.clientY,
+      });
+
       const supportsFileShare =
+        !sharedWithElectron &&
         typeof navigator.share === 'function' &&
         typeof navigator.canShare === 'function' &&
         navigator.canShare({ files: [pdfFile] });
 
       if (supportsFileShare) {
-        await navigator.share({ title: pdfName, text: `Compartir documento: ${pdfName}`, files: [pdfFile] });
-      } else {
-        const blobUrl = URL.createObjectURL(pdfBlob);
-        const a = window.document.createElement('a');
-        a.href = blobUrl;
-        a.download = pdfName;
-        a.click();
-        URL.revokeObjectURL(blobUrl);
+        await navigator.share({ title, text, files: [pdfFile] });
+      } else if (!sharedWithElectron) {
+        const pdfUrl = getDocumentPdfFileUrl(document.id, pdfRecord.id);
+        if (typeof navigator.share === 'function') {
+          await navigator.share({ title, text, url: pdfUrl });
+        } else {
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          const a = window.document.createElement('a');
+          a.href = blobUrl;
+          a.download = pdfName;
+          a.click();
+          URL.revokeObjectURL(blobUrl);
+        }
       }
 
       await logShare('Compartido como PDF', 'system');
