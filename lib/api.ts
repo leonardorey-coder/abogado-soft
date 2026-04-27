@@ -703,19 +703,27 @@ export const accessPinApi = {
 // ─── CONVENIOS ──────────────────────────────────────────────────────────
 
 export const conveniosApi = {
-  list: (params?: {
+  list: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
     estado?: string;
-  }) => {
+    documentType?: string;
+  }): Promise<PaginatedResponse<ApiConvenio>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.search) query.set('search', params.search);
     if (params?.estado) query.set('estado', params.estado);
+    if (params?.documentType) query.set('documentType', params.documentType);
     const qs = query.toString();
-    return apiFetch<PaginatedResponse<ApiConvenio>>(`/convenios${qs ? `?${qs}` : ''}`);
+    const raw = await apiFetch<{
+      data: ApiConvenio[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(`/convenios${qs ? `?${qs}` : ''}`);
+    return normalizeFlatPagination(raw);
   },
 
   get: (id: string) => apiFetch<ApiConvenio>(`/convenios/${id}`),

@@ -66,6 +66,7 @@ const updateConvenioSchema = createConvenioSchema.partial();
 
 const conveniosQuerySchema = paginationQuery.extend({
   estado: z.enum(['activo', 'pendiente', 'vencido', 'expirado', 'cancelado']).optional(),
+  documentType: z.enum(['docx', 'doc', 'pdf', 'xlsx', 'xls', 'txt', 'rtf']).optional(),
   search: z.string().optional(),
 });
 
@@ -75,11 +76,18 @@ conveniosRouter.get(
   validateQuery(conveniosQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, estado, search } = req.query as any;
+      const { page, limit, sortOrder, estado, search, documentType } = req.query as any;
       const skip = (page - 1) * limit;
       const where: any = {};
 
       if (estado) where.estado = estado;
+      if (documentType) {
+        where.documents = {
+          some: {
+            document: { type: documentType },
+          },
+        };
+      }
       if (search) {
         where.OR = [
           { numero: { contains: search, mode: 'insensitive' } },
@@ -95,6 +103,12 @@ conveniosRouter.get(
           orderBy: { fechaFin: sortOrder },
           include: {
             responsable: { select: { id: true, name: true, email: true } },
+            documents: {
+              take: 1,
+              include: {
+                document: { select: { id: true, name: true, type: true, fileStatus: true } },
+              },
+            },
             _count: { select: { documents: true } },
           },
         }),
