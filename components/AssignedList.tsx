@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { assignmentsApi, type ApiDocumentAssignment } from "../lib/api";
+import { assignmentsApi, documentsApi, type ApiDocumentAssignment } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
@@ -8,6 +8,10 @@ import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterVal
 import { Skeleton } from "./ui";
 import { useAuth } from "../contexts/AuthContext";
 import { getViewerLabel } from "../lib/viewerIdentity";
+import { AssignModal } from "./AssignModal";
+import { type Document, type FileStatus } from "../types";
+import { useToast } from "../contexts/ToastContext";
+import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import {
   AlertTriangle,
   CalendarClock,
@@ -116,11 +120,44 @@ function getAssignmentDocumentType(assignment: ApiDocumentAssignment): DocumentT
   return null;
 }
 
+function mapAssignmentToDocument(assignment: ApiDocumentAssignment): Document | null {
+  const doc = assignment.document;
+  if (!doc) return null;
+  const type = doc.type?.toUpperCase();
+  if (type !== "DOCX" && type !== "PDF" && type !== "XLSX") return null;
+  const fs = doc.fileStatus as FileStatus | undefined;
+  return {
+    id: doc.id,
+    name: doc.name,
+    type,
+    lastModified: formatDate(doc.updatedAt || assignment.createdAt),
+    timeAgo: formatTimeAgo(doc.updatedAt || assignment.createdAt),
+    fileStatus: fs === "PENDIENTE" || fs === "INACTIVO" ? fs : "ACTIVO",
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+function patchAssignmentsDocFileStatus(
+  list: ApiDocumentAssignment[],
+  docId: string,
+  status: FileStatus,
+): ApiDocumentAssignment[] {
+  return list.map((a) => {
+    if (a.document?.id !== docId) return a;
+    return {
+      ...a,
+      document: { ...a.document, fileStatus: status },
+    };
+  });
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const AssignedList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { addToast } = useToast();
 
   const [assignments, setAssignments] = useState<ApiDocumentAssignment[]>([]);
   const [allAssignments, setAllAssignments] = useState<ApiDocumentAssignment[]>([]);
@@ -130,6 +167,7 @@ export const AssignedList: React.FC = () => {
   const [tab, setTab] = useState<TabAssigned>("RECIBIDOS");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [assignDocument, setAssignDocument] = useState<Document | null>(null);
 
   const fetchAssignments = useCallback(async () => {
     try {
@@ -196,6 +234,21 @@ export const AssignedList: React.FC = () => {
       alert(err?.message || "Error al actualizar estado.");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handleDocumentFileStatus = async (docId: string, status: FileStatus) => {
+    const fromAll = allAssignments.find((a) => a.document?.id === docId);
+    const previous = (fromAll?.document?.fileStatus as FileStatus | undefined) ?? "ACTIVO";
+    if (previous === status) return;
+    setAllAssignments((prev) => patchAssignmentsDocFileStatus(prev, docId, status));
+    setAssignments((prev) => patchAssignmentsDocFileStatus(prev, docId, status));
+    try {
+      await documentsApi.update(docId, { fileStatus: status });
+    } catch {
+      setAllAssignments((prev) => patchAssignmentsDocFileStatus(prev, docId, previous));
+      setAssignments((prev) => patchAssignmentsDocFileStatus(prev, docId, previous));
+      addToast({ message: "No se pudo actualizar el estado del archivo.", type: "error" });
     }
   };
 
@@ -356,6 +409,7 @@ export const AssignedList: React.FC = () => {
           {assignments.map((a) => {
             const doc = a.document;
             const overdue = isOverdue(a.dueDate) && !isTerminal(a.status);
+            const canReassign = tab === "ENVIADOS" && !!doc && (a.status === "rechazado" || isOverdue(a.dueDate));
             const isUpdating = updatingId === a.id;
             const isOpening = openingId === a.id;
             const sc = statusConfig[a.status] ?? fallbackStatus;
@@ -518,6 +572,19 @@ export const AssignedList: React.FC = () => {
                     )}
                   </div>
 
+                  {doc && (
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                      <FileStatusIconToggle
+                        value={
+                          doc.fileStatus === "PENDIENTE" || doc.fileStatus === "INACTIVO"
+                            ? doc.fileStatus
+                            : "ACTIVO"
+                        }
+                        onChange={(s) => void handleDocumentFileStatus(doc.id, s)}
+                      />
+                    </div>
+                  )}
+
                   {/* Footer acciones */}
                   <div
                     className="mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/60 flex gap-1.5"
@@ -560,15 +627,31 @@ export const AssignedList: React.FC = () => {
                     )}
 
                     {tab === "ENVIADOS" && (
-                      <button
-                        type="button"
-                        disabled={isUpdating}
-                        onClick={() => handleRevoke(a.id)}
-                        className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 text-xs font-bold transition-colors"
-                        title="Revocar asignación"
-                      >
-                        <XCircle className="h-3.5 w-3.5" />
-                      </button>
+                      <>
+                        {canReassign && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const mappedDocument = mapAssignmentToDocument(a);
+                              if (!mappedDocument) return;
+                              setAssignDocument(mappedDocument);
+                            }}
+                            className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 dark:text-blue-300 text-xs font-bold transition-colors"
+                            title="Reasignar documento"
+                          >
+                            Reasignar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() => handleRevoke(a.id)}
+                          className="min-h-[34px] px-3 inline-flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 text-xs font-bold transition-colors"
+                          title="Revocar asignación"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -576,6 +659,15 @@ export const AssignedList: React.FC = () => {
             );
           })}
         </div>
+      )}
+      {assignDocument && (
+        <AssignModal
+          document={assignDocument}
+          onClose={() => {
+            setAssignDocument(null);
+            void fetchAssignments();
+          }}
+        />
       )}
     </main>
   );

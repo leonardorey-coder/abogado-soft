@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
-import { conveniosApi, type ApiConvenio } from "../lib/api";
+import { conveniosApi, documentsApi, type ApiConvenio } from "../lib/api";
+import type { FileStatus } from "../types";
+import { useToast } from "../contexts/ToastContext";
+import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import {
@@ -76,8 +79,21 @@ function formatMonto(monto: string | null): string | null {
   });
 }
 
+function patchConvenioAttachedFileStatus(list: ApiConvenio[], docId: string, status: FileStatus): ApiConvenio[] {
+  return list.map((c) => {
+    const row = c.documents?.[0];
+    if (!row?.document || row.document.id !== docId) return c;
+    const rest = c.documents!.slice(1);
+    return {
+      ...c,
+      documents: [{ ...row, document: { ...row.document, fileStatus: status } }, ...rest],
+    };
+  });
+}
+
 export const AgreementsList: React.FC = () => {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const layout = useOutletContext<AppLayoutOutletContext>();
   const openUploadModal = layout?.openUploadModal ?? (() => {});
   const searchQuery = layout?.searchQuery ?? "";
@@ -162,6 +178,21 @@ export const AgreementsList: React.FC = () => {
 
   const from = (page - 1) * PER_PAGE + 1;
   const to = Math.min(page * PER_PAGE, total);
+
+  const handleAttachedDocumentFileStatus = async (docId: string, status: FileStatus) => {
+    const fromList = convenios.flatMap((c) => c.documents ?? []).find((d) => d.document.id === docId);
+    const raw = fromList?.document.fileStatus;
+    const previous: FileStatus =
+      raw === "PENDIENTE" || raw === "INACTIVO" ? raw : "ACTIVO";
+    if (previous === status) return;
+    setConvenios((prev) => patchConvenioAttachedFileStatus(prev, docId, status));
+    try {
+      await documentsApi.update(docId, { fileStatus: status });
+    } catch {
+      setConvenios((prev) => patchConvenioAttachedFileStatus(prev, docId, previous));
+      addToast({ message: "No se pudo actualizar el estado del archivo.", type: "error" });
+    }
+  };
 
   const handleOpenConvenio = (id: string) => {
     if (openingId) return;
@@ -420,6 +451,19 @@ export const AgreementsList: React.FC = () => {
                       <span>Firma: {formatFecha(c.fechaInicio)}</span>
                       {monto && <span className="font-bold text-primary">{monto}</span>}
                     </div>
+
+                    {attached && (
+                      <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                        <FileStatusIconToggle
+                          value={
+                            attached.fileStatus === "PENDIENTE" || attached.fileStatus === "INACTIVO"
+                              ? (attached.fileStatus as FileStatus)
+                              : "ACTIVO"
+                          }
+                          onChange={(s) => void handleAttachedDocumentFileStatus(attached.id, s)}
+                        />
+                      </div>
+                    )}
 
                     <button
                       type="button"
