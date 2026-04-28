@@ -12,6 +12,11 @@ const createGroupSchema = z.object({
   description: z.string().optional(),
 });
 
+const updateGroupSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().optional().nullable(),
+});
+
 const addMemberSchema = z.object({
   userId: z.string().uuid(),
   role: z.enum(['admin', 'editor', 'viewer']).default('viewer'),
@@ -128,6 +133,62 @@ groupsRouter.post(
   },
 );
 
+// ─── PATCH /api/groups/:id ──────────────────────────────────────────────────
+groupsRouter.patch(
+  '/:id',
+  validateParams(uuidParam),
+  validate(updateGroupSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const membership = await prisma.groupMember.findFirst({
+        where: {
+          groupId: req.params.id,
+          userId: req.user!.id,
+        },
+      });
+
+      const group = await prisma.group.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, ownerId: true, isActive: true, name: true },
+      });
+
+      if (!group || !group.isActive) {
+        res.status(404).json({ error: 'Despacho no encontrado' });
+        return;
+      }
+
+      const canManage = group.ownerId === req.user!.id || membership?.role === 'admin';
+      if (!canManage) {
+        res.status(403).json({ error: 'No tienes permisos para editar este despacho' });
+        return;
+      }
+
+      const updated = await prisma.group.update({
+        where: { id: req.params.id },
+        data: {
+          name: req.body.name.trim(),
+          description: req.body.description?.trim() || null,
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'GROUP_UPDATED',
+          entityType: 'group',
+          entityId: updated.id,
+          entityName: updated.name,
+          description: `Despacho actualizado: ${updated.name}`,
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ─── POST /api/groups/:id/members ───────────────────────────────────────────
 groupsRouter.post(
   '/:id/members',
@@ -185,6 +246,58 @@ groupsRouter.delete(
       });
 
       res.json({ message: 'Miembro eliminado del grupo' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── DELETE /api/groups/:id ─────────────────────────────────────────────────
+groupsRouter.delete(
+  '/:id',
+  validateParams(uuidParam),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const membership = await prisma.groupMember.findFirst({
+        where: {
+          groupId: req.params.id,
+          userId: req.user!.id,
+        },
+      });
+
+      const group = await prisma.group.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, ownerId: true, isActive: true, name: true },
+      });
+
+      if (!group || !group.isActive) {
+        res.status(404).json({ error: 'Despacho no encontrado' });
+        return;
+      }
+
+      const canManage = group.ownerId === req.user!.id || membership?.role === 'admin';
+      if (!canManage) {
+        res.status(403).json({ error: 'No tienes permisos para eliminar este despacho' });
+        return;
+      }
+
+      await prisma.group.update({
+        where: { id: req.params.id },
+        data: { isActive: false },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user!.id,
+          activity: 'GROUP_DELETED',
+          entityType: 'group',
+          entityId: group.id,
+          entityName: group.name,
+          description: `Despacho eliminado: ${group.name}`,
+        },
+      });
+
+      res.json({ message: 'Despacho eliminado correctamente' });
     } catch (error) {
       next(error);
     }
