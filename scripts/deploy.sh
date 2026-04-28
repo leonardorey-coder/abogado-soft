@@ -21,12 +21,161 @@ REPO_URL="${REPO_URL:-https://github.com/TU_ORG/abogado-soft.git}"  # CAMBIAR
 APP_DIR="${APP_DIR:-/opt/abogadosoft}"
 BRANCH="${BRANCH:-main}"
 DB_RESTORED_FLAG="$APP_DIR/.db_restored"
+EMBED_ENV_FILES="${EMBED_ENV_FILES:-0}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 die()  { echo "ERROR: $*" >&2; exit 1; }
 ok()   { echo "[OK] $*"; }
 warn() { echo "[WARN] $*"; }
+
+write_embedded_env_files() {
+  [ "$EMBED_ENV_FILES" = "1" ] || return 0
+
+  log "Generando .env.prod e infra/supabase/.env automáticos (overwrite)"
+  mkdir -p "$APP_DIR/infra/supabase"
+
+  local env_prod_file="$APP_DIR/.env.prod"
+  local supabase_env_file="$APP_DIR/infra/supabase/.env"
+
+  get_env_value() {
+    local key="$1"
+    local file="$2"
+    if [ -f "$file" ]; then
+      grep "^${key}=" "$file" | head -1 | cut -d= -f2- | tr -d '"' || true
+    else
+      true
+    fi
+  }
+
+  random_secret() {
+    openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'
+  }
+
+  jwt_for_role() {
+    local role="$1"
+    local secret="$2"
+    node - "$role" "$secret" <<'EOF'
+const crypto = require("node:crypto");
+const role = process.argv[2];
+const secret = process.argv[3];
+const now = Math.floor(Date.now() / 1000);
+const payload = { role, iss: "supabase", iat: now, exp: now + (60 * 60 * 24 * 365 * 10) };
+const enc = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+const header = enc({ alg: "HS256", typ: "JWT" });
+const body = enc(payload);
+const sig = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
+process.stdout.write(`${header}.${body}.${sig}`);
+EOF
+  }
+
+  local server_ip="${SERVER_IP:-$(hostname -I | awk '{print $1}')}"
+  [ -z "$server_ip" ] && server_ip="127.0.0.1"
+
+  local postgres_password jwt_secret dashboard_password meili_key
+  postgres_password="$(get_env_value "POSTGRES_PASSWORD" "$env_prod_file")"
+  [ -z "$postgres_password" ] && postgres_password="$(get_env_value "POSTGRES_PASSWORD" "$supabase_env_file")"
+  [ -z "$postgres_password" ] && postgres_password="$(random_secret)"
+
+  jwt_secret="$(get_env_value "JWT_SECRET" "$env_prod_file")"
+  [ -z "$jwt_secret" ] && jwt_secret="$(get_env_value "JWT_SECRET" "$supabase_env_file")"
+  [ -z "$jwt_secret" ] && jwt_secret="$(random_secret)"
+
+  dashboard_password="$(get_env_value "DASHBOARD_PASSWORD" "$env_prod_file")"
+  [ -z "$dashboard_password" ] && dashboard_password="$(get_env_value "DASHBOARD_PASSWORD" "$supabase_env_file")"
+  [ -z "$dashboard_password" ] && dashboard_password="$(random_secret)"
+
+  meili_key="$(get_env_value "MEILISEARCH_KEY" "$env_prod_file")"
+  [ -z "$meili_key" ] && meili_key="$(random_secret)"
+
+  local anon_key service_role_key
+  anon_key="$(get_env_value "ANON_KEY" "$env_prod_file")"
+  [ -z "$anon_key" ] && anon_key="$(get_env_value "ANON_KEY" "$supabase_env_file")"
+  [ -z "$anon_key" ] && anon_key="$(jwt_for_role "anon" "$jwt_secret")"
+
+  service_role_key="$(get_env_value "SERVICE_ROLE_KEY" "$env_prod_file")"
+  [ -z "$service_role_key" ] && service_role_key="$(get_env_value "SERVICE_ROLE_KEY" "$supabase_env_file")"
+  [ -z "$service_role_key" ] && service_role_key="$(jwt_for_role "service_role" "$jwt_secret")"
+
+  cat > "$env_prod_file" <<EOF
+DATABASE_URL="postgresql://postgres:${postgres_password}@supabase_db:5432/postgres?schema=public"
+DIRECT_URL="postgresql://postgres:${postgres_password}@supabase_db:5432/postgres?schema=public"
+SUPABASE_URL="http://${server_ip}:8000"
+SUPABASE_ANON_KEY="${anon_key}"
+SUPABASE_SERVICE_ROLE_KEY="${service_role_key}"
+SUPABASE_JWT_SECRET="${jwt_secret}"
+PORT=4001
+NODE_ENV="production"
+CORS_ORIGIN="http://${server_ip}"
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
+GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
+GOOGLE_REDIRECT_URI="http://${server_ip}/api/drive/auth/callback"
+GOOGLE_SERVICE_ACCOUNT_PATH="${GOOGLE_SERVICE_ACCOUNT_PATH:-./abogadosoft-service-account.json}"
+GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
+GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
+GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
+STORAGE_PATH="./storage/documents"
+MAX_FILE_SIZE_MB=50
+STORAGE_PROVIDER="${STORAGE_PROVIDER:-r2}"
+R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}"
+R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
+R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
+R2_BUCKET_NAME="${R2_BUCKET_NAME:-}"
+VITE_API_URL="http://${server_ip}/api"
+VITE_SUPABASE_URL="http://${server_ip}:8000"
+VITE_SUPABASE_ANON_KEY="${anon_key}"
+VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY:-}"
+SEARCH_ENGINE="${SEARCH_ENGINE:-meilisearch}"
+MEILISEARCH_HOST="${MEILISEARCH_HOST:-http://meilisearch:7700}"
+MEILISEARCH_KEY="${meili_key}"
+POSTGRES_PASSWORD="${postgres_password}"
+JWT_SECRET="${jwt_secret}"
+ANON_KEY="${anon_key}"
+SERVICE_ROLE_KEY="${service_role_key}"
+DASHBOARD_USERNAME="${DASHBOARD_USERNAME:-admin}"
+DASHBOARD_PASSWORD="${dashboard_password}"
+SMTP_ADMIN_EMAIL="${SMTP_ADMIN_EMAIL:-admin@${server_ip}.local}"
+SMTP_HOST="${SMTP_HOST:-}"
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USER="${SMTP_USER:-}"
+SMTP_PASS="${SMTP_PASS:-}"
+SMTP_SENDER_NAME="${SMTP_SENDER_NAME:-AbogadoSoft}"
+EOF
+
+  cat > "$supabase_env_file" <<EOF
+POSTGRES_PASSWORD=${postgres_password}
+JWT_SECRET=${jwt_secret}
+ANON_KEY=${anon_key}
+SERVICE_ROLE_KEY=${service_role_key}
+PGRST_DB_SCHEMAS=public
+SITE_URL=http://${server_ip}:3000
+ADDITIONAL_REDIRECT_URLS=
+JWT_EXPIRY=3600
+DISABLE_SIGNUP=false
+API_EXTERNAL_URL=http://${server_ip}:8000
+SMTP_ADMIN_EMAIL=${SMTP_ADMIN_EMAIL:-admin@${server_ip}.local}
+SMTP_HOST=${SMTP_HOST:-}
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USER=${SMTP_USER:-}
+SMTP_PASS=${SMTP_PASS:-}
+SMTP_SENDER_NAME=${SMTP_SENDER_NAME:-AbogadoSoft}
+ENABLE_EMAIL_CONFIRMATIONS=false
+GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+GOOGLE_REDIRECT_URI=http://${server_ip}:8000/auth/v1/callback
+STUDIO_DEFAULT_ORGANIZATION=${STUDIO_DEFAULT_ORGANIZATION:-AbogadoSoft}
+STUDIO_DEFAULT_PROJECT=${STUDIO_DEFAULT_PROJECT:-AbogadoSoft}
+DASHBOARD_USERNAME=${DASHBOARD_USERNAME:-admin}
+DASHBOARD_PASSWORD=${dashboard_password}
+STORAGE_BACKEND=${STORAGE_BACKEND:-file}
+FILE_SIZE_LIMIT=${FILE_SIZE_LIMIT:-52428800}
+LOGFLARE_LOGGER_BACKEND_API_KEY=${LOGFLARE_LOGGER_BACKEND_API_KEY:-}
+LOGFLARE_API_KEY=${LOGFLARE_API_KEY:-}
+EOF
+
+  ok "Archivos de entorno generados automáticamente."
+  warn "Revisa credenciales externas (Google, R2, SMTP) si aplican."
+}
 
 # ─── 1. Prerrequisitos del sistema ───────────────────────────────────────────
 install_prereqs() {
@@ -292,6 +441,7 @@ case "$MODE" in
     log "=== INSTALACIÓN COMPLETA en Ubuntu 24 ==="
     install_prereqs
     setup_repo
+    write_embedded_env_files
     check_env
     start_supabase
     restore_db
@@ -311,6 +461,7 @@ case "$MODE" in
   --update)
     log "=== ACTUALIZACIÓN ==="
     setup_repo
+    write_embedded_env_files
     check_env
     start_supabase
     run_migrations
@@ -322,6 +473,7 @@ case "$MODE" in
 
   --migrate)
     log "=== SOLO MIGRACIONES ==="
+    write_embedded_env_files
     check_env
     run_migrations
     ok "Migraciones aplicadas"
@@ -338,6 +490,9 @@ case "$MODE" in
     echo "  --update    Actualizar código + migraciones + rebuild (deploys posteriores)"
     echo "  --migrate   Solo correr prisma migrate deploy"
     echo "  --status    Ver estado de todos los contenedores"
+    echo ""
+    echo "Variables opcionales:"
+    echo "  EMBED_ENV_FILES=1    Sobrescribe .env.prod e infra/supabase/.env con plantillas embebidas"
     exit 1
     ;;
 esac
