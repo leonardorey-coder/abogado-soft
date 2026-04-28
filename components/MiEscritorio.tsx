@@ -16,7 +16,9 @@ import {
   Table,
   Trash2,
 } from "lucide-react";
-import type { Document, CollaborationStatus, FileStatus, SharingStatus } from "../types";
+import type { Document, CollaborationStatus, DocumentPermissionLevel, FileStatus, SharingStatus } from "../types";
+import { canChangeDocumentFileStatus } from "../lib/documentPermissions";
+import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import type { ApiDocumentAssignment } from "../lib/api";
 import { assignmentsApi, documentsApi, getShareableDocumentFile } from "../lib/api";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
@@ -79,6 +81,15 @@ const FILE_STATUS_LABELS: Record<FileStatus, string> = {
   ACTIVO: "Activo",
   PENDIENTE: "Pendiente",
   INACTIVO: "Inactivo",
+};
+
+const FILE_STATUS_TAB_CLASSES: Record<FileStatus, string> = {
+  ACTIVO:
+    "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300",
+  PENDIENTE:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  INACTIVO:
+    "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400",
 };
 
 const COLLABORATION_LABELS: Record<CollaborationStatus, string> = {
@@ -843,6 +854,11 @@ function LocalFileCard({
   onShare,
   onAssign,
   onPermissions,
+  onDocumentFileStatusChange,
+  onDeleteDocument,
+  confirmDeleteDocId,
+  confirmDeleteSecondsLeft,
+  onActionMenuClose,
 }: {
   file: LocalFileRecord;
   onOpen: () => void;
@@ -850,25 +866,48 @@ function LocalFileCard({
   onShare: () => void;
   onAssign: () => void;
   onPermissions: () => void;
+  onDocumentFileStatusChange?: (filePath: string, doc: Document, status: FileStatus) => void | Promise<void>;
+  onDeleteDocument: (doc: Document) => void;
+  confirmDeleteDocId: string | null;
+  confirmDeleteSecondsLeft: number;
+  onActionMenuClose: () => void;
 }) {
+  const { user } = useAuth();
   const isSynced = file.syncStatus === "synced";
-  const tab = isSynced ? "En nube" : file.syncStatus === "syncing" ? "Sincronizando" : file.syncStatus === "error" ? "Error" : "Local";
-  const tabClasses = isSynced
-    ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300"
-    : file.syncStatus === "error"
-      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300"
-      : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
 
-  const menuItems: ActionMenuItem[] = [
-    { label: "Abrir en aplicación local", icon: ExternalLink, onClick: onOpenLocal },
-  ];
-  if (file.document) {
-    menuItems.push(
-      { label: "Compartir", icon: Cloud, onClick: onShare },
-      { label: "Asignar", icon: Monitor, onClick: onAssign },
-      { label: "Permisos", icon: ShieldCheck, onClick: onPermissions },
-    );
-  }
+  const menuItems = React.useMemo((): ActionMenuItem[] => {
+    const localRow: ActionMenuItem[] = [
+      { label: "Abrir en aplicación local", icon: ExternalLink, onClick: onOpenLocal },
+    ];
+    if (!file.document) return localRow;
+    const d = file.document;
+    const permissionLevel: DocumentPermissionLevel | undefined =
+      d.ownerId && user?.id && d.ownerId === user.id ? "admin" : undefined;
+    return [
+      ...localRow,
+      ...buildDocumentActionMenuItems(d, {
+        onOpen,
+        onShare,
+        onAssign,
+        onPermissions,
+        onDelete: () => onDeleteDocument(d),
+        confirmDeleteDocId,
+        confirmDeleteSecondsLeft,
+        permissionLevel,
+      }),
+    ];
+  }, [
+    file.document,
+    user?.id,
+    onOpen,
+    onOpenLocal,
+    onShare,
+    onAssign,
+    onPermissions,
+    onDeleteDocument,
+    confirmDeleteDocId,
+    confirmDeleteSecondsLeft,
+  ]);
 
   return (
     <article
@@ -893,9 +932,18 @@ function LocalFileCard({
         }
       }}
     >
-      <div className={`absolute left-5 top-0 z-10 -translate-y-full rounded-t-lg border border-b-0 px-3 py-1 text-xs font-semibold ${tabClasses}`}>
-        {tab}
-      </div>
+      {file.document && (
+        <div className="absolute left-4 top-0 z-10 -translate-y-full">
+          <span
+            className={`rounded-t-lg border border-b-0 px-3 py-1 text-xs font-semibold ${
+              FILE_STATUS_TAB_CLASSES[file.document.fileStatus ?? "ACTIVO"]
+            }`}
+            title={`Estado del documento: ${FILE_STATUS_LABELS[file.document.fileStatus ?? "ACTIVO"]}`}
+          >
+            {FILE_STATUS_LABELS[file.document.fileStatus ?? "ACTIVO"]}
+          </span>
+        </div>
+      )}
       <div className="relative">
         {isSynced && (
           <div className="absolute right-2 top-2 z-10 rounded-md border border-blue-200 bg-blue-50 p-1 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300" title="Respaldado en la nube">
@@ -917,6 +965,15 @@ function LocalFileCard({
           <span>{formatFileSize(file.size)} · {file.ext.toUpperCase()}</span>
           {file.syncStatus === "error" && <span className="text-red-600">{file.syncError}</span>}
         </div>
+        {file.document && onDocumentFileStatusChange && (
+          <div className="mt-2">
+            <FileStatusIconToggle
+              value={file.document.fileStatus ?? "ACTIVO"}
+              disabled={!canChangeDocumentFileStatus(file.document, user?.id)}
+              onChange={(status) => void onDocumentFileStatusChange(file.path, file.document!, status)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
@@ -932,7 +989,7 @@ function LocalFileCard({
           Abrir local
         </button>
         <div onClick={(event) => event.stopPropagation()}>
-          <ActionMenu items={menuItems} />
+          <ActionMenu items={menuItems} onClose={onActionMenuClose} />
         </div>
       </div>
     </article>
@@ -978,6 +1035,8 @@ export function MiEscritorio() {
   const [assignDocument, setAssignDocument] = useState<Document | null>(null);
   const [permissionsDocument, setPermissionsDocument] = useState<Document | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
+  const deleteConfirmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const syncRunRef = useRef(0);
   const {
     documents,
@@ -990,6 +1049,14 @@ export function MiEscritorio() {
   useEffect(() => {
     writeLocalWorkspace(workspace);
   }, [workspace]);
+
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimerRef.current) {
+        window.clearInterval(deleteConfirmTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1206,17 +1273,95 @@ export function MiEscritorio() {
     }
   };
 
-  const handleDelete = async (doc: Document) => {
-    if (confirmDeleteDocId !== doc.id) {
-      setConfirmDeleteDocId(doc.id);
-      addToast({ message: "Vuelve a elegir eliminar para confirmar.", type: "warning", duration: 3500 });
+  const handleDeleteDocument = (doc: Document) => {
+    if (confirmDeleteDocId === doc.id) {
+      if (confirmDeleteSecondsLeft > 0) return;
+      if (deleteConfirmTimerRef.current) {
+        window.clearInterval(deleteConfirmTimerRef.current);
+        deleteConfirmTimerRef.current = null;
+      }
+      setConfirmDeleteDocId(null);
+      setConfirmDeleteSecondsLeft(0);
+      void (async () => {
+        try {
+          await deleteDocument(doc.id, doc.name);
+          setLocalFiles((prev) =>
+            prev.map((item) =>
+              item.document?.id === doc.id
+                ? { ...item, document: undefined, syncStatus: "pending", syncError: undefined }
+                : item,
+            ),
+          );
+          const sm = readLocalSyncMap();
+          for (const p of Object.keys(sm)) {
+            if (sm[p]?.document?.id === doc.id) delete sm[p];
+          }
+          writeLocalSyncMap(sm);
+          addToast({ message: `"${doc.name}" se movió a la papelera.`, type: "success" });
+          await refresh();
+        } catch {
+          addToast({ message: "No se pudo eliminar el documento.", type: "error" });
+        }
+      })();
       return;
     }
-
-    await deleteDocument(doc.id, doc.name);
-    setConfirmDeleteDocId(null);
-    addToast({ message: `"${doc.name}" se movió a la papelera.`, type: "success" });
+    setConfirmDeleteDocId(doc.id);
+    setConfirmDeleteSecondsLeft(3);
+    if (deleteConfirmTimerRef.current) {
+      window.clearInterval(deleteConfirmTimerRef.current);
+    }
+    deleteConfirmTimerRef.current = window.setInterval(() => {
+      setConfirmDeleteSecondsLeft((prev) => {
+        if (prev <= 1) {
+          if (deleteConfirmTimerRef.current) {
+            window.clearInterval(deleteConfirmTimerRef.current);
+            deleteConfirmTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
+
+  const handleLocalDocumentFileStatus = React.useCallback(
+    async (filePath: string, doc: Document, status: FileStatus) => {
+      if (doc.fileStatus === status) return;
+      const previous = doc.fileStatus ?? "ACTIVO";
+      setLocalFiles((prev) =>
+        prev.map((item) =>
+          item.path === filePath && item.document?.id === doc.id
+            ? { ...item, document: item.document ? { ...item.document, fileStatus: status } : item.document }
+            : item,
+        ),
+      );
+      const syncMap = readLocalSyncMap();
+      const entry = syncMap[filePath];
+      if (entry?.document.id === doc.id) {
+        syncMap[filePath] = { ...entry, document: { ...entry.document, fileStatus: status } };
+        writeLocalSyncMap(syncMap);
+      }
+      try {
+        await documentsApi.update(doc.id, { fileStatus: status });
+      } catch {
+        setLocalFiles((prev) =>
+          prev.map((item) =>
+            item.path === filePath && item.document?.id === doc.id
+              ? { ...item, document: item.document ? { ...item.document, fileStatus: previous } : item.document }
+              : item,
+          ),
+        );
+        const sm = readLocalSyncMap();
+        const en = sm[filePath];
+        if (en?.document.id === doc.id) {
+          sm[filePath] = { ...en, document: { ...en.document, fileStatus: previous } };
+          writeLocalSyncMap(sm);
+        }
+        addToast({ message: "No se pudo actualizar el estado del documento.", type: "error" });
+      }
+    },
+    [addToast],
+  );
 
   return (
     <main className="max-w-[1200px] w-full mx-auto px-4 sm:px-6 py-6 flex-1 space-y-6">
@@ -1357,6 +1502,20 @@ export function MiEscritorio() {
                       onShare={() => file.document && setShareDocument(file.document)}
                       onAssign={() => file.document && setAssignDocument(file.document)}
                       onPermissions={() => file.document && setPermissionsDocument(file.document)}
+                      onDocumentFileStatusChange={handleLocalDocumentFileStatus}
+                      onDeleteDocument={handleDeleteDocument}
+                      confirmDeleteDocId={confirmDeleteDocId}
+                      confirmDeleteSecondsLeft={confirmDeleteSecondsLeft}
+                      onActionMenuClose={() => {
+                        if (file.document && confirmDeleteDocId === file.document.id) {
+                          setConfirmDeleteDocId(null);
+                          setConfirmDeleteSecondsLeft(0);
+                          if (deleteConfirmTimerRef.current) {
+                            window.clearInterval(deleteConfirmTimerRef.current);
+                            deleteConfirmTimerRef.current = null;
+                          }
+                        }
+                      }}
                     />
                   ))}
                 </div>

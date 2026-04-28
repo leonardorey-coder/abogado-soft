@@ -7,6 +7,7 @@ import { assignmentsApi, documentsApi, activityApi, sharesApi, type ApiDocumentA
 import { getDocumentRoute } from "../lib/routes";
 import { matchesSearch } from "../lib/documentSearch";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
+import { BitacoraEntryItem } from "./BitacoraEntryItem";
 import { ShareModal } from "./ShareModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { DocumentPermissionsModal } from "./DocumentPermissionsModal";
@@ -14,10 +15,12 @@ import { AssignModal } from "./AssignModal";
 import { OnboardingWizard, isOnboardingDone } from "./OnboardingWizard";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { canChangeDocumentFileStatus } from "../lib/documentPermissions";
+import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import { UserAvatar } from "./UserAvatar";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
-import { getViewerInitial, getViewerLabel } from "../lib/viewerIdentity";
+import { getViewerLabel } from "../lib/viewerIdentity";
 import {
   PageHeader,
   FilterBar,
@@ -50,15 +53,6 @@ import {
   Link2,
   Share2,
   UserCheck,
-  Eye,
-  PenLine,
-  GitBranch,
-  Lock,
-  UserCog,
-  Download,
-  Trash2,
-  RotateCcw,
-  MessageSquare,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -75,8 +69,6 @@ interface DashboardProps {
   searchQuery?: string;
   onOpenDocument?: (docId: string, docType?: string) => void;
 }
-
-type RecentChangeFilter = "TODOS" | "ABRIO" | "EDICION" | "ESTADO" | "ASIGNACION";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -111,6 +103,7 @@ const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
 const NEW_DOC_FROM_QUICK_DEFAULT_NAME = "Documento sin título.docx";
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const HOME_RECENT_LIST_LIMIT = 6;
 
 // ─── Share badges helpers ──────────────────────────────────────────────────
 
@@ -265,7 +258,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [quickNewDocError, setQuickNewDocError] = useState<string | null>(null);
   const [recentlyShared, setRecentlyShared] = useState<RecentlySharedItem[]>([]);
   const [recentlySharedLoading, setRecentlySharedLoading] = useState(false);
-  const [recentChangeFilter, setRecentChangeFilter] = useState<RecentChangeFilter>("TODOS");
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
   // Onboarding: show wizard to new users
@@ -330,7 +322,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         : sevenDaysAgo.toISOString();
       const res = await activityApi.list({
         page: 1,
-        limit: 8,
+        limit: HOME_RECENT_LIST_LIMIT,
         category: 'documents',
         from,
       });
@@ -341,10 +333,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setRecentActivity(prev => {
           const existingIds = new Set(prev.map(e => e.id));
           const fresh = data.filter(e => !existingIds.has(e.id));
-          return [...fresh, ...prev].slice(0, 8);
+          return [...fresh, ...prev].slice(0, HOME_RECENT_LIST_LIMIT);
         });
       } else if (!isIncremental) {
-        setRecentActivity(data);
+        setRecentActivity(data.slice(0, HOME_RECENT_LIST_LIMIT));
       }
     } catch {
       // silently ignore
@@ -529,6 +521,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ]
       : filteredDocuments;
 
+  const latestActivityByDocument = recentActivity.reduce<Record<string, number>>((acc, entry) => {
+    const entityType = (entry.entityType ?? "").toLowerCase();
+    if (entityType !== "document" || !entry.entityId) return acc;
+    const ts = new Date(entry.createdAt).getTime();
+    if (!Number.isFinite(ts)) return acc;
+    const prev = acc[entry.entityId] ?? 0;
+    if (ts > prev) acc[entry.entityId] = ts;
+    return acc;
+  }, {});
+
+  const sortedDocumentsForList = [...filteredDocumentsForList].sort((a, b) => {
+    const aActivityTs = latestActivityByDocument[a.id] ?? 0;
+    const bActivityTs = latestActivityByDocument[b.id] ?? 0;
+    if (aActivityTs !== bActivityTs) return bActivityTs - aActivityTs;
+
+    const aUpdatedTs = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const bUpdatedTs = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    if (aUpdatedTs !== bUpdatedTs) return bUpdatedTs - aUpdatedTs;
+
+    const aCreatedTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bCreatedTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (aCreatedTs !== bCreatedTs) return bCreatedTs - aCreatedTs;
+
+    return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+  });
+  const recentDocumentsForList = sortedDocumentsForList.slice(0, HOME_RECENT_LIST_LIMIT);
+
+  const getEditorDisplayName = (editorName?: string) => {
+    const trimmedEditor = editorName?.trim();
+    const trimmedCurrent = user?.name?.trim();
+    if (
+      trimmedEditor &&
+      trimmedCurrent &&
+      trimmedEditor.localeCompare(trimmedCurrent, "es", { sensitivity: "accent" }) === 0
+    ) {
+      return "Tú";
+    }
+    return trimmedEditor ?? "";
+  };
+
   const pendingDocuments = documents
     .filter((d) => d.fileStatus === "PENDIENTE")
     .sort((a, b) => {
@@ -548,67 +580,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { key: "PENDIENTES", label: "Pendientes", icon: Clock, count: counts.pendientes },
     { key: "INACTIVOS", label: "Inactivos", icon: AlertCircle, count: counts.inactivos },
   ];
-
-  const changeActivityByFilter: Record<RecentChangeFilter, string[]> = {
-    TODOS: ["DOCUMENT_VIEWED", "DOCUMENT_UPDATED", "DOCUMENT_VERSION_CREATED", "DOCUMENT_PERMISSION_CHANGED", "DOCUMENT_ASSIGNED"],
-    ABRIO: ["DOCUMENT_VIEWED"],
-    EDICION: ["DOCUMENT_UPDATED", "DOCUMENT_VERSION_CREATED"],
-    ESTADO: ["DOCUMENT_PERMISSION_CHANGED"],
-    ASIGNACION: ["DOCUMENT_ASSIGNED"],
-  };
-  const recentChangePills: FilterPill[] = [
-    { key: "TODOS", label: "Todos" },
-    { key: "ABRIO", label: "Aperturas" },
-    { key: "EDICION", label: "Edición" },
-    { key: "ESTADO", label: "Estado" },
-    { key: "ASIGNACION", label: "Asignación" },
-  ];
-  const changeLabelMap: Record<string, string> = {
-    DOCUMENT_VIEWED: "Abrió",
-    DOCUMENT_UPDATED: "Editó",
-    DOCUMENT_VERSION_CREATED: "Nueva versión",
-    DOCUMENT_PERMISSION_CHANGED: "Cambió permisos",
-    DOCUMENT_ASSIGNED: "Cambió asignación",
-    DOCUMENT_SHARED: "Compartió",
-    DOCUMENT_DOWNLOADED: "Descargó",
-    DOCUMENT_DELETED: "Eliminó",
-    DOCUMENT_RESTORED: "Restauró",
-    DOCUMENT_COMMENT_ADDED: "Comentó",
-  };
-  const changeIconMap: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
-    DOCUMENT_VIEWED:            { Icon: Eye,          color: "text-sky-600 dark:text-sky-400",      bg: "bg-sky-50 dark:bg-sky-900/20" },
-    DOCUMENT_UPDATED:           { Icon: PenLine,      color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-900/20" },
-    DOCUMENT_VERSION_CREATED:   { Icon: GitBranch,    color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
-    DOCUMENT_PERMISSION_CHANGED:{ Icon: Lock,         color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-900/20" },
-    DOCUMENT_ASSIGNED:          { Icon: UserCog,      color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-    DOCUMENT_SHARED:            { Icon: Share2,       color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-50 dark:bg-blue-900/20" },
-    DOCUMENT_DOWNLOADED:        { Icon: Download,     color: "text-teal-600 dark:text-teal-400",     bg: "bg-teal-50 dark:bg-teal-900/20" },
-    DOCUMENT_DELETED:           { Icon: Trash2,       color: "text-red-600 dark:text-red-400",       bg: "bg-red-50 dark:bg-red-900/20" },
-    DOCUMENT_RESTORED:          { Icon: RotateCcw,    color: "text-green-600 dark:text-green-400",   bg: "bg-green-50 dark:bg-green-900/20" },
-    DOCUMENT_COMMENT_ADDED:     { Icon: MessageSquare,color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" },
-  };
-  const fallbackChangeIcon = { Icon: History, color: "text-slate-500 dark:text-slate-400", bg: "bg-slate-100 dark:bg-slate-800" };
-  const recentChanges = Array.from(
-    recentActivity
-      .filter((entry) => (entry.entityType ?? "").toLowerCase() === "document")
-      .filter((entry) => changeActivityByFilter[recentChangeFilter].includes(entry.activity))
-      .reduce((acc, entry) => {
-        const bucketMinute = new Date(entry.createdAt);
-        bucketMinute.setSeconds(0, 0);
-        // Evita duplicados visuales cuando se registran dos eventos equivalentes casi al mismo tiempo.
-        const dedupeKey = [
-          entry.activity,
-          entry.entityId ?? "no-entity",
-          entry.userId ?? "no-user",
-          bucketMinute.toISOString(),
-        ].join("|");
-        if (!acc.has(dedupeKey)) {
-          acc.set(dedupeKey, entry);
-        }
-        return acc;
-      }, new Map<string, ApiActivityLog>())
-      .values(),
-  ).slice(0, 8);
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -880,10 +851,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
                   {recentlyShared.map((item) => {
-                    const isConvenio = item.entityType === 'convenio' || item.entitySubtype === 'CONVENIO';
+                    const inferredSubtype = (() => {
+                      const rawSubtype = (item.entitySubtype ?? "").toUpperCase();
+                      if (rawSubtype) return rawSubtype;
+                      const lowerName = (item.entityName ?? "").toLowerCase();
+                      if (lowerName.endsWith(".pdf")) return "PDF";
+                      if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) return "DOCX";
+                      if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) return "XLSX";
+                      return "DOCX";
+                    })();
+                    const isConvenio = item.entityType === 'convenio' || inferredSubtype === 'CONVENIO';
                     const { Icon: TypeIcon, color: typeColor, bg: typeBg } = isConvenio
                       ? { Icon: ScrollText, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" }
-                      : getFileTypeIcon(item.entitySubtype ?? 'DOCX');
+                      : getFileTypeIcon(inferredSubtype);
+                    const entitySubtype = inferredSubtype;
+                    const sharedWithLower = (item.sharedWith ?? "").toLowerCase();
+                    const sharedFormatFromMeta = (() => {
+                      if (sharedWithLower.includes("pdf")) return "PDF";
+                      if (sharedWithLower.includes("docx") || sharedWithLower.includes("word")) return "DOCX";
+                      if (sharedWithLower.includes("xlsx") || sharedWithLower.includes("excel")) return "XLSX";
+                      return null;
+                    })();
+                    const sharedAsKind = sharedFormatFromMeta ?? (isConvenio ? "CONVENIO" : entitySubtype || "ARCHIVO");
+                    const sharedAsLabel = sharedAsKind === "CONVENIO" ? "Convenio" : sharedAsKind;
+                    const sharedAsCls = sharedAsKind === "CONVENIO"
+                      ? 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800'
+                      : sharedAsKind === "PDF"
+                        ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+                        : sharedAsKind === "DOCX"
+                          ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
+                          : sharedAsKind === "XLSX"
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+                            : 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+                    const sharedAsIcon = sharedAsKind === "CONVENIO"
+                      ? <ScrollText className="w-2.5 h-2.5 shrink-0" />
+                      : sharedAsKind === "PDF"
+                        ? <FileText className="w-2.5 h-2.5 shrink-0" />
+                        : sharedAsKind === "XLSX"
+                          ? <Table className="w-2.5 h-2.5 shrink-0" />
+                          : <FileText className="w-2.5 h-2.5 shrink-0" />;
 
                     const sharedAgo = (() => {
                       const diff = Date.now() - new Date(item.sharedAt).getTime();
@@ -901,20 +907,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       email: { label: 'Email', icon: <Mail className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
                       whatsapp: { label: 'WhatsApp', icon: <MessageCircle className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' },
                       link: { label: 'Enlace', icon: <Link2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800' },
-                      system: { label: 'Sistema', icon: <Share2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' },
-                      other: { label: 'Otro', icon: <Share2 className="w-2.5 h-2.5 shrink-0" />, cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' },
+                      system: { label: sharedAsLabel, icon: sharedAsIcon, cls: sharedAsCls },
+                      other: { label: sharedAsLabel, icon: sharedAsIcon, cls: sharedAsCls },
                     };
                     const badge = methodBadge[item.shareMethod] ?? methodBadge.other;
 
-                    const genericPatterns = ['compartido via', 'enlace copiado', 'compartido', 'via sistema'];
-                    const isGenericContact = genericPatterns.some(p => item.sharedWith.toLowerCase().includes(p));
-                    const toLabel = isGenericContact ? `Vía ${badge.label}` : `A ${item.sharedWith}`;
                     const sharedByLabel = getViewerLabel({
                       subjectId: item.sharedBy?.id,
                       subjectName: item.sharedBy?.name,
                       currentUserId: user?.id,
                       fallback: "Sistema",
                     });
+                    const genericPatterns = ['compartido via', 'enlace copiado', 'compartido', 'via sistema', 'system', 'a pdf', 'como pdf', 'a docx', 'como docx', 'a xlsx', 'como xlsx'];
+                    const isGenericContact = genericPatterns.some(p => item.sharedWith.toLowerCase().includes(p));
+                    const recipientLabel = isGenericContact ? null : item.sharedWith;
                     const sharedAtTime = new Date(item.sharedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
                     return (
@@ -935,36 +941,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           }
                         }}
                       >
-                        <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${typeBg}`}>
-                          <TypeIcon className={`w-3.5 h-3.5 ${typeColor}`} />
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${typeBg}`}>
+                          <TypeIcon className={`w-4.5 h-4.5 ${typeColor}`} />
                         </div>
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold border ${badge.cls} shrink-0`} title={`Compartido por ${sharedByLabel}`}>
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold border ${badge.cls} shrink-0`}>
                               {badge.icon}
                               {badge.label}
                             </span>
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
-                              <span className="font-semibold">{toLabel}</span>
-                              <span className="text-slate-400 dark:text-slate-500"> · Por {sharedByLabel}</span>
-                            </p>
+                            {recipientLabel && (
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                Para {recipientLabel}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate leading-tight">
+                            {item.entityName}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            Por <span className="font-medium text-slate-700 dark:text-slate-300">{sharedByLabel}</span>
+                            <span className="text-slate-300 dark:text-slate-600"> · </span>
+                            <Clock className="w-2.5 h-2.5 inline-block mr-1" />
                             {sharedAgo}
-                            <span className="text-slate-300 dark:text-slate-600">·</span>
+                            <span className="text-slate-300 dark:text-slate-600"> · </span>
                             {sharedAtTime}
                             {isConvenio && (
                               <>
-                                <span className="text-slate-300 dark:text-slate-600">·</span>
-                                <span className="px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-[9px] font-bold uppercase">
-                                  Convenio
-                                </span>
+                                <span className="text-slate-300 dark:text-slate-600"> · </span>
+                                Convenio
                               </>
                             )}
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {item.entityName}
                           </p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -981,99 +988,223 @@ export const Dashboard: React.FC<DashboardProps> = ({
           />
         </div>
 
-        <SectionCard title="Cambios recientes" noPadding className="overflow-hidden shadow-sm">
-            <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
-              <FilterBar pills={recentChangePills} active={recentChangeFilter} onChange={(value) => setRecentChangeFilter(value as RecentChangeFilter)} />
-            </div>
+        <SectionCard title="Documentos recientes" noPadding className="overflow-hidden shadow-sm">
+          <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/25">
+            <FilterBar pills={filterPills} active={filter} onChange={setFilter} />
+          </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-              {activityLoading && recentChanges.length === 0 ? (
-                <div className="p-4 space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <Skeleton className="h-3 w-3/4 rounded" />
-                        <Skeleton className="h-2.5 w-1/3 rounded" />
-                      </div>
+          <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] gap-4 items-center px-5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/60">
+            <span>Documento</span>
+            <span className="text-center whitespace-nowrap">Estado</span>
+            <span className="sr-only">Acciones</span>
+          </div>
+
+          <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0 lg:col-span-1">
+                    <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
+                    <div className="flex-1 space-y-2 min-w-0">
+                      <Skeleton className="h-4 w-3/4 max-w-md rounded" />
+                      <Skeleton className="h-3 w-1/3 rounded" />
                     </div>
-                  ))}
+                  </div>
+                  <Skeleton className="h-8 w-36 rounded-lg justify-self-end hidden lg:block" />
+                  <Skeleton className="h-8 w-8 rounded-lg justify-self-end hidden lg:block" />
                 </div>
-              ) : recentChanges.length === 0 ? (
-                <div className="py-8 px-6 text-center">
-                  <History className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Sin cambios recientes para este filtro</p>
-                </div>
-              ) : (
-                recentChanges.map((entry) => {
-                  const changeAt = new Date(entry.createdAt);
-                  const timeAgo = (() => {
-                    const diff = Date.now() - changeAt.getTime();
-                    const mins = Math.floor(diff / 60000);
-                    const hrs = Math.floor(mins / 60);
-                    const days = Math.floor(hrs / 24);
-                    if (days > 0) return `Hace ${days}d`;
-                    if (hrs > 0) return `Hace ${hrs}h`;
-                    if (mins > 0) return `Hace ${mins}m`;
-                    return "Ahora mismo";
-                  })();
-                  const { Icon: ChangeIcon, color: changeColor, bg: changeBg } =
-                    changeIconMap[entry.activity] ?? fallbackChangeIcon;
+              ))
+            ) : recentDocumentsForList.length === 0 ? (
+              <EmptyState
+                icon={searchQuery.trim() ? Search : FolderOpen}
+                title={
+                  searchQuery.trim()
+                    ? "Sin resultados de búsqueda"
+                    : "No hay documentos"
+                }
+                description={
+                  searchQuery.trim()
+                    ? `No se encontraron documentos para "${searchQuery}"`
+                    : "Suba un documento para comenzar"
+                }
+                variant={searchQuery.trim() ? "search" : "empty"}
+                action={
+                  !searchQuery.trim() ? (
+                    <Button
+                      icon={Plus}
+                      onClick={() => onOpenUploadModal?.()}
+                    >
+                      Nuevo Documento
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                {recentDocumentsForList.map((doc) => {
+                  const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
+                  const isExpiring = doc.fileStatus === "PENDIENTE" && doc.expirationDate;
+
                   return (
                     <div
-                      key={entry.id}
-                      className="flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors"
-                      onClick={() => entry.entityId && navigate(`/documento/${entry.entityId}`)}
+                      key={doc.id}
+                      onClick={() => handleDocumentClick(doc)}
+                      className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 hover:bg-slate-50/80 dark:hover:bg-slate-700/25 cursor-pointer transition-colors group lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:gap-4 lg:items-center"
                       role="button"
                       tabIndex={0}
-                      draggable={!!entry.entityId}
+                      draggable={!!doc.id}
                       onDragStart={(e) => {
-                        if (!entry.entityId) return;
                         startDocDrag(e, {
-                          id: entry.entityId,
-                          name: entry.entityName ?? "Documento",
-                          type: "DOCX",
+                          id: doc.id,
+                          name: doc.name,
+                          type: doc.type,
                         });
                       }}
                       onDragEnd={() => endDocDrag()}
                       onKeyDown={(e) => {
-                        if ((e.key === "Enter" || e.key === " ") && entry.entityId) {
+                        if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          navigate(`/documento/${entry.entityId}`);
+                          handleDocumentClick(doc);
                         }
                       }}
                     >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${changeBg}`}>
-                        <ChangeIcon className={`w-4 h-4 ${changeColor}`} />
+                      <div className="flex items-start sm:items-center gap-3 min-w-0">
+                        <div
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${typeBg}`}
+                        >
+                          <TypeIcon className={`w-4.5 h-4.5 ${typeColor}`} />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                            {doc.name}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                            <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0">
+                              <Calendar className="w-3 h-3" />
+                              {doc.lastModified}
+                            </span>
+                            {doc.lastEditor && (
+                              <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 min-w-0">
+                                <Edit3 className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{getEditorDisplayName(doc.lastEditor)}</span>
+                              </span>
+                            )}
+                            {isExpiring && (
+                              <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 font-medium shrink-0">
+                                <AlertCircle className="w-3 h-3" />
+                                Vence {doc.expirationDate}
+                              </span>
+                            )}
+                          </div>
+                          {renderShareBadges(doc)}
+                          {doc.assignments && doc.assignments.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              {doc.assignments.map((a) => (
+                                <span
+                                  key={a.id}
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/60 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 max-w-full"
+                                  title={`${getViewerLabel({
+                                    subjectId: a.assignee.id,
+                                    subjectName: a.assignee.name,
+                                    currentUserId: user?.id,
+                                    fallback: "Usuario",
+                                  })} · ${ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}`}
+                                >
+                                  <UserAvatar
+                                    name={a.assignee.name}
+                                    avatarUrl={a.assignee.avatarUrl}
+                                    className="w-4 h-4 rounded-full object-cover shrink-0"
+                                  />
+                                  <span className="font-medium truncate">{getViewerLabel({
+                                    subjectId: a.assignee.id,
+                                    subjectName: a.assignee.name,
+                                    currentUserId: user?.id,
+                                    fallback: "Usuario",
+                                  })}</span>
+                                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                                    {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                          {entry.entityName ?? "Documento"}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          <span className="font-medium text-slate-700 dark:text-slate-300">
-                            {getViewerLabel({
-                              subjectId: entry.userId,
-                              subjectName: entry.user?.name,
-                              currentUserId: user?.id,
-                              fallback: "Sistema",
+
+                      <div className="flex items-center justify-between gap-2 pl-12 sm:pl-[3.25rem] lg:pl-0 lg:contents">
+                        <FileStatusIconToggle
+                          className="shrink-0"
+                          value={doc.fileStatus ?? "ACTIVO"}
+                          disabled={!canChangeDocumentFileStatus(doc, user?.id)}
+                          onChange={(status) => void handleSetFileStatus(doc, status)}
+                        />
+
+                        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <ActionMenu
+                            items={buildDocumentActionMenuItems(doc, {
+                              onOpen: () => handleDocumentClick(doc),
+                              onShare: () => setShareDocument(doc),
+                              onAssign: () => setAssignDocument(doc),
+                              onPermissions: () => {
+                                if (currentUserRole === "admin" || adminUnlockedForSession) {
+                                  setPermissionsDocument(doc);
+                                } else {
+                                  setAdminAccessDocument(doc);
+                                }
+                              },
+                              onDelete: () => handleDelete(doc),
+                              confirmDeleteDocId,
+                              confirmDeleteSecondsLeft,
                             })}
-                          </span>
-                          {" · "}
-                          {changeLabelMap[entry.activity] ?? "Actualizó"}
-                          {" · "}
-                          {timeAgo}
-                        </p>
+                            onClose={() => {
+                              if (confirmDeleteDocId === doc.id) {
+                                setConfirmDeleteDocId(null);
+                                setConfirmDeleteSecondsLeft(0);
+                                if (deleteConfirmTimerRef.current) {
+                                  window.clearInterval(deleteConfirmTimerRef.current);
+                                  deleteConfirmTimerRef.current = null;
+                                }
+                              }
+                            }}
+                          />
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
-                        {changeAt.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
                     </div>
                   );
-                })
-              )}
-            </div>
-          </SectionCard>
+                })}
+
+                <div
+                  onClick={() => onOpenUploadModal?.()}
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-t-2 border-dashed border-slate-200 dark:border-slate-700/60"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpenUploadModal?.();
+                    }
+                  }}
+                >
+                  <div className="w-9 h-9 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
+                    <Plus className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      Nuevo Documento
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      Subir archivo o crear nuevo
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </SectionCard>
 
         {/* ── Actividad Reciente de Documentos (con polling en tiempo real) ── */}
         <SectionCard
@@ -1105,7 +1236,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Body */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+          <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
             {activityLoading && recentActivity.length === 0 ? (
               // Skeleton
               <div className="p-4 space-y-3">
@@ -1127,98 +1258,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             ) : (
               recentActivity.map((entry) => {
-                const activityIconMap: Record<string, string> = {
-                  DOCUMENT_CREATED: 'upload_file',
-                  DOCUMENT_UPDATED: 'edit_note',
-                  DOCUMENT_VERSION_CREATED: 'history',
-                  DOCUMENT_SHARED: 'share',
-                  DOCUMENT_ASSIGNED: 'assignment',
-                  DOCUMENT_DOWNLOADED: 'download',
-                  DOCUMENT_DELETED: 'delete',
-                  DOCUMENT_RESTORED: 'restore',
-                  DOCUMENT_COMMENT_ADDED: 'comment',
-                  DOCUMENT_VIEWED: 'visibility',
-                };
-                const activityLabelMap: Record<string, string> = {
-                  DOCUMENT_CREATED: 'Subió',
-                  DOCUMENT_UPDATED: 'Editó',
-                  DOCUMENT_VERSION_CREATED: 'Nueva versión',
-                  DOCUMENT_SHARED: 'Compartió',
-                  DOCUMENT_ASSIGNED: 'Asignó',
-                  DOCUMENT_DOWNLOADED: 'Descargó',
-                  DOCUMENT_DELETED: 'Eliminó',
-                  DOCUMENT_RESTORED: 'Restauró',
-                  DOCUMENT_COMMENT_ADDED: 'Comentó',
-                  DOCUMENT_VIEWED: 'Abrió',
-                };
-                const icon = activityIconMap[entry.activity] ?? 'article';
-                const actionLabel = activityLabelMap[entry.activity] ?? entry.activity.replace(/_/g, ' ').toLowerCase();
-                const isVersion = entry.activity === 'DOCUMENT_VERSION_CREATED';
-
-                const timeAgo = (() => {
-                  const diff = Date.now() - new Date(entry.createdAt).getTime();
-                  const mins = Math.floor(diff / 60000);
-                  const hrs = Math.floor(mins / 60);
-                  const days = Math.floor(hrs / 24);
-                  if (days > 0) return `${days}d`;
-                  if (hrs > 0) return `${hrs}h`;
-                  if (mins > 0) return `${mins}m`;
-                  return 'ahora';
-                })();
-
                 return (
-                  <div
-                    key={entry.id}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group"
-                  >
-                    {/* Avatar */}
-                    <div className="flex-shrink-0 relative">
-                      <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
-                        {getViewerInitial({
-                          subjectId: entry.userId,
-                          subjectName: entry.user?.name,
-                          currentUserId: user?.id,
-                          fallback: "Sistema",
-                        })}
-                      </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[9px] text-primary">{icon}</span>
-                      </div>
-                    </div>
-                    {/* Text */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-tight truncate">
-                        <span className="font-semibold">
-                          {getViewerLabel({
-                            subjectId: entry.userId,
-                            subjectName: entry.user?.name,
-                            currentUserId: user?.id,
-                            fallback: "Sistema",
-                          })}
-                        </span>
-                        {' '}
-                        <span className="text-slate-500">{actionLabel}</span>
-                        {entry.entityId && (
-                          <>
-                            {' — '}
-                            <button
-                              className="font-medium text-primary hover:underline truncate max-w-[120px] inline-block align-bottom"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/documento/${entry.entityId}`); }}
-                              title={entry.entityName ?? ''}
-                            >
-                              {entry.entityName ?? 'Documento'}
-                            </button>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    {/* Meta */}
-                    <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-                      <span className="text-[10px] text-slate-400">{timeAgo}</span>
-                      {isVersion && (
-                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">v↑</span>
-                      )}
-                    </div>
+                  <div key={entry.id} className="px-4 py-2.5">
+                    <BitacoraEntryItem
+                      entry={entry}
+                      currentUserId={user?.id}
+                      compact
+                      onNavigate={navigate}
+                    />
                   </div>
                 );
               })

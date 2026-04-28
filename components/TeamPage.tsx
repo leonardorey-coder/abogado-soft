@@ -3,12 +3,14 @@
 // Permite crear, editar, cambiar rol, activar/desactivar y eliminar usuarios
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { UserAvatar } from "./UserAvatar";
 import { getViewerLabel } from "../lib/viewerIdentity";
+import type { ApiActivityLog } from "../lib/api";
+import { BitacoraEntryItem } from "./BitacoraEntryItem";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -25,17 +27,6 @@ interface TeamUser {
   isActive: boolean;
   lastLogin?: string | null;
   createdAt: string;
-}
-
-interface ActivityItem {
-  id: string;
-  activity: string;
-  description: string;
-  entityType?: string | null;
-  entityId?: string | null;
-  entityName?: string | null;
-  createdAt: string;
-  user: { id: string; name: string; email: string; avatarUrl?: string | null };
 }
 
 interface GroupInfo {
@@ -62,65 +53,13 @@ function formatTimeAgo(dateStr: string): string {
   return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
 }
 
-function activityIcon(activity: string): { icon: string; bg: string; color: string } {
-  const lower = activity.toLowerCase();
-  if (lower.includes("edit") || lower.includes("document")) return { icon: "edit_document", bg: "bg-green-100 dark:bg-green-900/30", color: "text-green-600 dark:text-green-400" };
-  if (lower.includes("user")) return { icon: "person", bg: "bg-blue-100 dark:bg-blue-900/30", color: "text-blue-600 dark:text-blue-400" };
-  if (lower.includes("login") || lower.includes("logout")) return { icon: "login", bg: "bg-purple-100 dark:bg-purple-900/30", color: "text-purple-600 dark:text-purple-400" };
-  return { icon: "history", bg: "bg-gray-100 dark:bg-gray-700", color: "text-gray-600 dark:text-gray-400" };
-}
-
-function translateActivity(activity: string): string {
-  const map: Record<string, string> = {
-    DOCUMENT_VIEWED: "Documento visto",
-    DOCUMENT_CREATED: "Documento creado",
-    DOCUMENT_UPDATED: "Documento actualizado",
-    DOCUMENT_DELETED: "Documento eliminado",
-    DOCUMENT_RESTORED: "Documento restaurado",
-    DOCUMENT_ASSIGNED: "Documento asignado",
-    DOCUMENT_SHARED: "Documento compartido",
-    DOCUMENT_DOWNLOADED: "Documento descargado",
-    DOCUMENT_EXPORTED: "Documento exportado",
-    DOCUMENT_ARCHIVED: "Documento archivado",
-    DOCUMENT_TRASHED: "Documento enviado a papelera",
-    CONVENIO_CREATED: "Convenio creado",
-    CONVENIO_UPDATED: "Convenio actualizado",
-    CONVENIO_DELETED: "Convenio eliminado",
-    CONVENIO_SIGNED: "Convenio firmado",
-    COLLABORATION_STARTED: "Colaboración iniciada",
-    COLLABORATION_ENDED: "Colaboración finalizada",
-    USER_REGISTERED: "Usuario registrado",
-    USER_UPDATED: "Usuario actualizado",
-    USER_ACTIVATED: "Usuario activado",
-    USER_DEACTIVATED: "Usuario desactivado",
-    USER_ROLE_CHANGED: "Rol cambiado",
-    USER_DELETED: "Usuario eliminado",
-    GROUP_CREATED: "Grupo creado",
-    GROUP_UPDATED: "Grupo actualizado",
-    GROUP_DELETED: "Grupo eliminado",
-    GROUP_MEMBER_ADDED: "Miembro añadido",
-    GROUP_MEMBER_REMOVED: "Miembro eliminado",
-    LOGIN: "Inició sesión",
-    LOGOUT: "Cerró sesión",
-    PASSWORD_CHANGED: "Contraseña cambiada",
-    ADMIN_ACCESS_GRANTED: "Acceso admin concedido",
-    ADMIN_ACCESS_DENIED: "Acceso admin denegado",
-    BACKUP_CREATED: "Copia de seguridad creada",
-    BACKUP_RESTORED: "Copia de seguridad restaurada",
-    SETTINGS_CHANGED: "Configuración cambiada",
-    COMMENT_ADDED: "Comentario añadido",
-    COMMENT_DELETED: "Comentario eliminado",
-  };
-  return map[activity] ?? activity.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
-}
-
 export const TeamPage: React.FC = () => {
   const navigate = useNavigate();
   const { session, user: currentUser } = useAuth();
   const isAdmin = (currentUser as any)?.role === "admin";
 
   const [users, setUsers] = useState<TeamUser[]>([]);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activity, setActivity] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -134,6 +73,14 @@ export const TeamPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [addCollaboratorOpen, setAddCollaboratorOpen] = useState(false);
+  const [officeConfigOpen, setOfficeConfigOpen] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<GroupInfo | null>(null);
+  const [groupNameDraft, setGroupNameDraft] = useState("");
+  const [groupDescriptionDraft, setGroupDescriptionDraft] = useState("");
+  const [groupActionLoading, setGroupActionLoading] = useState(false);
+  const [confirmDeleteGroupId, setConfirmDeleteGroupId] = useState<string | null>(null);
+  const [confirmDeleteGroupSecondsLeft, setConfirmDeleteGroupSecondsLeft] = useState(0);
+  const deleteGroupTimerRef = useRef<number | null>(null);
   const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -199,6 +146,127 @@ export const TeamPage: React.FC = () => {
       setTimeout(() => setCopiedId(null), 2000);
     });
   };
+
+  const resetGroupDeleteConfirm = () => {
+    if (deleteGroupTimerRef.current) {
+      window.clearInterval(deleteGroupTimerRef.current);
+      deleteGroupTimerRef.current = null;
+    }
+    setConfirmDeleteGroupId(null);
+    setConfirmDeleteGroupSecondsLeft(0);
+  };
+
+  const openOfficeConfig = async () => {
+    setOfficeConfigOpen(true);
+    setGroupActionLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/groups?page=1&limit=10`, {
+        headers: authHeader,
+      });
+      const payload = res.ok ? await res.json() : { data: [] };
+      const firstGroup = (payload.data?.[0] ?? null) as GroupInfo | null;
+      setSelectedGroup(firstGroup);
+      setGroupNameDraft(firstGroup?.name ?? "");
+      setGroupDescriptionDraft(firstGroup?.description ?? "");
+      resetGroupDeleteConfirm();
+    } catch {
+      setSelectedGroup(null);
+      setGroupNameDraft("");
+      setGroupDescriptionDraft("");
+      setError("No se pudo cargar la configuración del despacho.");
+    } finally {
+      setGroupActionLoading(false);
+    }
+  };
+
+  const handleSaveGroup = async () => {
+    if (!selectedGroup) return;
+    const trimmedName = groupNameDraft.trim();
+    if (!trimmedName) {
+      setError("El nombre del despacho es obligatorio.");
+      return;
+    }
+    setGroupActionLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/groups/${selectedGroup.id}`, {
+        method: "PATCH",
+        headers: authHeader,
+        body: JSON.stringify({
+          name: trimmedName,
+          description: groupDescriptionDraft.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error((await res.json()).error ?? "No se pudo actualizar el despacho.");
+      }
+      const updated = await res.json();
+      setSelectedGroup(updated);
+      setGroupNameDraft(updated.name ?? "");
+      setGroupDescriptionDraft(updated.description ?? "");
+      showSuccess("Despacho actualizado correctamente.");
+      setOfficeConfigOpen(false);
+      loadData();
+    } catch (e: any) {
+      setError(e.message ?? "No se pudo actualizar el despacho.");
+    } finally {
+      setGroupActionLoading(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroup) return;
+    if (confirmDeleteGroupId === selectedGroup.id) {
+      if (confirmDeleteGroupSecondsLeft > 0) return;
+      setGroupActionLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${API_URL}/groups/${selectedGroup.id}`, {
+          method: "DELETE",
+          headers: authHeader,
+        });
+        if (!res.ok) {
+          throw new Error((await res.json()).error ?? "No se pudo eliminar el despacho.");
+        }
+        resetGroupDeleteConfirm();
+        setOfficeConfigOpen(false);
+        showSuccess("Despacho eliminado. Configure uno nuevo para continuar.");
+        navigate("/completar-perfil");
+      } catch (e: any) {
+        setError(e.message ?? "No se pudo eliminar el despacho.");
+      } finally {
+        setGroupActionLoading(false);
+      }
+      return;
+    }
+
+    setConfirmDeleteGroupId(selectedGroup.id);
+    setConfirmDeleteGroupSecondsLeft(3);
+    if (deleteGroupTimerRef.current) {
+      window.clearInterval(deleteGroupTimerRef.current);
+    }
+    deleteGroupTimerRef.current = window.setInterval(() => {
+      setConfirmDeleteGroupSecondsLeft((prev) => {
+        if (prev <= 1) {
+          if (deleteGroupTimerRef.current) {
+            window.clearInterval(deleteGroupTimerRef.current);
+            deleteGroupTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (deleteGroupTimerRef.current) {
+        window.clearInterval(deleteGroupTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleEditUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -300,6 +368,16 @@ export const TeamPage: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openOfficeConfig}
+                className="flex items-center gap-2 rounded-lg h-10 px-4 border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] text-[#111318] dark:text-white text-sm font-bold hover:bg-[#f8fafb] dark:hover:bg-[#141921] transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">settings</span>
+                Configurar despacho
+              </button>
+            )}
             <button
               type="button"
               onClick={openAddCollaborator}
@@ -723,49 +801,13 @@ export const TeamPage: React.FC = () => {
               <p className="text-[#616f89] dark:text-[#a0aec0] py-4">No hay actividad reciente.</p>
             ) : (
               activity.map((item) => {
-                const { icon, bg, color } = activityIcon(item.activity);
-                // Determine entity link
-                const { entityType, entityId, entityName } = item;
-                const entityLink =
-                  entityId && entityType === "document" ? `/documento/${entityId}` :
-                  entityId && entityType === "convenio" ? `/convenio/${entityId}` :
-                  null;
                 return (
-                  <div key={item.id} className="flex items-center gap-4 bg-white dark:bg-[#1a212f] p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
-                    <div className={`size-9 ${bg} ${color} rounded-full flex items-center justify-center shrink-0`}>
-                      <span className="material-symbols-outlined text-base">{icon}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-[#111318] dark:text-white text-sm">
-                        <strong>
-                          {getViewerLabel({
-                            subjectId: item.user?.id,
-                            subjectName: item.user?.name,
-                            currentUserId: currentUser?.id,
-                            fallback: "Sistema",
-                          })}
-                        </strong>
-                        {" "}
-                        {translateActivity(item.activity)}
-                        {entityName && (
-                          <>
-                            {" — "}
-                            {entityLink ? (
-                              <button
-                                type="button"
-                                onClick={() => navigate(entityLink)}
-                                className="italic text-primary hover:underline bg-transparent border-none p-0 font-medium cursor-pointer"
-                              >
-                                {entityName}
-                              </button>
-                            ) : (
-                              <span className="italic text-[#616f89]">{entityName}</span>
-                            )}
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <p className="text-xs text-[#616f89] dark:text-[#a0aec0] shrink-0">{formatTimeAgo(item.createdAt)}</p>
+                  <div key={item.id}>
+                    <BitacoraEntryItem
+                      entry={item}
+                      currentUserId={currentUser?.id}
+                      onNavigate={navigate}
+                    />
                   </div>
                 );
               })
@@ -895,6 +937,109 @@ export const TeamPage: React.FC = () => {
                 className="px-4 py-2 text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Configuración del despacho */}
+      {officeConfigOpen && (
+        <div
+          className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setOfficeConfigOpen(false);
+              resetGroupDeleteConfirm();
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-[#1a212f] w-full max-w-lg rounded-2xl shadow-xl border border-[#dbdfe6] dark:border-[#2d3748] overflow-hidden">
+            <div className="p-6 border-b border-[#dbdfe6] dark:border-[#2d3748] flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-bold text-[#111318] dark:text-white">Configuración del despacho</h3>
+                <p className="text-sm text-[#616f89] dark:text-[#a0aec0] mt-1">
+                  Renombre o elimine su despacho actual.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setOfficeConfigOpen(false);
+                  resetGroupDeleteConfirm();
+                }}
+                className="text-[#616f89] dark:text-[#a0aec0] hover:text-[#111318] dark:hover:text-white transition-colors"
+                title="Cerrar"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              {groupActionLoading && !selectedGroup ? (
+                <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">Cargando despacho...</p>
+              ) : !selectedGroup ? (
+                <div className="rounded-lg border border-dashed border-[#dbdfe6] dark:border-[#2d3748] p-4 text-sm text-[#616f89] dark:text-[#a0aec0]">
+                  No hay un despacho disponible para configurar.
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">Nombre del despacho</label>
+                    <input
+                      type="text"
+                      value={groupNameDraft}
+                      onChange={(e) => setGroupNameDraft(e.target.value)}
+                      className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white"
+                      disabled={groupActionLoading}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-[#616f89] dark:text-[#a0aec0]">Descripción (opcional)</label>
+                    <textarea
+                      value={groupDescriptionDraft}
+                      onChange={(e) => setGroupDescriptionDraft(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg bg-[#f8fafb] dark:bg-[#101622] border border-[#dbdfe6] dark:border-[#2d3748] px-3 py-2 text-sm text-[#111318] dark:text-white resize-none"
+                      disabled={groupActionLoading}
+                    />
+                  </div>
+                  <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 p-4">
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-300">Zona de riesgo</p>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                      La eliminación desactiva el despacho y obliga a configurar uno nuevo.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleDeleteGroup}
+                      disabled={groupActionLoading}
+                      className="mt-3 w-full rounded-lg bg-red-600 text-white text-sm font-bold py-2.5 hover:bg-red-700 transition-colors disabled:opacity-50"
+                    >
+                      {confirmDeleteGroupId === selectedGroup.id
+                        ? confirmDeleteGroupSecondsLeft > 0
+                          ? `Habilitar eliminar (${confirmDeleteGroupSecondsLeft}s)`
+                          : "Clic para confirmar eliminación"
+                        : "Eliminar despacho"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-[#dbdfe6] dark:border-[#2d3748] flex justify-end gap-3 bg-[#f8fafb] dark:bg-[#141921] rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setOfficeConfigOpen(false);
+                  resetGroupDeleteConfirm();
+                }}
+                className="px-4 py-2 text-sm font-bold text-[#616f89] dark:text-[#a0aec0] hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveGroup}
+                disabled={groupActionLoading || !selectedGroup}
+                className="px-4 py-2 text-sm font-bold bg-primary text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                Guardar cambios
               </button>
             </div>
           </div>
