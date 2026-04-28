@@ -18,6 +18,7 @@ import * as pdfParseModule from 'pdf-parse';
 import * as XLSX from 'xlsx';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { getStorageProvider, docKey, versionKey, pdfKey, downloadDocumentBuffer } from '../lib/storage/index.js';
+import { hasRecentDocumentViewedLog } from '../lib/activityViewLog.js';
 
 
 // ─── Helpers de extracción de texto desde Buffer (sin disco) ───────────────────
@@ -711,17 +712,23 @@ documentsRouter.get(
         try {
           const docId = paramId(req);
 
-          // Registrar apertura para "Abierto recientemente"
-          await prisma.activityLog.create({
-            data: {
-              userId: req.user!.id,
-              activity: 'DOCUMENT_VIEWED',
-              entityType: 'document',
-              entityId: docId,
-              entityName: document.name,
-              description: `Documento abierto: ${document.name}`,
-            },
+          const alreadyLogged = await hasRecentDocumentViewedLog({
+            userId: req.user!.id,
+            entityType: 'document',
+            entityId: docId,
           });
+          if (!alreadyLogged) {
+            await prisma.activityLog.create({
+              data: {
+                userId: req.user!.id,
+                activity: 'DOCUMENT_VIEWED',
+                entityType: 'document',
+                entityId: docId,
+                entityName: document.name,
+                description: `Documento abierto: ${document.name}`,
+              },
+            });
+          }
 
           // Auto-transición de asignación: pendiente → visto
           const pendingAssignments = await prisma.documentAssignment.findMany({
@@ -1092,22 +1099,86 @@ documentsRouter.patch(
   validate(updateDocumentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const id = paramId(req);
+      const body = req.body as Record<string, unknown>;
+      const previous = await prisma.document.findUniqueOrThrow({ where: { id } });
+
       const document = await prisma.document.update({
-        where: { id: paramId(req) },
-        data: req.body,
+        where: { id },
+        data: body,
       });
 
-      await prisma.activityLog.create({
-        data: {
-          userId: req.user!.id,
-          activity: 'DOCUMENT_UPDATED',
-          entityType: 'document',
-          entityId: document.id,
-          entityName: document.name,
-          description: `Documento actualizado: ${document.name}`,
-          metadata: { fields: Object.keys(req.body) },
-        },
-      });
+      if (previous.fileStatus !== document.fileStatus) {
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_FILE_STATUS_CHANGED',
+            entityType: 'document',
+            entityId: document.id,
+            entityName: document.name,
+            description: `Estado de archivo: ${previous.fileStatus} → ${document.fileStatus}`,
+            metadata: {
+              kind: 'fileStatus',
+              fromStatus: previous.fileStatus,
+              toStatus: document.fileStatus,
+            },
+          },
+        });
+      }
+
+      if (previous.collaborationStatus !== document.collaborationStatus) {
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
+            entityType: 'document',
+            entityId: document.id,
+            entityName: document.name,
+            description: `Colaboración: ${String(previous.collaborationStatus ?? '—')} → ${String(document.collaborationStatus ?? '—')}`,
+            metadata: {
+              kind: 'workflow',
+              field: 'collaborationStatus',
+              from: previous.collaborationStatus ?? null,
+              to: document.collaborationStatus ?? null,
+            },
+          },
+        });
+      }
+
+      if (previous.sharingStatus !== document.sharingStatus) {
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
+            entityType: 'document',
+            entityId: document.id,
+            entityName: document.name,
+            description: `Compartir: ${String(previous.sharingStatus ?? '—')} → ${String(document.sharingStatus ?? '—')}`,
+            metadata: {
+              kind: 'workflow',
+              field: 'sharingStatus',
+              from: previous.sharingStatus ?? null,
+              to: document.sharingStatus ?? null,
+            },
+          },
+        });
+      }
+
+      const statusFieldKeys = new Set(['fileStatus', 'collaborationStatus', 'sharingStatus']);
+      const otherKeys = Object.keys(body).filter((k) => !statusFieldKeys.has(k));
+      if (otherKeys.length > 0) {
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_UPDATED',
+            entityType: 'document',
+            entityId: document.id,
+            entityName: document.name,
+            description: `Datos del documento actualizados: ${document.name}`,
+            metadata: { fields: otherKeys },
+          },
+        });
+      }
 
       res.json(serializeBigInt(document));
 
@@ -1386,9 +1457,19 @@ documentsRouter.post(
   validate(createCommentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const documentId = paramId(req);
+      const docMeta = await prisma.document.findUnique({
+        where: { id: documentId },
+        select: { name: true },
+      });
+      if (!docMeta) {
+        res.status(404).json({ error: 'Documento no encontrado' });
+        return;
+      }
+
       const comment = await prisma.documentComment.create({
         data: {
-          documentId: paramId(req),
+          documentId,
           userId: req.user!.id,
           ...req.body,
         },
@@ -1402,8 +1483,9 @@ documentsRouter.post(
           userId: req.user!.id,
           activity: 'DOCUMENT_COMMENT_ADDED',
           entityType: 'document',
-          entityId: paramId(req),
-          description: `Comentario agregado`,
+          entityId: documentId,
+          entityName: docMeta.name,
+          description: `Comentario en: ${docMeta.name}`,
         },
       });
 

@@ -6,6 +6,7 @@ import { validate, validateParams, validateQuery, uuidParam, paginationQuery } f
 import * as Diff from 'diff';
 import * as XLSX from 'xlsx';
 import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
+import { hasRecentDocumentViewedLog } from '../lib/activityViewLog.js';
 
 
 // ─── Diff summary helper (convenios) ─────────────────────────────────────────────────
@@ -161,6 +162,12 @@ conveniosRouter.get(
       // ── Fire-and-forget: registrar apertura para "Abierto recientemente" ──
       (async () => {
         try {
+          const dup = await hasRecentDocumentViewedLog({
+            userId: req.user!.id,
+            entityType: 'convenio',
+            entityId: convenio.id,
+          });
+          if (dup) return;
           await prisma.activityLog.create({
             data: {
               userId: req.user!.id,
@@ -445,9 +452,20 @@ conveniosRouter.post(
   validate(createCommentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const convenioId = req.params.id;
+      const convMeta = await prisma.convenio.findUnique({
+        where: { id: convenioId },
+        select: { numero: true, institucion: true },
+      });
+      if (!convMeta) {
+        res.status(404).json({ error: 'Convenio no encontrado' });
+        return;
+      }
+      const entityName = `${convMeta.numero} – ${convMeta.institucion}`;
+
       const comment = await prisma.convenioComment.create({
         data: {
-          convenioId: req.params.id,
+          convenioId,
           userId: req.user!.id,
           content: req.body.content,
           parentId: req.body.parentId,
@@ -462,8 +480,9 @@ conveniosRouter.post(
           userId: req.user!.id,
           activity: 'CONVENIO_COMMENT_ADDED' as any,
           entityType: 'convenio',
-          entityId: req.params.id,
-          description: `Comentario agregado al convenio`,
+          entityId: convenioId,
+          entityName,
+          description: `Comentario en convenio: ${entityName}`,
         },
       });
 
