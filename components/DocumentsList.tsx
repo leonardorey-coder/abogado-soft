@@ -46,6 +46,9 @@ import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
 import { documentsApi as _docApiForPreview, type ApiDocument } from "../lib/api";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
+import { canChangeDocumentFileStatus } from "../lib/documentPermissions";
+import { FileStatusIconToggle } from "./FileStatusIconToggle";
 
 interface DocumentsListProps {
   searchQuery?: string;
@@ -112,12 +115,6 @@ const permissionBadgeConfig: Record<DocumentPermissionLevel, { icon: React.Eleme
   admin: { icon: Shield, label: "Admin", color: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800" },
 };
 
-// Helper para verificar si el usuario tiene permiso de escritura
-function hasWritePermission(permission: DocumentPermissionLevel | undefined): boolean {
-  const level = permission ?? 'none';
-  return level === 'write' || level === 'admin';
-}
-
 // Detecta si el contacto es genérico (no es un email/teléfono real)
 function isGenericContact(contact: string): boolean {
   const genericPatterns = [
@@ -163,6 +160,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
   const { addToast } = useToast();
+  const { user } = useAuth();
 
   const {
     documents,
@@ -409,45 +407,6 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     handleDocumentOpen(doc);
   };
 
-
-  const statusButtons = (doc: Document) => {
-    const canEdit = hasWritePermission(doc.currentUserPermission);
-    
-    return (
-      <div
-        className="inline-flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
-          <button
-            key={status}
-            type="button"
-            onClick={() => canEdit && void handleSetFileStatus(doc, status)}
-            disabled={!canEdit}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase border transition-colors ${
-              doc.fileStatus === status
-                ? status === "ACTIVO"
-                  ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
-                  : status === "PENDIENTE"
-                    ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
-                    : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
-                : canEdit
-                  ? "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
-                  : "bg-transparent text-slate-400 border-transparent cursor-not-allowed dark:text-slate-500"
-            }`}
-            title={
-              !canEdit
-                ? "No tienes permiso para cambiar el estado"
-                : status === "ACTIVO" ? "Marcar activo" : status === "PENDIENTE" ? "Marcar pendiente" : "Marcar inactivo"
-            }
-          >
-            {status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pend." : "Inact."}
-          </button>
-        ))}
-      </div>
-    );
-  };
-
   const renderShareBadges = (doc: Document) => {
     const shares = doc.recentShares;
     if (!shares || shares.length === 0) return null;
@@ -641,7 +600,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
             {sortedDocuments.map((doc) => {
               const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
               const tab = tabConfig[doc.fileStatus ?? "ACTIVO"] ?? tabConfig.ACTIVO;
-              const canEdit = hasWritePermission(doc.currentUserPermission);
+              const canEdit = canChangeDocumentFileStatus(doc, user?.id);
 
               return (
                 <article
@@ -679,33 +638,12 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
 
                     {renderShareBadges(doc)}
 
-                    {/* Botones de estado */}
-                    <div
-                      className="inline-flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg mt-auto"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(["ACTIVO", "PENDIENTE", "INACTIVO"] as const).map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={() => canEdit && void handleSetFileStatus(doc, status)}
-                          disabled={!canEdit}
-                          className={`flex-1 py-1 rounded text-[9px] font-bold uppercase border transition-colors ${
-                            doc.fileStatus === status
-                              ? status === "ACTIVO"
-                                ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-200 dark:border-green-700"
-                                : status === "PENDIENTE"
-                                  ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700"
-                                  : "bg-slate-200 text-slate-700 border-slate-400 dark:bg-slate-600 dark:text-slate-200 dark:border-slate-500"
-                              : canEdit
-                                ? "bg-transparent text-slate-500 border-transparent hover:bg-white dark:hover:bg-slate-700 dark:text-slate-400"
-                                : "bg-transparent text-slate-400 border-transparent cursor-not-allowed"
-                          }`}
-                          title={status === "ACTIVO" ? "Activo" : status === "PENDIENTE" ? "Pendiente" : "Inactivo"}
-                        >
-                          {status === "ACTIVO" ? "Act." : status === "PENDIENTE" ? "Pend." : "Inac."}
-                        </button>
-                      ))}
+                    <div className="mt-auto">
+                      <FileStatusIconToggle
+                        value={doc.fileStatus ?? "ACTIVO"}
+                        disabled={!canEdit}
+                        onChange={(status) => void handleSetFileStatus(doc, status)}
+                      />
                     </div>
                   </div>
 

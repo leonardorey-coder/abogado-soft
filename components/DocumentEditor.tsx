@@ -1358,6 +1358,25 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     editorRef.current?.setMode(mode);
   };
 
+  const [fileStatusUpdating, setFileStatusUpdating] = useState(false);
+
+  const handleMarkDocumentActive = useCallback(async () => {
+    if (!doc?.id || doc.fileStatus !== 'PENDIENTE') return;
+    const docId = doc.id;
+    const prevStatus = doc.fileStatus;
+    setDoc((d) => (d && d.id === docId ? { ...d, fileStatus: 'ACTIVO' } : d));
+    setFileStatusUpdating(true);
+    try {
+      await documentsApi.update(docId, { fileStatus: 'ACTIVO' });
+    } catch (err) {
+      console.error(err);
+      setDoc((d) => (d && d.id === docId ? { ...d, fileStatus: prevStatus } : d));
+      alert('No se pudo actualizar el estado del documento.');
+    } finally {
+      setFileStatusUpdating(false);
+    }
+  }, [doc?.id, doc?.fileStatus]);
+
   // ─── Derived values ─────────────────────────────────────────────────
   const isDocx = doc ? (doc.type?.toUpperCase() === 'DOCX' || doc.type?.toUpperCase() === 'DOC') : false;
   const isPdf = doc?.mimeType === 'application/pdf';
@@ -1474,6 +1493,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           <span className="material-symbols-outlined text-lg sm:text-xl">share</span>
           <span className="hidden sm:inline">Compartir</span>
         </button>
+        {canEdit && doc?.fileStatus === 'PENDIENTE' && (
+          <button
+            type="button"
+            onClick={() => void handleMarkDocumentActive()}
+            disabled={fileStatusUpdating}
+            title="Marcar como activo y quitar pendiente"
+            className="inline-flex items-center justify-center gap-1.5 shrink-0 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg font-bold text-xs sm:text-sm bg-green-600 text-white shadow-sm hover:bg-green-700 disabled:opacity-60 disabled:pointer-events-none transition-colors [&_.material-symbols-outlined]:!text-white"
+          >
+            <span className={`material-symbols-outlined text-lg sm:text-xl ${fileStatusUpdating ? 'animate-spin' : ''}`}>
+              {fileStatusUpdating ? 'progress_activity' : 'task_alt'}
+            </span>
+            <span className="hidden sm:inline">{fileStatusUpdating ? 'Actualizando…' : 'Marcar activo'}</span>
+          </button>
+        )}
         {isDocx && (
           <button
             type="button"
@@ -1556,6 +1589,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     lastRemoteSyncError,
     localFileHandle,
     lastLocalSaveAt,
+    doc?.fileStatus,
+    fileStatusUpdating,
+    handleMarkDocumentActive,
   ]);
 
   // ─── Loading / Error states ──────────────────────────────────────────
@@ -1874,7 +1910,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
           </div>
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Estado</label>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{doc.fileStatus}</p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{doc?.fileStatus ?? '—'}</p>
           </div>
         </div>
 
@@ -1983,10 +2019,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
             leftSidebarOpen ? 'lg:flex' : 'lg:hidden'
           }`}
         >
-          <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-2 text-[#0e0e1b] dark:text-white font-bold text-sm hover:text-primary transition-colors mb-6 -ml-1">
-            <span className="material-symbols-outlined text-xl">arrow_back</span>
-            Atrás
-          </button>
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
               <span className={`material-symbols-outlined text-primary`}>{getTypeIcon(doc.type)}</span>

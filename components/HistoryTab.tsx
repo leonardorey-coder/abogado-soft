@@ -4,6 +4,7 @@ import { ApiActivityLog } from '../lib/api';
 import DiffSummaryPreview from './DiffSummaryPreview';
 import { useAuth } from '../contexts/AuthContext';
 import { getViewerInitial, getViewerLabel } from '../lib/viewerIdentity';
+import { BitacoraEntryItem } from './BitacoraEntryItem';
 
 export interface GenericVersion {
     id: string;
@@ -17,44 +18,6 @@ export interface GenericVersion {
 interface HistoryTabProps {
     versions: GenericVersion[];
     activityLogs?: ApiActivityLog[];
-}
-
-const ACTIVITY_LABELS: Record<string, string> = {
-    DOCUMENT_CREATED: 'Creó documento',
-    DOCUMENT_UPDATED: 'Editó documento',
-    DOCUMENT_DELETED: 'Eliminó documento',
-    DOCUMENT_RESTORED: 'Restauró documento',
-    DOCUMENT_SHARED: 'Compartió documento',
-    DOCUMENT_ASSIGNED: 'Asignó documento',
-    DOCUMENT_DOWNLOADED: 'Descargó documento',
-    DOCUMENT_PERMISSION_CHANGED: 'Cambió permisos',
-    DOCUMENT_VERSION_CREATED: 'Creó versión',
-    DOCUMENT_COMMENT_ADDED: 'Comentó documento',
-    DOCUMENT_COMMENT_DELETED: 'Eliminó comentario',
-    COLLABORATION_STARTED: 'Inició colaboración',
-    COLLABORATION_ENDED: 'Finalizó colaboración',
-    DOCUMENT_LOCKED: 'Bloqueó documento',
-    DOCUMENT_UNLOCKED: 'Desbloqueó documento',
-    DOCUMENT_VIEWED: 'Vio documento',
-    DOCUMENT_EXTRACTED: 'Convirtió a PDF',
-};
-
-function getSpanishActivityName(activity: string): string {
-    return ACTIVITY_LABELS[activity] ?? activity.replace(/_/g, ' ').toLowerCase();
-}
-
-function getActivityIcon(activity: string): string {
-    const value = activity.toLowerCase();
-    if (value.includes('comment') || value.includes('coment')) return 'comment';
-    if (value.includes('download') || value.includes('descarg')) return 'download';
-    if (value.includes('permission') || value.includes('permiso')) return 'admin_panel_settings';
-    if (value.includes('assign') || value.includes('asign') || value.includes('collaboration')) return 'group';
-    if (value.includes('delete') || value.includes('elimin')) return 'delete';
-    if (value.includes('restore')) return 'restore';
-    if (value.includes('lock')) return 'lock';
-    if (value.includes('version')) return 'history';
-    if (value.includes('extracted') || value.includes('pdf')) return 'picture_as_pdf';
-    return 'edit_note';
 }
 
 type HistoryEvent =
@@ -94,7 +57,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                 ) : (
                     <div className="relative border-l-2 border-gray-200 dark:border-gray-800 ml-2 space-y-6">
                         {events.map((event, idx) => (
-                            <div key={event.id} className="relative pl-6">
+                            <div key={event.id} className="relative min-w-0 pl-6">
                                 <div className={`absolute -left-[9px] top-1 size-4 rounded-full border-2 border-white dark:border-[#0a0a10] ${idx === 0 ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
                                 <div className="flex flex-col gap-1 mb-2">
                                     <div className="flex items-center justify-between">
@@ -136,7 +99,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                         </span>
                                     </div>
                                 </div>
-                                <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                                <div className="min-w-0 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
                                     {event.type === 'version' ? (
                                         <>
                                             <p className="text-[#0e0e1b] dark:text-white text-xs font-medium mb-1">
@@ -149,13 +112,11 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                         </>
                                     ) : (
                                         <>
-                                            <p className="text-[#0e0e1b] dark:text-white text-xs font-medium mb-1 flex items-center gap-1.5">
-                                                <span className="material-symbols-outlined text-[14px] text-primary">{getActivityIcon(event.activity.activity)}</span>
-                                                {getSpanishActivityName(event.activity.activity)}
-                                            </p>
-                                            {event.activity.description && (
-                                                <p className="text-[11px] text-gray-500 mb-1">{event.activity.description}</p>
-                                            )}
+                                            <BitacoraEntryItem
+                                                entry={event.activity}
+                                                currentUserId={user?.id}
+                                                compact
+                                            />
                                             {/* Diff summary */}
                                             {(event.activity.metadata as any)?.diffSummary && (
                                                 <DiffSummaryPreview
@@ -163,10 +124,6 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                                     compact={false}
                                                 />
                                             )}
-                                            <p className="text-[10px] text-gray-500 flex justify-between">
-                                                <span>{event.activity.entityName ?? 'Documento'}</span>
-                                                <span>{formatTimeAgo(event.activity.createdAt)}</span>
-                                            </p>
                                         </>
                                     )}
                                 </div>

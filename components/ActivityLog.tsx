@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { activityApi, ApiActivityLog } from "../lib/api";
 import DiffSummaryPreview from "./DiffSummaryPreview";
+import { BitacoraEntryItem } from "./BitacoraEntryItem";
 import { useAuth } from "../contexts/AuthContext";
-import { getViewerLabel } from "../lib/viewerIdentity";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
   LOGIN: "Inició sesión",
   LOGOUT: "Cerró sesión",
   DOCUMENT_CREATED: "Creó documento",
-  DOCUMENT_UPDATED: "Editó documento",
+  DOCUMENT_UPDATED: "Modificó los datos del documento",
+  DOCUMENT_FILE_STATUS_CHANGED: "Cambió el estado",
+  DOCUMENT_WORKFLOW_STATUS_CHANGED: "Cambió el flujo",
   DOCUMENT_DELETED: "Eliminó documento",
   DOCUMENT_RESTORED: "Restauró documento",
   DOCUMENT_SHARED: "Compartió documento",
@@ -98,28 +100,6 @@ function getGroupLabel(dateStr: string): { label: string; groupDate: string } {
   return { label: formatGroupDate(d), groupDate: "" };
 }
 
-function getActivityIcon(activity: string): { icon: string; iconBg: string; iconColor: string } {
-  const t = activity.toLowerCase();
-  if (t.includes("download") || t.includes("descarg")) return { icon: "download", iconBg: "bg-blue-50 dark:bg-blue-900/30", iconColor: "text-primary" };
-  if (t.includes("upload") || t.includes("creat")) return { icon: "upload_file", iconBg: "bg-purple-50 dark:bg-purple-900/30", iconColor: "text-purple-600" };
-  if (t.includes("update") || t.includes("edit") || t.includes("modif") || t.includes("cambio")) return { icon: "rule", iconBg: "bg-green-50 dark:bg-green-900/30", iconColor: "text-green-600" };
-  if (t.includes("delete") || t.includes("elimin")) return { icon: "delete", iconBg: "bg-red-50 dark:bg-red-900/30", iconColor: "text-red-600" };
-  if (t.includes("login") || t.includes("logout") || t.includes("auth") || t.includes("sesion")) return { icon: "login", iconBg: "bg-teal-50 dark:bg-teal-900/30", iconColor: "text-teal-600" };
-  if (t.includes("share") || t.includes("compart") || t.includes("assign") || t.includes("asign")) return { icon: "share", iconBg: "bg-indigo-50 dark:bg-indigo-900/30", iconColor: "text-indigo-600" };
-  if (t.includes("backup") || t.includes("respald")) return { icon: "backup", iconBg: "bg-emerald-50 dark:bg-emerald-900/30", iconColor: "text-emerald-600" };
-  if (t.includes("password") || t.includes("contrase")) return { icon: "lock", iconBg: "bg-orange-50 dark:bg-orange-900/30", iconColor: "text-orange-600" };
-  if (t.includes("group") || t.includes("member")) return { icon: "group_add", iconBg: "bg-indigo-50 dark:bg-indigo-900/30", iconColor: "text-indigo-600" };
-  if (t.includes("permission") || t.includes("permiso")) return { icon: "admin_panel_settings", iconBg: "bg-amber-50 dark:bg-amber-900/30", iconColor: "text-amber-600" };
-  if (t.includes("version")) return { icon: "history", iconBg: "bg-cyan-50 dark:bg-cyan-900/30", iconColor: "text-cyan-600" };
-  if (t.includes("comment") || t.includes("coment")) return { icon: "comment", iconBg: "bg-pink-50 dark:bg-pink-900/30", iconColor: "text-pink-600" };
-  if (t.includes("restore")) return { icon: "restore", iconBg: "bg-lime-50 dark:bg-lime-900/30", iconColor: "text-lime-600" };
-  return { icon: "event", iconBg: "bg-orange-50 dark:bg-orange-900/30", iconColor: "text-orange-600" };
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-}
-
 function toISO(dateStr: string, endOfDay = false): string {
   return endOfDay ? `${dateStr}T23:59:59.999Z` : `${dateStr}T00:00:00.000Z`;
 }
@@ -139,26 +119,6 @@ function getDateRange(period: PeriodFilter, customFrom: string, customTo: string
   }
   if (period === "custom" && customFrom && customTo) return { from: toISO(customFrom), to: toISO(customTo, true) };
   return {};
-}
-
-/** What category does a log entry belong to? */
-function getCategoryForEntry(entry: ApiActivityLog): CategoryTab {
-  const a = entry.activity;
-  if (a.startsWith("DOCUMENT_ASSIGNED") || a.startsWith("DOCUMENT_SHARED") || a.startsWith("COLLABORATION_")) return "assignments";
-  if (a.startsWith("DOCUMENT_")) return "documents";
-  if (a.startsWith("CONVENIO_")) return "convenios";
-  if (a.startsWith("GROUP_") || a === "USER_REGISTERED" || a === "USER_UPDATED") return "team";
-  if (["LOGIN", "LOGOUT", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(a)) return "security";
-  return "documents";
-}
-
-/** Get navigation path for an entity */
-function getEntityLink(entry: ApiActivityLog): string | null {
-  if (!entry.entityId) return null;
-  const et = (entry.entityType || "").toLowerCase();
-  if (et === "document") return `/documento/${entry.entityId}`;
-  if (et === "convenio") return `/convenio/${entry.entityId}`;
-  return null;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -578,64 +538,16 @@ export const ActivityLog: React.FC = () => {
 
                   {/* Entries */}
                   {group.entries.map(entry => {
-                    const { icon, iconBg, iconColor } = getActivityIcon(entry.activity);
-                    const cat = getCategoryForEntry(entry);
-                    const catDef = CATEGORIES.find(c => c.key === cat)!;
-                    const entityLink = getEntityLink(entry);
-
                     return (
-                      <div key={entry.id} className="flex items-start gap-6 relative group">
-                        <div className={`z-10 flex size-10 shrink-0 items-center justify-center rounded-full ${iconBg} ${iconColor} border-2 border-white dark:border-background-dark shadow-sm`}>
-                          <span className="material-symbols-outlined text-xl">{icon}</span>
-                        </div>
-                        <div className="flex flex-col flex-1 rounded-xl bg-white dark:bg-gray-900 border border-[#dbdfe6] dark:border-gray-800 p-4 shadow-sm group-hover:shadow-md transition-shadow">
-                          <div className="flex justify-between items-start mb-1">
-                            <p className="text-[#111318] dark:text-white font-medium text-sm">
-                              <span className="font-bold">
-                                {getViewerLabel({
-                                  subjectId: entry.userId,
-                                  subjectName: entry.user?.name,
-                                  currentUserId: user?.id,
-                                  fallback: "Sistema",
-                                })}
-                              </span>
-                              {" "}
-                              {getSpanishActivityName(entry.activity)}
-                              {entry.entityName && (
-                                <>
-                                  {" — "}
-                                  {entityLink ? (
-                                    <button
-                                      onClick={() => navigate(entityLink)}
-                                      className="italic text-primary cursor-pointer hover:underline bg-transparent border-none p-0 font-medium"
-                                    >
-                                      {entry.entityName}
-                                    </button>
-                                  ) : (
-                                    <span className="italic text-[#616f89]">{entry.entityName}</span>
-                                  )}
-                                </>
-                              )}
-                            </p>
-                            <span className="text-xs text-[#616f89] dark:text-gray-500 whitespace-nowrap ml-3">
-                              {formatTime(entry.createdAt)}
-                            </span>
-                          </div>
-                          {entry.description && entry.entityName && !entry.description.includes(entry.entityName) && (
-                            <p className="text-xs text-[#616f89] dark:text-[#64748b] mt-1 line-clamp-2">{entry.description}</p>
-                          )}
-                          {/* Diff summary */}
-                          {(entry.metadata as any)?.diffSummary && (
-                            <DiffSummaryPreview diffSummary={(entry.metadata as any).diffSummary} />
-                          )}
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            {/* Solo el badge de categoría */}
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${catDef.badgeBg} ${catDef.colorClass}`}>
-                              <span className="material-symbols-outlined text-[12px]">{catDef.icon}</span>
-                              {catDef.label}
-                            </span>
-                          </div>
-                        </div>
+                      <div key={entry.id} className="ml-8 flex flex-col gap-2">
+                        <BitacoraEntryItem
+                          entry={entry}
+                          currentUserId={user?.id}
+                          onNavigate={navigate}
+                        />
+                        {(entry.metadata as any)?.diffSummary && (
+                          <DiffSummaryPreview diffSummary={(entry.metadata as any).diffSummary} />
+                        )}
                       </div>
                     );
                   })}
