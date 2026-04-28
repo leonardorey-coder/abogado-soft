@@ -10,7 +10,7 @@
 #
 # Requisitos:
 #   - Ubuntu 24 LTS
-#   - .env.prod en la raíz del repo (copiar de .env.prod.example)
+#   - .env en la raíz del repo
 # ==============================================================================
 
 set -euo pipefail
@@ -28,26 +28,12 @@ die()  { echo "ERROR: $*" >&2; exit 1; }
 ok()   { echo "[OK] $*"; }
 warn() { echo "[WARN] $*"; }
 
-docker_compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-    return
-  fi
-
-  if command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
-    return
-  fi
-
-  die "No se encontró Docker Compose (ni plugin v2 ni binario docker-compose)."
-}
-
 write_embedded_env_files() {
   [ "$EMBED_ENV_FILES" = "1" ] || return 0
 
-  log "Generando .env.prod automático (overwrite)"
+  log "Generando .env automático (overwrite)"
 
-  local env_prod_file="$APP_DIR/.env.prod"
+  local env_file="$APP_DIR/.env"
 
   get_env_value() {
     local key="$1"
@@ -67,19 +53,19 @@ write_embedded_env_files() {
   [ -z "$server_ip" ] && server_ip="127.0.0.1"
 
   local postgres_password jwt_secret jwt_refresh_secret meili_key
-  postgres_password="$(get_env_value "POSTGRES_PASSWORD" "$env_prod_file")"
+  postgres_password="$(get_env_value "POSTGRES_PASSWORD" "$env_file")"
   [ -z "$postgres_password" ] && postgres_password="$(random_secret)"
 
-  jwt_secret="$(get_env_value "JWT_SECRET" "$env_prod_file")"
+  jwt_secret="$(get_env_value "JWT_SECRET" "$env_file")"
   [ -z "$jwt_secret" ] && jwt_secret="$(random_secret)"
 
-  jwt_refresh_secret="$(get_env_value "JWT_REFRESH_SECRET" "$env_prod_file")"
+  jwt_refresh_secret="$(get_env_value "JWT_REFRESH_SECRET" "$env_file")"
   [ -z "$jwt_refresh_secret" ] && jwt_refresh_secret="$(random_secret)"
 
-  meili_key="$(get_env_value "MEILISEARCH_KEY" "$env_prod_file")"
+  meili_key="$(get_env_value "MEILISEARCH_KEY" "$env_file")"
   [ -z "$meili_key" ] && meili_key="$(random_secret)"
 
-  cat > "$env_prod_file" <<EOF
+  cat > "$env_file" <<EOF
 DATABASE_URL="postgresql://postgres:${postgres_password}@db:5432/abogadosoft?schema=public"
 DIRECT_URL="postgresql://postgres:${postgres_password}@db:5432/abogadosoft?schema=public"
 JWT_SECRET="${jwt_secret}"
@@ -87,11 +73,6 @@ JWT_REFRESH_SECRET="${jwt_refresh_secret}"
 PORT=4001
 NODE_ENV="production"
 CORS_ORIGIN="http://${server_ip}"
-GOOGLE_REDIRECT_URI="http://${server_ip}/api/drive/auth/callback"
-GOOGLE_SERVICE_ACCOUNT_PATH="${GOOGLE_SERVICE_ACCOUNT_PATH:-./abogadosoft-service-account.json}"
-GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
-GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
-GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
 STORAGE_PATH="./storage/documents"
 MAX_FILE_SIZE_MB=50
 STORAGE_PROVIDER="${STORAGE_PROVIDER:-r2}"
@@ -107,8 +88,8 @@ MEILISEARCH_KEY="${meili_key}"
 POSTGRES_PASSWORD="${postgres_password}"
 EOF
 
-  ok "Archivo .env.prod generado automáticamente."
-  warn "Revisa credenciales externas (Google Drive, R2, SMTP) si aplican."
+  ok "Archivo .env generado automáticamente."
+  warn "Revisa credenciales externas (R2, SMTP) si aplican."
 }
 
 # ─── 1. Prerrequisitos del sistema ───────────────────────────────────────────
@@ -138,15 +119,11 @@ install_prereqs() {
     ok "Docker ya instalado: $(docker --version)"
   fi
 
-  # ── Docker Compose (plugin v2 o binario clásico) ───────────────────────────
-  if ! docker compose version &>/dev/null 2>&1 && ! command -v docker-compose &>/dev/null 2>&1; then
+  # ── Docker Compose v2 (plugin) ──────────────────────────────────────────────
+  if ! docker compose version &>/dev/null 2>&1; then
     sudo apt-get install -y docker-compose-plugin
   fi
-  if docker compose version &>/dev/null 2>&1; then
-    ok "Docker Compose: $(docker compose version --short)"
-  else
-    ok "Docker Compose: $(docker-compose --version)"
-  fi
+  ok "Docker Compose: $(docker compose version --short)"
 
   # ── Bun (para prisma migrate deploy fuera de contenedor) ───────────────────
   if ! command -v bun &>/dev/null; then
@@ -190,15 +167,15 @@ setup_repo() {
 
 # ─── 3. Verificar archivos de entorno ────────────────────────────────────────
 check_env() {
-  [ -f "$APP_DIR/.env.prod" ] || die ".env.prod no existe. Copia .env.prod.example → .env.prod y completa los valores."
+  [ -f "$APP_DIR/.env" ] || die ".env no existe en la raíz del repo."
 
   # shellcheck source=/dev/null
-  set +u; source "$APP_DIR/.env.prod"; set -u
-  [ -z "${JWT_SECRET:-}" ]      && die "JWT_SECRET vacío en .env.prod"
-  [ -z "${DATABASE_URL:-}" ]    && die "DATABASE_URL vacío en .env.prod"
-  [ -z "${POSTGRES_PASSWORD:-}" ] && die "POSTGRES_PASSWORD vacío en .env.prod"
+  set +u; source "$APP_DIR/.env"; set -u
+  [ -z "${JWT_SECRET:-}" ]      && die "JWT_SECRET vacío en .env"
+  [ -z "${DATABASE_URL:-}" ]    && die "DATABASE_URL vacío en .env"
+  [ -z "${POSTGRES_PASSWORD:-}" ] && die "POSTGRES_PASSWORD vacío en .env"
 
-  ok ".env.prod OK"
+  ok ".env OK"
 }
 
 # ─── 4. Levantar servicios de datos ───────────────────────────────────────────
@@ -206,16 +183,16 @@ start_data_services() {
   log "Levantando PostgreSQL y Meilisearch..."
   cd "$APP_DIR/infra"
 
-  docker_compose -f docker-compose.prod.yml up -d db meilisearch
+  docker compose -f docker-compose.prod.yml up -d db meilisearch
 
   log "Esperando PostgreSQL (hasta 60s)..."
   for i in $(seq 1 30); do
-    if docker_compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+    if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
       ok "PostgreSQL listo"
       break
     fi
     sleep 2
-    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker_compose -f docker-compose.prod.yml logs db"
+    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker compose -f docker-compose.prod.yml logs db"
   done
 }
 
@@ -232,7 +209,7 @@ restore_db() {
   [ -f "$DATA_IMPORT_SQL" ] || die "Import de datos no encontrado: $DATA_IMPORT_SQL"
 
   run_psql() {
-    docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
+    docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
       psql -U postgres -d abogadosoft
   }
 
@@ -253,16 +230,16 @@ run_migrations() {
   log "Ejecutando prisma migrate deploy..."
   cd "$APP_DIR/backend"
 
-  # Usar DIRECT_URL para migraciones (sin pgBouncer) si está definido.
-  # Si no existe, conservar DATABASE_URL ya cargado desde .env.prod.
+  # Usar DIRECT_URL para migraciones si está definido.
+  # Si no existe, conservar DATABASE_URL ya cargado desde .env.
   local direct_url=""
-  direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env.prod" | head -1 | cut -d= -f2- | tr -d '"' || true)
+  direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
   if [ -n "$direct_url" ]; then
     export DATABASE_URL="$direct_url"
   elif [ -n "${DATABASE_URL:-}" ]; then
     export DATABASE_URL
   else
-    die "No se encontró DIRECT_URL ni DATABASE_URL en .env.prod para ejecutar migraciones."
+    die "No se encontró DIRECT_URL ni DATABASE_URL en .env para ejecutar migraciones."
   fi
 
   # Validar que el schema no tenga drift frente al historial de migraciones.
@@ -289,7 +266,7 @@ build_frontend() {
   # Exportar variables VITE_ al entorno para el build
   set -o allexport
   # shellcheck source=/dev/null
-  source .env.prod
+  source .env
   set +o allexport
 
   npm ci --prefer-offline --silent
@@ -303,8 +280,8 @@ start_app() {
   log "Levantando stack de app..."
   cd "$APP_DIR/infra"
 
-  docker_compose -f docker-compose.prod.yml build --no-cache backend
-  docker_compose -f docker-compose.prod.yml up -d
+  docker compose -f docker-compose.prod.yml build --no-cache backend
+  docker compose -f docker-compose.prod.yml up -d
 
   ok "App stack levantado"
 }
@@ -326,7 +303,7 @@ healthcheck() {
   check_service "Backend /api/health"  "http://localhost:4001/api/health"
   check_service "Frontend Nginx"       "http://localhost:80"
   check_service "Meilisearch"          "http://localhost:7700/health"
-  if docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+  if docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
     ok "PostgreSQL responde dentro del contenedor"
   else
     warn "PostgreSQL no responde todavía dentro del contenedor"
@@ -334,14 +311,14 @@ healthcheck() {
 
   echo ""
   log "Estado contenedores:"
-  docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
+  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
 }
 
 # ─── Modo --status ─────────────────────────────────────────────────────────
 show_status() {
   echo ""
   echo "=== App Stack ==="
-  docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
+  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
 }
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
@@ -365,7 +342,7 @@ case "$MODE" in
     echo ""
     warn "PASO MANUAL PENDIENTE: reindexar Meilisearch (índice vacío tras restore):"
     warn "  docker exec abogadosoft_backend bun src/scripts/reindex.ts"
-    warn "  (o cambiar SEARCH_ENGINE=prisma en .env.prod para omitir Meilisearch)"
+    warn "  (o cambiar SEARCH_ENGINE=prisma en .env para omitir Meilisearch)"
     ;;
 
   --update)
@@ -403,7 +380,7 @@ case "$MODE" in
     echo "  --status    Ver estado de todos los contenedores"
     echo ""
     echo "Variables opcionales:"
-    echo "  EMBED_ENV_FILES=1    Sobrescribe .env.prod con plantilla embebida"
+    echo "  EMBED_ENV_FILES=1    Sobrescribe .env con plantilla embebida"
     exit 1
     ;;
 esac
