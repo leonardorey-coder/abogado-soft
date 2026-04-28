@@ -190,10 +190,27 @@ run_migrations() {
   log "Ejecutando prisma migrate deploy..."
   cd "$APP_DIR/backend"
 
-  # Usar DIRECT_URL para migraciones (sin pgBouncer)
-  export DATABASE_URL
-  DATABASE_URL=$(grep '^DIRECT_URL=' "$APP_DIR/.env.prod" | head -1 | cut -d= -f2- | tr -d '"')
-  export DATABASE_URL
+  # Usar DIRECT_URL para migraciones (sin pgBouncer) si está definido.
+  # Si no existe, conservar DATABASE_URL ya cargado desde .env.prod.
+  local direct_url=""
+  direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env.prod" | head -1 | cut -d= -f2- | tr -d '"' || true)
+  if [ -n "$direct_url" ]; then
+    export DATABASE_URL="$direct_url"
+  elif [ -n "${DATABASE_URL:-}" ]; then
+    export DATABASE_URL
+  else
+    die "No se encontró DIRECT_URL ni DATABASE_URL en .env.prod para ejecutar migraciones."
+  fi
+
+  # Validar que el schema no tenga drift frente al historial de migraciones.
+  # Si hay diferencias, probablemente faltó crear/commitear una migración.
+  if ! "$HOME/.bun/bin/bunx" prisma migrate diff \
+    --from-migrations prisma/migrations \
+    --to-schema-datamodel prisma/schema.prisma \
+    --shadow-database-url "$DATABASE_URL" \
+    --exit-code; then
+    die "Se detectaron cambios en prisma/schema.prisma sin migración aplicada/commiteada."
+  fi
 
   "$HOME/.bun/bin/bun" run prisma:generate
   "$HOME/.bun/bin/bunx" prisma migrate deploy
