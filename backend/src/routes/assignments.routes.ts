@@ -92,7 +92,7 @@ assignmentsRouter.get(
           take: limit,
           orderBy: { createdAt: sortOrder },
           include: {
-            document: { select: { id: true, name: true, type: true } },
+            document: { select: { id: true, name: true, type: true, fileStatus: true, updatedAt: true } },
             assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
             assigner: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
@@ -114,6 +114,70 @@ assignmentsRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = req.body;
+      const dueDate = data.dueDate ? new Date(data.dueDate) : undefined;
+      const now = new Date();
+
+      const existing = await prisma.documentAssignment.findUnique({
+        where: {
+          documentId_assignedTo: {
+            documentId: data.documentId,
+            assignedTo: data.assignedTo,
+          },
+        },
+      });
+
+      if (existing) {
+        const isOverdue = !!existing.dueDate && existing.dueDate.getTime() < now.getTime();
+        const canReassignExisting = existing.status === 'rechazado' || isOverdue;
+
+        if (!canReassignExisting) {
+          return res.status(409).json({ error: 'El registro ya existe' });
+        }
+
+        const reassigned = await prisma.documentAssignment.update({
+          where: { id: existing.id },
+          data: {
+            assignedBy: req.user!.id,
+            status: 'pendiente',
+            notes: data.notes,
+            dueDate,
+            completedAt: null,
+          },
+          include: {
+            document: { select: { id: true, name: true } },
+            assignee: { select: { id: true, name: true, email: true } },
+          },
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: data.assignedTo,
+            title: 'Documento reasignado',
+            message: `${req.user!.name} te reasignó el documento: ${reassigned.document.name}`,
+            type: 'assignment',
+            entityType: 'document',
+            entityId: data.documentId,
+          },
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            userId: req.user!.id,
+            activity: 'DOCUMENT_ASSIGNED',
+            entityType: 'document',
+            entityId: data.documentId,
+            entityName: reassigned.document.name,
+            description: `Documento reasignado a ${reassigned.assignee.name}`,
+            metadata: {
+              assignmentId: reassigned.id,
+              reassigned: true,
+              previousStatus: existing.status,
+            },
+          },
+        });
+
+        return res.status(200).json(reassigned);
+      }
 
       const assignment = await prisma.documentAssignment.create({
         data: {
@@ -121,7 +185,7 @@ assignmentsRouter.post(
           assignedTo: data.assignedTo,
           assignedBy: req.user!.id,
           notes: data.notes,
-          dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+          dueDate,
         },
         include: {
           document: { select: { id: true, name: true } },
