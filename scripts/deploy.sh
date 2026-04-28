@@ -28,6 +28,20 @@ die()  { echo "ERROR: $*" >&2; exit 1; }
 ok()   { echo "[OK] $*"; }
 warn() { echo "[WARN] $*"; }
 
+docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+
+  die "No se encontró Docker Compose (ni plugin v2 ni binario docker-compose)."
+}
+
 write_embedded_env_files() {
   [ "$EMBED_ENV_FILES" = "1" ] || return 0
 
@@ -124,11 +138,15 @@ install_prereqs() {
     ok "Docker ya instalado: $(docker --version)"
   fi
 
-  # ── docker compose v2 (plugin) ─────────────────────────────────────────────
-  if ! docker compose version &>/dev/null 2>&1; then
+  # ── Docker Compose (plugin v2 o binario clásico) ───────────────────────────
+  if ! docker compose version &>/dev/null 2>&1 && ! command -v docker-compose &>/dev/null 2>&1; then
     sudo apt-get install -y docker-compose-plugin
   fi
-  ok "Docker Compose: $(docker compose version --short)"
+  if docker compose version &>/dev/null 2>&1; then
+    ok "Docker Compose: $(docker compose version --short)"
+  else
+    ok "Docker Compose: $(docker-compose --version)"
+  fi
 
   # ── Bun (para prisma migrate deploy fuera de contenedor) ───────────────────
   if ! command -v bun &>/dev/null; then
@@ -188,16 +206,16 @@ start_data_services() {
   log "Levantando PostgreSQL y Meilisearch..."
   cd "$APP_DIR/infra"
 
-  docker compose -f docker-compose.prod.yml up -d db meilisearch
+  docker_compose -f docker-compose.prod.yml up -d db meilisearch
 
   log "Esperando PostgreSQL (hasta 60s)..."
   for i in $(seq 1 30); do
-    if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+    if docker_compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
       ok "PostgreSQL listo"
       break
     fi
     sleep 2
-    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker compose -f docker-compose.prod.yml logs db"
+    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker_compose -f docker-compose.prod.yml logs db"
   done
 }
 
@@ -214,7 +232,7 @@ restore_db() {
   [ -f "$DATA_IMPORT_SQL" ] || die "Import de datos no encontrado: $DATA_IMPORT_SQL"
 
   run_psql() {
-    docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
+    docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
       psql -U postgres -d abogadosoft
   }
 
@@ -285,8 +303,8 @@ start_app() {
   log "Levantando stack de app..."
   cd "$APP_DIR/infra"
 
-  docker compose -f docker-compose.prod.yml build --no-cache backend
-  docker compose -f docker-compose.prod.yml up -d
+  docker_compose -f docker-compose.prod.yml build --no-cache backend
+  docker_compose -f docker-compose.prod.yml up -d
 
   ok "App stack levantado"
 }
@@ -308,7 +326,7 @@ healthcheck() {
   check_service "Backend /api/health"  "http://localhost:4001/api/health"
   check_service "Frontend Nginx"       "http://localhost:80"
   check_service "Meilisearch"          "http://localhost:7700/health"
-  if docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+  if docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
     ok "PostgreSQL responde dentro del contenedor"
   else
     warn "PostgreSQL no responde todavía dentro del contenedor"
@@ -316,14 +334,14 @@ healthcheck() {
 
   echo ""
   log "Estado contenedores:"
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
+  docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
 }
 
 # ─── Modo --status ─────────────────────────────────────────────────────────
 show_status() {
   echo ""
   echo "=== App Stack ==="
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
+  docker_compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
 }
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
