@@ -23,6 +23,9 @@ BRANCH="${BRANCH:-main}"
 DB_RESTORED_FLAG="$APP_DIR/.db_restored"
 EMBED_ENV_FILES="${EMBED_ENV_FILES:-0}"
 USE_COLIMA="${USE_COLIMA:-0}"
+SKIP_REPO="${SKIP_REPO:-0}"
+SKIP_PRISMA_DIFF="${SKIP_PRISMA_DIFF:-0}"
+PRISMA_BASELINED="${PRISMA_BASELINED:-0}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
@@ -191,6 +194,11 @@ install_prereqs() {
 
 # ─── 2. Clonar o actualizar el repo ──────────────────────────────────────────
 setup_repo() {
+  if [ "$SKIP_REPO" = "1" ]; then
+    log "SKIP_REPO=1 — no se actualiza/clona el repo"
+    return
+  fi
+
   if [ -d "$APP_DIR/.git" ]; then
     log "Actualizando repo en $APP_DIR ($BRANCH)..."
     git -C "$APP_DIR" fetch origin
@@ -269,32 +277,52 @@ run_migrations() {
   log "Ejecutando prisma migrate deploy..."
   cd "$APP_DIR/backend"
 
-  # Usar DIRECT_URL para migraciones si está definido.
-  # Si no existe, conservar DATABASE_URL ya cargado desde .env.
-  local direct_url=""
-  direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
-  if [ -n "$direct_url" ]; then
-    export DATABASE_URL="$direct_url"
-  elif [ -n "${DATABASE_URL:-}" ]; then
-    export DATABASE_URL
+  # Forzar URLs desde el archivo .env para evitar valores heredados del entorno.
+  local file_direct_url file_database_url
+  file_direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
+  file_database_url=$(grep '^DATABASE_URL=' "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
+
+  if [ -n "$file_direct_url" ]; then
+    export DIRECT_URL="$file_direct_url"
+    export DATABASE_URL="$file_direct_url"
+  elif [ -n "$file_database_url" ]; then
+    unset DIRECT_URL || true
+    export DATABASE_URL="$file_database_url"
   else
     die "No se encontró DIRECT_URL ni DATABASE_URL en .env para ejecutar migraciones."
   fi
 
-  # Validar que el schema no tenga drift frente al historial de migraciones.
-  # Si hay diferencias, probablemente faltó crear/commitear una migración.
-  if ! "$HOME/.bun/bin/bunx" prisma migrate diff \
-    --from-migrations prisma/migrations \
-    --to-schema-datamodel prisma/schema.prisma \
-    --shadow-database-url "$DATABASE_URL" \
-    --exit-code; then
-    die "Se detectaron cambios en prisma/schema.prisma sin migración aplicada/commiteada."
+  # Validar drift entre schema y migrations (opcional; depende de versión Prisma/flags disponibles).
+  if [ "$SKIP_PRISMA_DIFF" != "1" ]; then
+    if ! "$HOME/.bun/bin/bunx" prisma migrate diff \
+      --from-migrations prisma/migrations \
+      --to-schema prisma/schema.prisma \
+      --exit-code; then
+      die "Se detectaron cambios en prisma/schema.prisma sin migración aplicada/commiteada. (Puedes usar SKIP_PRISMA_DIFF=1 si tu flujo es baseline SQL)."
+    fi
+  else
+    warn "SKIP_PRISMA_DIFF=1 — se omite prisma migrate diff"
   fi
 
   "$HOME/.bun/bin/bun" run prisma:generate
-  "$HOME/.bun/bin/bunx" prisma migrate deploy
+  if "$HOME/.bun/bin/bunx" prisma migrate deploy; then
+    ok "Migraciones OK"
+    return
+  fi
 
-  ok "Migraciones OK"
+  if [ "$PRISMA_BASELINED" = "1" ]; then
+    warn "PRISMA_BASELINED=1 — intentando baselinar historial de migraciones (resolve) sobre una BD no vacía"
+    for dir in prisma/migrations/*; do
+      [ -d "$dir" ] || continue
+      name="$(basename "$dir")"
+      "$HOME/.bun/bin/bunx" prisma migrate resolve --applied "$name" || true
+    done
+    "$HOME/.bun/bin/bunx" prisma migrate status || true
+    ok "Baseline de migraciones marcado (resolve)"
+    return
+  fi
+
+  die "Falló prisma migrate deploy. Si tu BD fue cargada por baseline SQL, usa PRISMA_BASELINED=1."
 }
 
 # ─── 7. Build frontend Vite ──────────────────────────────────────────────────
@@ -421,6 +449,9 @@ case "$MODE" in
     echo "Variables opcionales:"
     echo "  EMBED_ENV_FILES=1    Sobrescribe .env con plantilla embebida"
     echo "  USE_COLIMA=1         Usa Colima + docker-compose clásico en macOS"
+    echo "  SKIP_REPO=1          No hace git fetch/reset/clone (útil en dev local)"
+    echo "  SKIP_PRISMA_DIFF=1   Omite prisma migrate diff"
+    echo "  PRISMA_BASELINED=1   Marca migraciones como aplicadas en BD no vacía"
     exit 1
     ;;
 esac
