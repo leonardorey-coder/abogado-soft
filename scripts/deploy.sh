@@ -1,359 +1,565 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# scripts/deploy.sh — AbogadoSoft en Ubuntu 24 LTS
+# scripts/deploy.sh — AbogadoSoft · Ubuntu 24 LTS
 #
-# Uso:
-#   Primera instalación:  bash scripts/deploy.sh --install
-#   Actualizar app:       bash scripts/deploy.sh --update
-#   Solo migraciones BD:  bash scripts/deploy.sh --migrate
-#   Ver estado:           bash scripts/deploy.sh --status
+# One-shot installation. Safe to re-run (idempotente).
 #
-# Requisitos:
-#   - Ubuntu 24 LTS
-#   - .env.prod en la raíz del repo (copiar de .env.prod.example)
+# Uso básico (mínimo):
+#   REPO_URL=https://github.com/ORG/abogado-soft.git bash scripts/deploy.sh
+#
+# Dry-run (simula sin ejecutar nada):
+#   REPO_URL=... bash scripts/deploy.sh --dry
+#
+# Con credenciales externas opcionales:
+#   REPO_URL=... \
+#   R2_ACCOUNT_ID=xxx R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=xxx R2_BUCKET_NAME=xxx \
+#   VITE_LIVEBLOCKS_PUBLIC_KEY=pk_prod_xxx \
+#   bash scripts/deploy.sh
 # ==============================================================================
 
 set -euo pipefail
 
-# ─── Config ───────────────────────────────────────────────────────────────────
-REPO_URL="${REPO_URL:-https://github.com/TU_ORG/abogado-soft.git}"  # CAMBIAR
+# ─── Flags ────────────────────────────────────────────────────────────────────
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry|-d) DRY_RUN=1 ;;
+    *) printf 'Argumento desconocido: %s\nUso: bash deploy.sh [--dry]\n' "$arg" >&2; exit 1 ;;
+  esac
+done
+
+# ─── Variables de entrada ─────────────────────────────────────────────────────
+REPO_URL="${REPO_URL:?Falta REPO_URL. Ej: REPO_URL=https://github.com/org/repo.git bash deploy.sh}"
 APP_DIR="${APP_DIR:-/opt/abogadosoft}"
 BRANCH="${BRANCH:-main}"
-DB_RESTORED_FLAG="$APP_DIR/.db_restored"
-EMBED_ENV_FILES="${EMBED_ENV_FILES:-0}"
+COMPOSE_FILE="$APP_DIR/infra/docker-compose.prod.yml"
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
-die()  { echo "ERROR: $*" >&2; exit 1; }
-ok()   { echo "[OK] $*"; }
-warn() { echo "[WARN] $*"; }
-
-write_embedded_env_files() {
-  [ "$EMBED_ENV_FILES" = "1" ] || return 0
-
-  log "Generando .env.prod automático (overwrite)"
-
-  local env_prod_file="$APP_DIR/.env.prod"
-
-  get_env_value() {
-    local key="$1"
-    local file="$2"
-    if [ -f "$file" ]; then
-      grep "^${key}=" "$file" | head -1 | cut -d= -f2- | tr -d '"' || true
-    else
-      true
-    fi
-  }
-
-  random_secret() {
-    openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'
-  }
-
-  local server_ip="${SERVER_IP:-$(hostname -I | awk '{print $1}')}"
-  [ -z "$server_ip" ] && server_ip="127.0.0.1"
-
-  local postgres_password jwt_secret jwt_refresh_secret meili_key
-  postgres_password="$(get_env_value "POSTGRES_PASSWORD" "$env_prod_file")"
-  [ -z "$postgres_password" ] && postgres_password="$(random_secret)"
-
-  jwt_secret="$(get_env_value "JWT_SECRET" "$env_prod_file")"
-  [ -z "$jwt_secret" ] && jwt_secret="$(random_secret)"
-
-  jwt_refresh_secret="$(get_env_value "JWT_REFRESH_SECRET" "$env_prod_file")"
-  [ -z "$jwt_refresh_secret" ] && jwt_refresh_secret="$(random_secret)"
-
-  meili_key="$(get_env_value "MEILISEARCH_KEY" "$env_prod_file")"
-  [ -z "$meili_key" ] && meili_key="$(random_secret)"
-
-  cat > "$env_prod_file" <<EOF
-DATABASE_URL="postgresql://postgres:${postgres_password}@db:5432/abogadosoft?schema=public"
-DIRECT_URL="postgresql://postgres:${postgres_password}@db:5432/abogadosoft?schema=public"
-JWT_SECRET="${jwt_secret}"
-JWT_REFRESH_SECRET="${jwt_refresh_secret}"
-PORT=4001
-NODE_ENV="production"
-CORS_ORIGIN="http://${server_ip}"
-GOOGLE_REDIRECT_URI="http://${server_ip}/api/drive/auth/callback"
-GOOGLE_SERVICE_ACCOUNT_PATH="${GOOGLE_SERVICE_ACCOUNT_PATH:-./abogadosoft-service-account.json}"
-GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
-GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
-GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
-STORAGE_PATH="./storage/documents"
-MAX_FILE_SIZE_MB=50
-STORAGE_PROVIDER="${STORAGE_PROVIDER:-r2}"
+# Credenciales externas (opcionales, vacías si no se pasan)
 R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}"
 R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
 R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
 R2_BUCKET_NAME="${R2_BUCKET_NAME:-}"
-VITE_API_URL="http://${server_ip}/api"
 VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY:-}"
-SEARCH_ENGINE="${SEARCH_ENGINE:-meilisearch}"
-MEILISEARCH_HOST="${MEILISEARCH_HOST:-http://meilisearch:7700}"
-MEILISEARCH_KEY="${meili_key}"
-POSTGRES_PASSWORD="${postgres_password}"
-EOF
+GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
+GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
+GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
 
-  ok "Archivo .env.prod generado automáticamente."
-  warn "Revisa credenciales externas (Google Drive, R2, SMTP) si aplican."
+# ─── Colores ──────────────────────────────────────────────────────────────────
+C_RESET='\033[0m'
+C_BOLD='\033[1m'
+C_BLUE='\033[1;34m'     # info / paso
+C_GREEN='\033[1;32m'    # ok / pass
+C_YELLOW='\033[1;33m'   # warning
+C_RED='\033[1;31m'      # error / fail
+C_CYAN='\033[0;36m'     # comando que se ejecutaría
+C_MAGENTA='\033[0;35m'  # valor / dato
+
+# ─── Helpers generales ────────────────────────────────────────────────────────
+log()  { printf "\n${C_BLUE}[%s]${C_RESET} %s\n" "$(date '+%H:%M:%S')" "$*"; }
+ok()   { printf "  ${C_GREEN}✓${C_RESET} %s\n" "$*"; }
+warn() { printf "  ${C_YELLOW}⚠${C_RESET}  %s\n" "$*"; }
+fail() { printf "  ${C_RED}✗${C_RESET}  %s\n" "$*"; }
+info() { printf "  ${C_BLUE}→${C_RESET} %s\n" "$*"; }
+cmd()  { printf "  ${C_CYAN}»${C_RESET} %s\n" "$*"; }
+val()  { printf "  ${C_MAGENTA}·${C_RESET} %-30s %s\n" "$1" "$2"; }
+die()  { printf "\n${C_RED}ERROR:${C_RESET} %s\n" "$*" >&2; exit 1; }
+
+# Lee un valor de un .env file existente; devuelve vacío si no existe
+env_get() {
+  local key="$1" file="$2"
+  [ -f "$file" ] || { echo ""; return; }
+  grep -E "^${key}=" "$file" | head -1 | cut -d= -f2- | tr -d '"' || echo ""
 }
 
-# ─── 1. Prerrequisitos del sistema ───────────────────────────────────────────
-install_prereqs() {
-  log "Instalando prerrequisitos en Ubuntu 24..."
-  sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends \
-    git curl ca-certificates gnupg lsb-release openssl wget apt-transport-https
+# Genera un secret seguro de 48 bytes en base64 URL-safe
+gen_secret() { openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'; }
 
-  # ── Docker Engine (docker-ce, NO docker.io del apt estándar) ───────────────
-  if ! command -v docker &>/dev/null; then
-    log "Instalando Docker Engine..."
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-      https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-      | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update -qq
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    sudo systemctl enable --now docker
-    sudo usermod -aG docker "$USER"
-    warn "Usuario añadido a grupo docker. Puede requerir re-login para surtir efecto."
+# ─── MODO DRY-RUN ─────────────────────────────────────────────────────────────
+# Cada sección verifica el estado real del sistema y reporta lo que pasaría,
+# sin ejecutar ningún comando con efectos secundarios.
+# ─────────────────────────────────────────────────────────────────────────────
+
+DRY_ERRORS=0   # contador de problemas bloqueantes
+DRY_WARNS=0    # contador de advertencias no bloqueantes
+
+dry_error() { fail "$1"; DRY_ERRORS=$((DRY_ERRORS + 1)); }
+dry_warn()  { warn "$1"; DRY_WARNS=$((DRY_WARNS + 1)); }
+
+dry_check_prereqs() {
+  log "[DRY] PASO 1/7 — Prerrequisitos del sistema"
+
+  local tools=(curl git openssl)
+  for t in "${tools[@]}"; do
+    if command -v "$t" &>/dev/null; then
+      ok "$t disponible ($(command -v "$t"))"
+    else
+      dry_error "$t NO encontrado — requerido por el script"
+    fi
+  done
+
+  if command -v docker &>/dev/null; then
+    ok "Docker $(docker --version | sed 's/[^0-9.]*\([0-9][0-9.]*\).*/\1/' | head -1) ya instalado"
   else
-    ok "Docker ya instalado: $(docker --version)"
+    info "Docker NO instalado — se instalará via apt-get"
+    cmd "sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin"
+    if ! command -v sudo &>/dev/null; then
+      dry_error "sudo no disponible — necesario para instalar Docker"
+    else
+      ok "sudo disponible"
+    fi
   fi
 
-  # ── docker compose v2 (plugin) ─────────────────────────────────────────────
-  if ! docker compose version &>/dev/null 2>&1; then
-    sudo apt-get install -y docker-compose-plugin
-  fi
-  ok "Docker Compose: $(docker compose version --short)"
-
-  # ── Bun (para prisma migrate deploy fuera de contenedor) ───────────────────
-  if ! command -v bun &>/dev/null; then
-    log "Instalando Bun..."
-    curl -fsSL https://bun.sh/install | bash
-    # Añadir al PATH de la sesión actual
-    export PATH="$HOME/.bun/bin:$PATH"
-    # Persistir en shell profile
-    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$HOME/.bashrc"
+  if command -v bun &>/dev/null || [ -x "$HOME/.bun/bin/bun" ]; then
+    local bun_bin; bun_bin="${HOME}/.bun/bin/bun"
+    command -v bun &>/dev/null && bun_bin="$(command -v bun)"
+    ok "Bun $($bun_bin --version) ya instalado"
   else
-    ok "Bun ya instalado: $(bun --version)"
+    info "Bun NO instalado — se instalará via curl"
+    cmd "curl -fsSL https://bun.sh/install | bash"
   fi
 
-  # ── Node.js 20 LTS (para npm run build del frontend) ───────────────────────
-  if ! command -v node &>/dev/null; then
-    log "Instalando Node.js 20 LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+  # Espacio en disco
+  local free_kb available_gb app_parent
+  app_parent="$(dirname "$APP_DIR")"
+  if [ -d "$app_parent" ]; then
+    free_kb=$(df -k "$app_parent" 2>/dev/null | awk 'NR==2{print $4}')
+    available_gb=$(( free_kb / 1024 / 1024 ))
+    if [ "$available_gb" -lt 2 ]; then
+      dry_warn "Espacio en disco bajo: ~${available_gb}GB libres en $app_parent (recomendado ≥2GB)"
+    else
+      ok "Espacio en disco: ~${available_gb}GB libres en $app_parent"
+    fi
   else
-    ok "Node.js ya instalado: $(node --version)"
+    info "Directorio padre $app_parent no existe aún — se creará con sudo mkdir"
   fi
-
-  log "Prerrequisitos OK"
 }
 
-# ─── 2. Clonar o actualizar el repo ──────────────────────────────────────────
-setup_repo() {
+dry_check_repo() {
+  log "[DRY] PASO 2/7 — Repositorio"
+  val "URL:"    "$REPO_URL"
+  val "Rama:"   "$BRANCH"
+  val "Destino:" "$APP_DIR"
+
+  if git ls-remote --exit-code "$REPO_URL" &>/dev/null; then
+    ok "Repositorio accesible (git ls-remote OK)"
+  else
+    dry_error "No se puede acceder al repositorio: $REPO_URL"
+    info "Verifica que la URL sea correcta y tengas acceso de red/credenciales SSH"
+  fi
+
   if [ -d "$APP_DIR/.git" ]; then
-    log "Actualizando repo en $APP_DIR ($BRANCH)..."
-    git -C "$APP_DIR" fetch origin
-    git -C "$APP_DIR" reset --hard "origin/$BRANCH"
-    git -C "$APP_DIR" clean -fd
+    local current_branch
+    current_branch=$(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "desconocida")
+    ok "$APP_DIR ya existe (rama: $current_branch)"
+    cmd "git fetch origin && git reset --hard origin/$BRANCH && git clean -fd"
   else
-    log "Clonando repo en $APP_DIR..."
-    sudo mkdir -p "$APP_DIR"
-    sudo chown "$USER":"$USER" "$APP_DIR"
-    git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+    info "$APP_DIR no existe — se clonará"
+    cmd "git clone --branch $BRANCH $REPO_URL $APP_DIR"
   fi
-  ok "Repo en $(git -C "$APP_DIR" rev-parse --short HEAD) ($(git -C "$APP_DIR" log -1 --format='%s'))"
 }
 
-# ─── 3. Verificar archivos de entorno ────────────────────────────────────────
-check_env() {
-  [ -f "$APP_DIR/.env.prod" ] || die ".env.prod no existe. Copia .env.prod.example → .env.prod y completa los valores."
+dry_check_env() {
+  log "[DRY] PASO 3/7 — Variables de entorno (.env.prod)"
+  local env_file="$APP_DIR/.env.prod"
 
-  # shellcheck source=/dev/null
-  set +u; source "$APP_DIR/.env.prod"; set -u
-  [ -z "${JWT_SECRET:-}" ]      && die "JWT_SECRET vacío en .env.prod"
-  [ -z "${DATABASE_URL:-}" ]    && die "DATABASE_URL vacío en .env.prod"
-  [ -z "${POSTGRES_PASSWORD:-}" ] && die "POSTGRES_PASSWORD vacío en .env.prod"
+  if [ -f "$env_file" ]; then
+    ok ".env.prod ya existe — se preservarán los valores actuales"
 
-  ok ".env.prod OK"
+    local fields=(POSTGRES_PASSWORD JWT_SECRET JWT_REFRESH_SECRET MEILISEARCH_KEY
+                  DATABASE_URL STORAGE_PROVIDER R2_ACCOUNT_ID R2_BUCKET_NAME
+                  VITE_API_URL VITE_LIVEBLOCKS_PUBLIC_KEY)
+    for key in "${fields[@]}"; do
+      local val_existing
+      val_existing="$(env_get "$key" "$env_file")"
+      if [ -n "$val_existing" ]; then
+        # Mostrar parcialmente si parece un secret
+        local display="$val_existing"
+        case "$key" in
+          *SECRET*|*PASSWORD*|*KEY*|*ACCESS*)
+            display="${val_existing:0:8}…(${#val_existing} chars)"
+            ;;
+        esac
+        ok "$key = $display"
+      else
+        dry_warn "$key está vacío en .env.prod existente"
+      fi
+    done
+  else
+    info ".env.prod NO existe — se generará automáticamente con:"
+    local server_ip; server_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo "DESCONOCIDA")"
+    val "POSTGRES_PASSWORD"  "(auto-generado, 32 chars)"
+    val "JWT_SECRET"         "(auto-generado, 64 chars)"
+    val "JWT_REFRESH_SECRET" "(auto-generado, 64 chars)"
+    val "MEILISEARCH_KEY"    "(auto-generado, 32 chars)"
+    val "DATABASE_URL"       "postgresql://postgres:***@db:5432/abogadosoft"
+    val "CORS_ORIGIN"        "http://${server_ip}"
+    val "VITE_API_URL"       "http://${server_ip}/api"
+
+    # Credenciales externas
+    local storage_would_be="local"
+    if [ -n "$R2_ACCOUNT_ID" ]; then
+      storage_would_be="r2"
+      val "STORAGE_PROVIDER"    "r2 (detectado R2_ACCOUNT_ID)"
+      val "R2_ACCOUNT_ID"       "${R2_ACCOUNT_ID:0:8}…"
+      val "R2_BUCKET_NAME"      "${R2_BUCKET_NAME:-VACÍO}"
+    else
+      val "STORAGE_PROVIDER"    "local (sin R2 creds)"
+      dry_warn "R2_ACCOUNT_ID no pasado — se usará almacenamiento local en el servidor"
+      info "Para usar Cloudflare R2: pasa R2_ACCOUNT_ID=xxx ... al script"
+    fi
+
+    [ -z "$VITE_LIVEBLOCKS_PUBLIC_KEY" ] && \
+      dry_warn "VITE_LIVEBLOCKS_PUBLIC_KEY no pasado — edición colaborativa desactivada"
+
+    if [ "$server_ip" = "DESCONOCIDA" ]; then
+      dry_warn "No se pudo detectar IP del servidor — CORS_ORIGIN y VITE_API_URL quedarán incorrectos"
+      info "En el servidor real, hostname -I detectará la IP correctamente"
+    fi
+  fi
 }
 
-# ─── 5. Restaurar BD desde dump (solo primera vez) ───────────────────────────
-restore_db() {
-  if [ -f "$DB_RESTORED_FLAG" ]; then
-    ok "BD ya restaurada (flag $DB_RESTORED_FLAG existe) — skip"
+dry_check_migrations() {
+  log "[DRY] PASO 4/7 — Migraciones Prisma"
+
+  local migrations_dir="$APP_DIR/backend/prisma/migrations"
+  if [ -d "$migrations_dir" ]; then
+    local count
+    count=$(find "$migrations_dir" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+    ok "$count migración(es) encontrada(s) en $migrations_dir"
+    cmd "bunx prisma migrate deploy"
+  else
+    info "Repo no clonado aún — migraciones se verificarán post-clone"
+    cmd "bunx prisma migrate deploy"
+  fi
+
+  info "Las migraciones requieren que el contenedor 'db' (Postgres) esté healthy"
+}
+
+dry_check_frontend() {
+  log "[DRY] PASO 5/7 — Build del frontend"
+
+  local lockfile="$APP_DIR/bun.lock"
+  local pkg="$APP_DIR/package.json"
+
+  if [ -f "$pkg" ]; then
+    ok "package.json encontrado"
+    if [ -f "$lockfile" ]; then
+      ok "bun.lock encontrado — se usará --frozen-lockfile"
+      cmd "bun install --frozen-lockfile && bun run build"
+    else
+      dry_warn "bun.lock no encontrado — bun install regenerará el lockfile"
+      cmd "bun install && bun run build"
+    fi
+  else
+    info "Repo no clonado aún — build se ejecutará post-clone"
+    cmd "bun install --frozen-lockfile && bun run build"
+  fi
+}
+
+dry_check_stack() {
+  log "[DRY] PASO 6/7 — Stack Docker"
+
+  if [ -f "$COMPOSE_FILE" ]; then
+    ok "docker-compose.prod.yml encontrado"
+    if command -v docker &>/dev/null; then
+      # Validar sintaxis del compose (sin ejecutar)
+      local validate_out
+      if validate_out=$(docker compose -f "$COMPOSE_FILE" config --quiet 2>&1); then
+        ok "Sintaxis del compose válida"
+      else
+        dry_error "Error de sintaxis en compose: $validate_out"
+      fi
+    fi
+    cmd "docker compose -f docker-compose.prod.yml build --no-cache backend"
+    cmd "docker compose -f docker-compose.prod.yml up --detach --remove-orphans"
+  else
+    info "Compose no disponible aún (repo no clonado) — se validará post-clone"
+  fi
+
+  # Verificar puertos
+  log "[DRY] PASO 6/7 — Verificación de puertos"
+  local ports=(80:Frontend 4001:Backend)
+  for entry in "${ports[@]}"; do
+    local port="${entry%%:*}" svc="${entry##*:}"
+    if ss -tlnp 2>/dev/null | grep -q ":${port} " || \
+       netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
+      dry_warn "Puerto $port ya en uso ($svc) — puede haber conflicto con el contenedor"
+    else
+      ok "Puerto $port libre ($svc)"
+    fi
+  done
+}
+
+dry_check_healthcheck() {
+  log "[DRY] PASO 7/7 — Healthcheck (verificación post-deploy)"
+  info "Al finalizar el deploy, se verificarán:"
+  cmd "curl http://localhost:4001/api/health   (Backend)"
+  cmd "curl http://localhost:80               (Frontend/Nginx)"
+  cmd "curl http://localhost:7700/health      (Meilisearch)"
+}
+
+dry_summary() {
+  printf "\n%s\n" "$(printf '═%.0s' {1..60})"
+  printf "${C_BOLD}RESUMEN DRY-RUN${C_RESET}\n"
+  printf '%s\n' "$(printf '─%.0s' {1..60})"
+
+  if [ "$DRY_ERRORS" -eq 0 ] && [ "$DRY_WARNS" -eq 0 ]; then
+    printf "${C_GREEN}✓ Todo en orden.${C_RESET} El deploy debería completarse sin problemas.\n"
+  elif [ "$DRY_ERRORS" -eq 0 ]; then
+    printf "${C_YELLOW}⚠ ${DRY_WARNS} advertencia(s).${C_RESET} El deploy puede continuar pero revisa los warnings.\n"
+  else
+    printf "${C_RED}✗ ${DRY_ERRORS} error(es) bloqueante(s)${C_RESET}"
+    [ "$DRY_WARNS" -gt 0 ] && printf " y ${C_YELLOW}${DRY_WARNS} advertencia(s)${C_RESET}"
+    printf "\n  Corrige los errores antes de ejecutar el deploy real.\n"
+  fi
+
+  printf '%s\n\n' "$(printf '═%.0s' {1..60})"
+
+  if [ "$DRY_ERRORS" -gt 0 ]; then
+    exit 1  # salir con error para uso en CI
+  fi
+}
+
+run_dry() {
+  printf "\n${C_BOLD}${C_CYAN}╔══════════════════════════════════════════════════╗${C_RESET}\n"
+  printf "${C_BOLD}${C_CYAN}║  AbogadoSoft · DRY RUN — sin cambios reales      ║${C_RESET}\n"
+  printf "${C_BOLD}${C_CYAN}╚══════════════════════════════════════════════════╝${C_RESET}\n"
+
+  dry_check_prereqs
+  dry_check_repo
+  dry_check_env
+  dry_check_migrations
+  dry_check_frontend
+  dry_check_stack
+  dry_check_healthcheck
+  dry_summary
+}
+
+# ─── MODO REAL ────────────────────────────────────────────────────────────────
+
+install_docker() {
+  if command -v docker &>/dev/null; then
+    ok "Docker $(docker --version | sed 's/[^0-9.]*\([0-9][0-9.]*\).*/\1/' | head -1) ya instalado"
     return
   fi
 
-  PUBLIC_DUMP="$APP_DIR/infra/db/full_dump.sql"
-  [ -f "$PUBLIC_DUMP" ] || die "Dump no encontrado: $PUBLIC_DUMP"
+  log "Instalando Docker Engine..."
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
 
-  run_psql() {
-    docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
-      psql -U postgres -d abogadosoft
-  }
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-  log "Restaurando datos de negocio..."
-  run_psql < "$PUBLIC_DUMP"
-  ok "Restore OK — $(grep -c '^INSERT' "$PUBLIC_DUMP" 2>/dev/null || echo '?') filas"
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+     https://download.docker.com/linux/ubuntu \
+     $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-  touch "$DB_RESTORED_FLAG"
-  ok "Restore completo"
+  sudo apt-get update -qq
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  sudo systemctl enable --now docker
+  sudo usermod -aG docker "$USER"
+  ok "Docker instalado"
 }
 
-# ─── 6. Migraciones Prisma ───────────────────────────────────────────────────
-run_migrations() {
-  log "Ejecutando prisma migrate deploy..."
-  cd "$APP_DIR/backend"
+install_bun() {
+  if command -v bun &>/dev/null || [ -x "$HOME/.bun/bin/bun" ]; then
+    export PATH="$HOME/.bun/bin:$PATH"
+    ok "Bun $(bun --version) ya instalado"
+    return
+  fi
 
-  # Usar DIRECT_URL para migraciones (sin pgBouncer) si está definido.
-  # Si no existe, conservar DATABASE_URL ya cargado desde .env.prod.
-  local direct_url=""
-  direct_url=$(grep '^DIRECT_URL=' "$APP_DIR/.env.prod" | head -1 | cut -d= -f2- | tr -d '"' || true)
-  if [ -n "$direct_url" ]; then
-    export DATABASE_URL="$direct_url"
-  elif [ -n "${DATABASE_URL:-}" ]; then
-    export DATABASE_URL
+  log "Instalando Bun..."
+  curl -fsSL https://bun.sh/install | bash
+  export PATH="$HOME/.bun/bin:$PATH"
+  grep -qxF 'export PATH="$HOME/.bun/bin:$PATH"' "$HOME/.bashrc" \
+    || echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$HOME/.bashrc"
+  ok "Bun $(bun --version) instalado"
+}
+
+setup_repo() {
+  log "Configurando repositorio..."
+  if [ -d "$APP_DIR/.git" ]; then
+    git -C "$APP_DIR" fetch origin
+    git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+    git -C "$APP_DIR" clean -fd
+    ok "Repo actualizado → $(git -C "$APP_DIR" rev-parse --short HEAD)"
   else
-    die "No se encontró DIRECT_URL ni DATABASE_URL en .env.prod para ejecutar migraciones."
+    sudo mkdir -p "$APP_DIR"
+    sudo chown "$USER:$USER" "$APP_DIR"
+    git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+    ok "Repo clonado → $(git -C "$APP_DIR" rev-parse --short HEAD)"
   fi
-
-  # Validar que el schema no tenga drift frente al historial de migraciones.
-  # Si hay diferencias, probablemente faltó crear/commitear una migración.
-  if ! "$HOME/.bun/bin/bunx" prisma migrate diff \
-    --from-migrations prisma/migrations \
-    --to-schema-datamodel prisma/schema.prisma \
-    --shadow-database-url "$DATABASE_URL" \
-    --exit-code; then
-    die "Se detectaron cambios en prisma/schema.prisma sin migración aplicada/commiteada."
-  fi
-
-  "$HOME/.bun/bin/bun" run prisma:generate
-  "$HOME/.bun/bin/bunx" prisma migrate deploy
-
-  ok "Migraciones OK"
 }
 
-# ─── 7. Build frontend Vite ──────────────────────────────────────────────────
-build_frontend() {
-  log "Building frontend Vite..."
-  cd "$APP_DIR"
+generate_env() {
+  local env_file="$APP_DIR/.env.prod"
+  local server_ip
+  server_ip="$(hostname -I | awk '{print $1}')"
 
-  # Exportar variables VITE_ al entorno para el build
+  log "Configurando .env.prod..."
+
+  local postgres_pass jwt_secret jwt_refresh_secret meili_key storage_provider
+
+  postgres_pass="$(env_get POSTGRES_PASSWORD "$env_file")"
+  [ -z "$postgres_pass" ] && postgres_pass="$(gen_secret | cut -c1-32)"
+
+  jwt_secret="$(env_get JWT_SECRET "$env_file")"
+  [ -z "$jwt_secret" ] && jwt_secret="$(gen_secret)"
+
+  jwt_refresh_secret="$(env_get JWT_REFRESH_SECRET "$env_file")"
+  [ -z "$jwt_refresh_secret" ] && jwt_refresh_secret="$(gen_secret)"
+
+  meili_key="$(env_get MEILISEARCH_KEY "$env_file")"
+  [ -z "$meili_key" ] && meili_key="$(gen_secret | cut -c1-32)"
+
+  storage_provider="$(env_get STORAGE_PROVIDER "$env_file")"
+  if [ -z "$storage_provider" ]; then
+    [ -n "$R2_ACCOUNT_ID" ] && storage_provider="r2" || storage_provider="local"
+  fi
+
+  [ -z "$R2_ACCOUNT_ID"          ] && R2_ACCOUNT_ID="$(env_get R2_ACCOUNT_ID "$env_file")"
+  [ -z "$R2_ACCESS_KEY_ID"       ] && R2_ACCESS_KEY_ID="$(env_get R2_ACCESS_KEY_ID "$env_file")"
+  [ -z "$R2_SECRET_ACCESS_KEY"   ] && R2_SECRET_ACCESS_KEY="$(env_get R2_SECRET_ACCESS_KEY "$env_file")"
+  [ -z "$R2_BUCKET_NAME"         ] && R2_BUCKET_NAME="$(env_get R2_BUCKET_NAME "$env_file")"
+  [ -z "$VITE_LIVEBLOCKS_PUBLIC_KEY" ] && VITE_LIVEBLOCKS_PUBLIC_KEY="$(env_get VITE_LIVEBLOCKS_PUBLIC_KEY "$env_file")"
+  [ -z "$GOOGLE_DRIVE_FOLDER_DOCUMENTS" ] && GOOGLE_DRIVE_FOLDER_DOCUMENTS="$(env_get GOOGLE_DRIVE_FOLDER_DOCUMENTS "$env_file")"
+  [ -z "$GOOGLE_DRIVE_FOLDER_CONTRACTS" ] && GOOGLE_DRIVE_FOLDER_CONTRACTS="$(env_get GOOGLE_DRIVE_FOLDER_CONTRACTS "$env_file")"
+  [ -z "$GOOGLE_DRIVE_FOLDER_BACKUPS"   ] && GOOGLE_DRIVE_FOLDER_BACKUPS="$(env_get GOOGLE_DRIVE_FOLDER_BACKUPS "$env_file")"
+
+  cat > "$env_file" << EOF
+# ==============================================================================
+# AbogadoSoft — .env.prod (auto-generado por deploy.sh)
+# Generado: $(date '+%Y-%m-%d %H:%M:%S') · Servidor: ${server_ip}
+# ==============================================================================
+
+POSTGRES_PASSWORD="${postgres_pass}"
+DATABASE_URL="postgresql://postgres:${postgres_pass}@db:5432/abogadosoft?schema=public"
+DIRECT_URL="postgresql://postgres:${postgres_pass}@db:5432/abogadosoft?schema=public"
+
+JWT_SECRET="${jwt_secret}"
+JWT_REFRESH_SECRET="${jwt_refresh_secret}"
+
+PORT=4001
+NODE_ENV="production"
+CORS_ORIGIN="http://${server_ip}"
+
+STORAGE_PROVIDER="${storage_provider}"
+STORAGE_PATH="./storage/documents"
+MAX_FILE_SIZE_MB=50
+
+R2_ACCOUNT_ID="${R2_ACCOUNT_ID}"
+R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID}"
+R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY}"
+R2_BUCKET_NAME="${R2_BUCKET_NAME}"
+
+GOOGLE_SERVICE_ACCOUNT_PATH="./abogadosoft-service-account.json"
+GOOGLE_REDIRECT_URI="http://${server_ip}/api/drive/auth/callback"
+GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS}"
+GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS}"
+GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS}"
+
+VITE_API_URL="http://${server_ip}/api"
+VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY}"
+
+SEARCH_ENGINE="meilisearch"
+MEILISEARCH_HOST="http://meilisearch:7700"
+MEILISEARCH_KEY="${meili_key}"
+EOF
+
+  ok ".env.prod generado → $env_file"
+  [ "$storage_provider" = "r2" ] && [ -z "$R2_ACCOUNT_ID" ] && \
+    warn "STORAGE_PROVIDER=r2 pero R2_ACCOUNT_ID está vacío"
+}
+
+load_env() {
   set -o allexport
   # shellcheck source=/dev/null
-  source .env.prod
+  source "$APP_DIR/.env.prod"
   set +o allexport
 
-  npm ci --prefer-offline --silent
-  npm run build
-
-  ok "Frontend OK → dist/ ($(du -sh dist/ | cut -f1))"
+  [ -n "${JWT_SECRET:-}"        ] || die "JWT_SECRET está vacío en .env.prod"
+  [ -n "${DATABASE_URL:-}"      ] || die "DATABASE_URL está vacío en .env.prod"
+  [ -n "${POSTGRES_PASSWORD:-}" ] || die "POSTGRES_PASSWORD está vacío en .env.prod"
+  [ -n "${MEILISEARCH_KEY:-}"   ] || die "MEILISEARCH_KEY está vacío en .env.prod"
 }
 
-# ─── 8. Levantar app (backend + nginx + meilisearch) ─────────────────────────
-start_app() {
-  log "Levantando stack de app..."
+run_migrations() {
+  log "Ejecutando migraciones Prisma..."
+  cd "$APP_DIR/backend"
+  export DATABASE_URL="${DIRECT_URL:-$DATABASE_URL}"
+  bun run prisma:generate
+  bunx prisma migrate deploy
+  ok "Migraciones aplicadas"
+}
+
+build_frontend() {
+  log "Compilando frontend Vite..."
+  cd "$APP_DIR"
+  bun install --frozen-lockfile
+  bun run build
+  ok "Frontend listo → dist/ ($(du -sh dist/ | cut -f1))"
+}
+
+start_stack() {
+  log "Construyendo y levantando contenedores..."
   cd "$APP_DIR/infra"
-
   docker compose -f docker-compose.prod.yml build --no-cache backend
-  docker compose -f docker-compose.prod.yml up -d
-
-  ok "App stack levantado"
+  docker compose -f docker-compose.prod.yml up --detach --remove-orphans
+  ok "Stack levantado"
 }
 
-# ─── 9. Healthcheck ──────────────────────────────────────────────────────────
 healthcheck() {
-  log "Verificando servicios (esperar 10s a que levanten)..."
-  sleep 10
+  log "Verificando servicios (espera 20s para que arranquen)..."
+  sleep 20
 
-  check_service() {
+  local failed=0
+
+  check() {
     local name="$1" url="$2"
-    if curl -sf "$url" > /dev/null 2>&1; then
-      ok "$name responde en $url"
+    if curl -sf --max-time 5 "$url" >/dev/null 2>&1; then
+      ok "$name → $url"
     else
-      warn "$name NO responde en $url — puede seguir iniciando"
+      warn "$name no responde en $url"
+      failed=$((failed + 1))
     fi
   }
 
-  check_service "Backend /api/health"  "http://localhost:4001/api/health"
-  check_service "Frontend Nginx"       "http://localhost:80"
-  check_service "Meilisearch"          "http://localhost:7700/health"
+  check "Backend"     "http://localhost:4001/api/health"
+  check "Frontend"    "http://localhost:80"
+  check "Meilisearch" "http://localhost:7700/health"
 
   echo ""
-  log "Estado contenedores:"
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
+  docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+  if [ "$failed" -gt 0 ]; then
+    warn "Algunos servicios aún pueden estar iniciando."
+    info "Logs: docker compose -f $COMPOSE_FILE logs --tail=50"
+  else
+    log "Todos los servicios responden ✓"
+  fi
 }
 
-# ─── Modo --status ─────────────────────────────────────────────────────────
-show_status() {
-  echo ""
-  echo "=== App Stack ==="
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
-}
+# ─── Main ─────────────────────────────────────────────────────────────────────
+if [ "$DRY_RUN" -eq 1 ]; then
+  run_dry
+  exit 0
+fi
 
-# ─── Entrypoint ──────────────────────────────────────────────────────────────
-MODE="${1:---update}"
+log "=== AbogadoSoft · Deploy en Ubuntu 24 LTS ==="
+install_docker
+install_bun
+setup_repo
+generate_env
+load_env
+run_migrations
+build_frontend
+start_stack
+healthcheck
 
-case "$MODE" in
-  --install)
-    log "=== INSTALACIÓN COMPLETA en Ubuntu 24 ==="
-    install_prereqs
-    setup_repo
-    write_embedded_env_files
-    check_env
-    restore_db
-    run_migrations
-    build_frontend
-    start_app
-    healthcheck
-    log "=== INSTALACIÓN COMPLETA ==="
-    log "App: http://$(hostname -I | awk '{print $1}')"
-    echo ""
-    warn "PASO MANUAL PENDIENTE: reindexar Meilisearch (índice vacío tras restore):"
-    warn "  docker exec abogadosoft_backend bun src/scripts/reindex.ts"
-    warn "  (o cambiar SEARCH_ENGINE=prisma en .env.prod para omitir Meilisearch)"
-    ;;
-
-  --update)
-    log "=== ACTUALIZACIÓN ==="
-    setup_repo
-    write_embedded_env_files
-    check_env
-    run_migrations
-    build_frontend
-    start_app
-    healthcheck
-    log "=== ACTUALIZACIÓN COMPLETA ==="
-    ;;
-
-  --migrate)
-    log "=== SOLO MIGRACIONES ==="
-    write_embedded_env_files
-    check_env
-    run_migrations
-    ok "Migraciones aplicadas"
-    ;;
-
-  --status)
-    show_status
-    ;;
-
-  *)
-    echo "Uso: $0 [--install | --update | --migrate | --status]"
-    echo ""
-    echo "  --install   Primera instalación completa en servidor limpio Ubuntu 24"
-    echo "  --update    Actualizar código + migraciones + rebuild (deploys posteriores)"
-    echo "  --migrate   Solo correr prisma migrate deploy"
-    echo "  --status    Ver estado de todos los contenedores"
-    echo ""
-    echo "Variables opcionales:"
-    echo "  EMBED_ENV_FILES=1    Sobrescribe .env.prod con plantilla embebida"
-    exit 1
-    ;;
-esac
+log "=== Deploy completo ==="
+printf "\n  ${C_GREEN}App disponible en:${C_RESET} http://%s\n\n" \
+  "$(hostname -I | awk '{print $1}')"

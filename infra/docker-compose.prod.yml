@@ -1,5 +1,5 @@
 # ==============================================================================
-# infra/docker-compose.prod.yml — App Stack (Backend + Nginx + Meilisearch)
+# infra/docker-compose.prod.yml — App Stack (Backend + Nginx + Meilisearch + DB)
 #
 # Uso:
 #   cd infra
@@ -9,6 +9,26 @@
 name: abogadosoft
 
 services:
+
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    container_name: abogadosoft_db
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: abogadosoft
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d abogadosoft"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ─── Backend Express/Bun ─────────────────────────────────────────────────────
   backend:
@@ -23,6 +43,8 @@ services:
       PORT: 4001
       NODE_ENV: production
     depends_on:
+      db:
+        condition: service_healthy
       meilisearch:
         condition: service_healthy
     networks:
@@ -94,5 +116,6 @@ networks:
     driver: bridge
 
 volumes:
+  postgres_data:
   backend_storage:
   meilisearch_data:
