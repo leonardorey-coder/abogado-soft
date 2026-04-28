@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { GuestRoute } from "./components/GuestRoute";
 import { AppLayout } from "./components/AppLayout";
 import { DocumentEditor } from "./components/DocumentEditor";
+import { AppBrand } from "./components/AppBrand";
 
 // Pages (lazy-loaded for code splitting)
 const LoginPage = lazy(() => import("./components/LoginPage").then(m => ({ default: m.LoginPage })));
@@ -31,7 +32,8 @@ const SecurityInfoPage = lazy(() => import("./components/SecurityInfoPage").then
 const HealthCheck = lazy(() => import("./components/HealthCheck").then(m => ({ default: m.HealthCheck })));
 
 const PageLoader = () => (
-  <div className="min-h-[60vh] flex items-center justify-center">
+  <div className="min-h-[60vh] flex flex-col items-center justify-center gap-5">
+    <AppBrand size="md" wordmark="always" className="opacity-90" />
     <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent" />
   </div>
 );

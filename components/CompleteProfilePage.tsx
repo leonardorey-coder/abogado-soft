@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_LABELS } from "../lib/constants";
-import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseAuth";
+import { AppBrand } from "./AppBrand";
 
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
@@ -22,7 +22,7 @@ async function getAccessToken(): Promise<string | null> {
 }
 
 export const CompleteProfilePage: React.FC = () => {
-  const { user, setAuth, refreshUser } = useAuth();
+  const { refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
@@ -138,18 +138,24 @@ export const CompleteProfilePage: React.FC = () => {
     },
   ];
 
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
+
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark font-display">
       {/* Header simple */}
-      <header className="h-16 flex items-center px-6 bg-white dark:bg-[#1a212f] border-b border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary text-white p-2 rounded-lg">
-            <span className="material-symbols-outlined text-xl">balance</span>
-          </div>
-          <span className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            SIDOC
-          </span>
-        </div>
+      <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-[#1a212f] border-b border-gray-200 dark:border-gray-800">
+        <AppBrand size="md" wordmark="responsive" />
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="h-10 px-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-[18px]">logout</span>
+          Salir
+        </button>
       </header>
 
       <main className="flex flex-col items-center justify-center pt-12 pb-20 px-4">

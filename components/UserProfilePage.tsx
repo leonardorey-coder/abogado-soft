@@ -9,6 +9,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { UserAvatar } from "./UserAvatar";
 import { getDocumentRoute } from "../lib/routes";
+import type { ApiActivityLog } from "../lib/api";
+import { BitacoraEntryItem } from "./BitacoraEntryItem";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -38,16 +40,6 @@ interface Assignment {
   document?: { id: string; name: string; type: string } | null;
   assigner?: { id: string; name: string } | null;
   assignee?: { id: string; name: string } | null;
-}
-
-interface ActivityLog {
-  id: string;
-  activity: string;
-  description: string;
-  entityType?: string | null;
-  entityId?: string | null;
-  entityName?: string | null;
-  createdAt: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -95,61 +87,6 @@ function statusLabel(s: string) {
   }
 }
 
-function activityMeta(activity: string): { icon: string; bg: string; color: string } {
-  const l = activity.toLowerCase();
-  if (l.includes("login")) return { icon: "login", bg: "bg-purple-100 dark:bg-purple-900/30", color: "text-purple-600 dark:text-purple-400" };
-  if (l.includes("logout")) return { icon: "logout", bg: "bg-gray-100 dark:bg-gray-700", color: "text-gray-600 dark:text-gray-400" };
-  if (l.includes("document") || l.includes("edit")) return { icon: "edit_document", bg: "bg-blue-100 dark:bg-blue-900/30", color: "text-blue-600 dark:text-blue-400" };
-  if (l.includes("assign")) return { icon: "assignment", bg: "bg-indigo-100 dark:bg-indigo-900/30", color: "text-indigo-600 dark:text-indigo-400" };
-  if (l.includes("user")) return { icon: "manage_accounts", bg: "bg-green-100 dark:bg-green-900/30", color: "text-green-600 dark:text-green-400" };
-  if (l.includes("convenio")) return { icon: "handshake", bg: "bg-teal-100 dark:bg-teal-900/30", color: "text-teal-600 dark:text-teal-400" };
-  return { icon: "history", bg: "bg-slate-100 dark:bg-slate-700", color: "text-slate-600 dark:text-slate-400" };
-}
-
-function translateActivity(activity: string): string {
-  const map: Record<string, string> = {
-    DOCUMENT_VIEWED: "Documento visto",
-    DOCUMENT_CREATED: "Documento creado",
-    DOCUMENT_UPDATED: "Documento actualizado",
-    DOCUMENT_DELETED: "Documento eliminado",
-    DOCUMENT_RESTORED: "Documento restaurado",
-    DOCUMENT_ASSIGNED: "Documento asignado",
-    DOCUMENT_SHARED: "Documento compartido",
-    DOCUMENT_DOWNLOADED: "Documento descargado",
-    DOCUMENT_EXPORTED: "Documento exportado",
-    DOCUMENT_ARCHIVED: "Documento archivado",
-    DOCUMENT_TRASHED: "Documento enviado a papelera",
-    CONVENIO_CREATED: "Convenio creado",
-    CONVENIO_UPDATED: "Convenio actualizado",
-    CONVENIO_DELETED: "Convenio eliminado",
-    CONVENIO_SIGNED: "Convenio firmado",
-    COLLABORATION_STARTED: "Colaboración iniciada",
-    COLLABORATION_ENDED: "Colaboración finalizada",
-    USER_REGISTERED: "Usuario registrado",
-    USER_UPDATED: "Usuario actualizado",
-    USER_ACTIVATED: "Usuario activado",
-    USER_DEACTIVATED: "Usuario desactivado",
-    USER_ROLE_CHANGED: "Rol de usuario cambiado",
-    USER_DELETED: "Usuario eliminado",
-    GROUP_CREATED: "Grupo creado",
-    GROUP_UPDATED: "Grupo actualizado",
-    GROUP_DELETED: "Grupo eliminado",
-    GROUP_MEMBER_ADDED: "Miembro añadido al grupo",
-    GROUP_MEMBER_REMOVED: "Miembro eliminado del grupo",
-    LOGIN: "Inicio de sesión",
-    LOGOUT: "Cierre de sesión",
-    PASSWORD_CHANGED: "Contraseña cambiada",
-    ADMIN_ACCESS_GRANTED: "Acceso de administrador concedido",
-    ADMIN_ACCESS_DENIED: "Acceso de administrador denegado",
-    BACKUP_CREATED: "Copia de seguridad creada",
-    BACKUP_RESTORED: "Copia de seguridad restaurada",
-    SETTINGS_CHANGED: "Configuración cambiada",
-    COMMENT_ADDED: "Comentario añadido",
-    COMMENT_DELETED: "Comentario eliminado",
-  };
-  return map[activity] ?? activity.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const UserProfilePage: React.FC = () => {
@@ -164,7 +101,7 @@ export const UserProfilePage: React.FC = () => {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [activity, setActivity] = useState<ActivityLog[]>([]);
+  const [activity, setActivity] = useState<ApiActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"assignments" | "activity">("assignments");
@@ -513,46 +450,13 @@ export const UserProfilePage: React.FC = () => {
           ) : (
             <div className="space-y-3">
               {activity.map((log) => {
-                const { icon, bg, color } = activityMeta(log.activity);
-                const entityLink =
-                  log.entityId && log.entityType === "document" ? `/documento/${log.entityId}` :
-                  log.entityId && log.entityType === "convenio" ? `/convenio/${log.entityId}` :
-                  null;
                 return (
-                  <div
+                  <BitacoraEntryItem
                     key={log.id}
-                    className="flex items-start gap-4 bg-white dark:bg-[#1a212f] p-4 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm"
-                  >
-                    <div className={`size-9 ${bg} ${color} rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                      <span className="material-symbols-outlined text-base">{icon}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[#111318] dark:text-white text-sm">
-                        {translateActivity(log.activity)}
-                      </p>
-                      {log.description && (
-                        <p className="text-xs text-[#616f89] dark:text-[#a0aec0] mt-0.5">{log.description}</p>
-                      )}
-                      {log.entityName && (
-                        <div className="mt-1">
-                          {entityLink ? (
-                            <button
-                              onClick={() => navigate(entityLink)}
-                              className="text-xs text-primary hover:underline font-medium flex items-center gap-1"
-                            >
-                              <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-                              {log.entityName}
-                            </button>
-                          ) : (
-                            <span className="text-xs italic text-[#616f89] dark:text-[#a0aec0]">{log.entityName}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-[#616f89] dark:text-[#a0aec0] flex-shrink-0 mt-0.5">
-                      {formatTimeAgo(log.createdAt)}
-                    </p>
-                  </div>
+                    entry={log}
+                    currentUserId={currentUser?.id}
+                    onNavigate={navigate}
+                  />
                 );
               })}
             </div>

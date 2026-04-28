@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { registerWithSupabase, signInWithGoogle } from "../lib/supabaseAuth";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
+import { AppBrand } from "./AppBrand";
 
 
 
@@ -64,8 +65,8 @@ export const RegisterPage: React.FC = () => {
         {/* Lado izquierdo: Gráfico/Hero (visible solo en pantallas grandes) */}
         <div className="hidden lg:flex flex-col justify-center w-1/2 p-16 relative overflow-hidden bg-slate-50 dark:bg-[#101622] border-r border-[#dbdfe6] dark:border-[#2d3748]">
           <div className="relative z-10 w-full max-w-xl mx-auto">
-            <div className="bg-primary text-white p-3 rounded-xl mb-6 shadow-lg shadow-primary/20 inline-block">
-              <span className="material-symbols-outlined text-[32px] block">app_registration</span>
+            <div className="mb-6 inline-block">
+              <AppBrand size="lg" wordmark="always" />
             </div>
             <h2 className="text-4xl lg:text-5xl font-black mb-6 text-slate-900 dark:text-white leading-tight">Únase a la nueva era legal</h2>
             <p className="text-xl text-slate-600 dark:text-slate-400 mb-12">Cree su cuenta en segundos y empiece a organizar sus casos, colaborar con su equipo y asegurar su información con encriptación de grado bancario.</p>
@@ -115,6 +116,9 @@ export const RegisterPage: React.FC = () => {
         <div className="flex-1 flex flex-col justify-center items-center py-6 px-4 sm:px-6 bg-white dark:bg-[#1a212f] overflow-y-auto min-h-[calc(100vh-80px)]">
           <div className="w-full max-w-[440px]">
             <div className="flex flex-col mb-4 text-center lg:text-left">
+              <div className="mb-3 flex justify-center lg:justify-start">
+                <AppBrand size="md" wordmark="always" />
+              </div>
               <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight mb-1">
                 Cree su cuenta
               </h1>
