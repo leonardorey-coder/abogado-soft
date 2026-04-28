@@ -52,6 +52,7 @@ export interface RegisterPayload {
 let _session: AuthSession | null = null;
 
 const STORAGE_KEY = 'sidoc_session';
+const WORKSPACE_SETUP_KEY_PREFIX = 'sidoc_workspace_setup';
 
 function saveSession(session: AuthSession): void {
   _session = session;
@@ -64,6 +65,25 @@ function clearSession(): void {
   _session = null;
   try {
     localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
+
+function getWorkspaceSetupKey(userId: string): string {
+  return `${WORKSPACE_SETUP_KEY_PREFIX}:${userId}`;
+}
+
+export function hasCompletedWorkspaceSetup(userId?: string | null): boolean {
+  if (!userId) return false;
+  try {
+    return localStorage.getItem(getWorkspaceSetupKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markWorkspaceSetupComplete(userId: string): void {
+  try {
+    localStorage.setItem(getWorkspaceSetupKey(userId), '1');
   } catch {}
 }
 

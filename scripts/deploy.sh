@@ -16,9 +16,13 @@
 
 set -euo pipefail
 
+# Detectar la raíz real del repo cuando el script se ejecuta localmente.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 REPO_URL="${REPO_URL:-https://github.com/TU_ORG/abogado-soft.git}"  # CAMBIAR
-APP_DIR="${APP_DIR:-/opt/abogadosoft}"
+APP_DIR="${APP_DIR:-$DEFAULT_APP_DIR}"
 BRANCH="${BRANCH:-main}"
 DB_RESTORED_FLAG="$APP_DIR/.db_restored"
 EMBED_ENV_FILES="${EMBED_ENV_FILES:-0}"
@@ -26,6 +30,7 @@ USE_COLIMA="${USE_COLIMA:-0}"
 SKIP_REPO="${SKIP_REPO:-0}"
 SKIP_PRISMA_DIFF="${SKIP_PRISMA_DIFF:-0}"
 PRISMA_BASELINED="${PRISMA_BASELINED:-0}"
+ALLOW_NPM_FALLBACK="${ALLOW_NPM_FALLBACK:-0}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
@@ -336,7 +341,14 @@ build_frontend() {
   source .env
   set +o allexport
 
-  npm ci --prefer-offline --silent
+  if npm ci --include=dev --prefer-offline --silent; then
+    :
+  elif [ "$ALLOW_NPM_FALLBACK" = "1" ]; then
+    warn "ALLOW_NPM_FALLBACK=1 — npm ci falló; usando npm install --legacy-peer-deps"
+    npm install --include=dev --legacy-peer-deps
+  else
+    die "npm ci falló. Usa ALLOW_NPM_FALLBACK=1 si necesitas fallback temporal en entornos locales."
+  fi
   npm run build
 
   ok "Frontend OK → dist/ ($(du -sh dist/ | cut -f1))"
@@ -347,7 +359,12 @@ start_app() {
   log "Levantando stack de app..."
   cd "$APP_DIR/infra"
 
-  compose_cmd build --no-cache backend
+  if [ "$USE_COLIMA" = "1" ]; then
+    warn "USE_COLIMA=1 — build backend usando node_modules del host para evitar fallos de Bun/Colima en filesystem Docker"
+    compose_cmd build --build-arg USE_HOST_NODE_MODULES=1 --no-cache backend
+  else
+    compose_cmd build --build-arg USE_HOST_NODE_MODULES=0 --no-cache backend
+  fi
   compose_cmd up -d
 
   ok "App stack levantado"
@@ -452,6 +469,7 @@ case "$MODE" in
     echo "  SKIP_REPO=1          No hace git fetch/reset/clone (útil en dev local)"
     echo "  SKIP_PRISMA_DIFF=1   Omite prisma migrate diff"
     echo "  PRISMA_BASELINED=1   Marca migraciones como aplicadas en BD no vacía"
+    echo "  ALLOW_NPM_FALLBACK=1 Usa npm install --legacy-peer-deps si npm ci falla"
     exit 1
     ;;
 esac

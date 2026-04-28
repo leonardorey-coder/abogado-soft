@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { hasCompletedWorkspaceSetup } from "../lib/auth";
 import { AppBrand } from "./AppBrand";
 
 /**
@@ -30,7 +31,9 @@ export const ProtectedRoute: React.FC = () => {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (user.needsProfileSetup && location.pathname !== "/completar-perfil") {
+    const needsWorkspaceSetup = user.needsProfileSetup || !hasCompletedWorkspaceSetup(user.id);
+
+    if (needsWorkspaceSetup && location.pathname !== "/completar-perfil") {
         return <Navigate to="/completar-perfil" replace />;
     }
 

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_LABELS } from "../lib/constants";
-import { getAccessToken } from "../lib/auth";
+import { getAccessToken, markWorkspaceSetupComplete } from "../lib/auth";
 import { AppBrand } from "./AppBrand";
 
 
@@ -16,7 +16,7 @@ const inputClass =
 
 
 export const CompleteProfilePage: React.FC = () => {
-  const { refreshUser, logout } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
@@ -106,6 +106,9 @@ export const CompleteProfilePage: React.FC = () => {
 
       // 3. Refrescar datos del usuario (ahora tendrá grupo → needsProfileSetup = false)
       await refreshUser();
+      if (user?.id) {
+        markWorkspaceSetupComplete(user.id);
+      }
 
       // Explicitly redirect to the dashboard
       navigate("/");

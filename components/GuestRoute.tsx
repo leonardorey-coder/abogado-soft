@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { hasCompletedWorkspaceSetup } from "../lib/auth";
 import { AppBrand } from "./AppBrand";
 
 /**
@@ -23,11 +24,13 @@ export const GuestRoute: React.FC = () => {
         );
     }
 
-    if (user && !user.needsProfileSetup) {
+    const needsWorkspaceSetup = user ? user.needsProfileSetup || !hasCompletedWorkspaceSetup(user.id) : false;
+
+    if (user && !needsWorkspaceSetup) {
         return <Navigate to="/" replace />;
     }
 
-    if (user && user.needsProfileSetup) {
+    if (user && needsWorkspaceSetup) {
         return <Navigate to="/completar-perfil" replace />;
     }
 

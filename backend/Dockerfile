@@ -5,14 +5,17 @@
 
 FROM oven/bun:1-alpine AS deps
 WORKDIR /app
+ARG USE_HOST_NODE_MODULES=0
 ENV TMPDIR=/tmp \
     BUN_INSTALL_CACHE_DIR=/tmp/bun-install-cache
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile --backend=copyfile
+RUN if [ "$USE_HOST_NODE_MODULES" != "1" ]; then bun install --frozen-lockfile --backend=copyfile; fi
 
 # ─── Build ────────────────────────────────────────────────────────────────────
 FROM deps AS build
+ARG USE_HOST_NODE_MODULES=0
 COPY . .
+RUN if [ "$USE_HOST_NODE_MODULES" = "1" ] && [ ! -d node_modules ]; then echo "node_modules no existe en el contexto para USE_HOST_NODE_MODULES=1" && exit 1; fi
 # Genera el cliente Prisma para Alpine/Linux
 RUN bunx prisma generate
 # Compila el servidor a bundle único

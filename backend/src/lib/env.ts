@@ -21,25 +21,31 @@ function parseDotEnv(contents: string): Record<string, string> {
   return out;
 }
 
-function mergeEnvFile(filePath: string) {
+function mergeEnvFile(filePath: string, override = false) {
   if (!fs.existsSync(filePath)) return;
   const parsed = parseDotEnv(fs.readFileSync(filePath, 'utf8'));
   for (const [k, v] of Object.entries(parsed)) {
     const cur = process.env[k];
-    if ((cur === undefined || cur === '') && v !== undefined) process.env[k] = v;
+    if (v === undefined) continue;
+    if (override || cur === undefined || cur === '') process.env[k] = v;
   }
 }
 
 export function loadProjectEnvIfNeeded() {
   try {
-    const candidates = [
+    const baseCandidates = [
       path.resolve(process.cwd(), '.env'),
-      path.resolve(process.cwd(), '.env.local'),
       path.resolve(process.cwd(), '..', '.env'),
+    ];
+    const localCandidates = [
+      path.resolve(process.cwd(), '.env.local'),
       path.resolve(process.cwd(), '..', '.env.local'),
     ];
-    for (const filePath of candidates) {
+    for (const filePath of baseCandidates) {
       mergeEnvFile(filePath);
+    }
+    for (const filePath of localCandidates) {
+      mergeEnvFile(filePath, true);
     }
   } catch {
     // Si falla, seguimos con el entorno actual.

@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.DS_Store
+.env
+*.log
+coverage
+tmp
+temp
+storage
+uploads
+backups
+*.tsbuildinfo

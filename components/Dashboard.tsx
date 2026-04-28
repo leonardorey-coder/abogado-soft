@@ -238,6 +238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
   const { user } = useAuth();
   const currentUserRole = user?.role ?? "asistente";
+  const singleGroup = user?.groupMemberships?.length === 1 ? user.groupMemberships[0].group : null;
 
   // Keep refreshRef current so the undo toast callback can call it without stale closure
   React.useEffect(() => { refreshRef.current = onRefresh; }, [onRefresh]);
@@ -606,7 +607,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* ── Page Header ──────────────────────────────────────────────── */}
         <PageHeader
           title={`Bienvenido, ${user?.name ?? "Usuario"}`}
-          description="Resumen de su despacho al día de hoy"
+          description={singleGroup ? `Resumen de ${singleGroup.name}` : "Resumen de su espacio de trabajo"}
           action={
             <div className="flex flex-col gap-2 w-full sm:w-auto sm:items-end">
               {quickNewDocError && (
@@ -624,7 +625,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   Nuevo Documento
                 </Button>
-                {user?.groupMemberships && user.groupMemberships.length > 0 ? (
+                {user?.groupMemberships && user.groupMemberships.length === 1 ? (
                   <Link
                     to="/equipo"
                     className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors w-full sm:w-auto"
