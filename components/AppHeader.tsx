@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
 import { UserAvatar } from "./UserAvatar";
+import { AppBrand } from "./AppBrand";
 
 interface AppHeaderProps {
   onUploadClick?: () => void;
@@ -51,17 +52,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     <header className="h-[72px] flex items-center justify-between px-6 bg-white/80 dark:bg-[#1a212f]/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-all">
       {/* Lado Izquierdo: Logo y Navegación Principal */}
       <div className="flex items-center gap-6 flex-1 min-w-0">
-        <div
-          className="flex items-center gap-2.5 cursor-pointer shrink-0 group"
+        <AppBrand
+          size="md"
+          wordmark="responsive"
           onClick={() => navigate("/")}
-        >
-          <div className="bg-primary w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-sm shadow-primary/20 group-hover:shadow-primary/40 transition-shadow">
-            <span className="material-symbols-outlined text-[20px]">balance</span>
-          </div>
-          <h1 className="text-slate-900 dark:text-white text-xl font-black tracking-tight hidden md:block">
-            SIDOC
-          </h1>
-        </div>
+          className="shrink-0"
+        />
 
         <nav className="hidden lg:flex items-center gap-1.5 relative">
           <NavLink to="/" end className={navClass}>

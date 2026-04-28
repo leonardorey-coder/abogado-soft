@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Scale,
   Search,
   Menu,
   X,
@@ -29,6 +28,7 @@ import { GlobalSearchModal } from "./GlobalSearchModal";
 import { TeamAvatarRow } from "./TeamAvatarRow";
 import { AssignWithDeadlinePopup, type AssignDropPayload } from "./AssignWithDeadlinePopup";
 import { DOC_DRAG_END_EVENT, DOC_DRAG_START_EVENT } from "../lib/docDrag";
+import { AppBrand } from "./AppBrand";
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -118,13 +118,14 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, user, onLogout }) => {
         `}
       >
         {/* ── Logo ─────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2.5 px-5 h-[4rem] pt-safe pb-2 sm:pb-0 shrink-0 border-b border-slate-200 dark:border-slate-700/60">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Scale className="w-4.5 h-4.5 text-white" />
-          </div>
-          <span className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-            SIDOC
-          </span>
+        <div className="flex items-center gap-2 px-5 h-[4rem] pt-safe pb-2 sm:pb-0 shrink-0 border-b border-slate-200 dark:border-slate-700/60">
+          <NavLink
+            to="/"
+            onClick={onClose}
+            className="flex min-w-0 flex-1 items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <AppBrand size="sm" wordmark="always" />
+          </NavLink>
           {/* Close button on mobile */}
           <button
             type="button"
@@ -287,6 +288,16 @@ const TopBar: React.FC<TopBarProps> = ({
         >
           <Menu className="w-6 h-6 sm:w-5 sm:h-5" />
         </button>
+      )}
+
+      {!isEditorRoute && (
+        <NavLink
+          to="/"
+          className="shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
+          aria-label="Inicio"
+        >
+          <AppBrand size="sm" wordmark="never" />
+        </NavLink>
       )}
 
       {isEditorRoute && editorTopBar != null ? (
