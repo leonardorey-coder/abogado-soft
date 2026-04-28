@@ -1,9 +1,6 @@
 # ==============================================================================
 # infra/docker-compose.prod.yml — App Stack (Backend + Nginx + Meilisearch)
 #
-# Requiere que el stack de Supabase (infra/supabase/docker-compose.yml) esté
-# corriendo primero — comparte la red "supabase_default".
-#
 # Uso:
 #   cd infra
 #   docker compose -f docker-compose.prod.yml up -d
@@ -29,7 +26,6 @@ services:
       meilisearch:
         condition: service_healthy
     networks:
-      - supabase_network    # para hablar con Postgres + Auth
       - app_network
     volumes:
       - backend_storage:/app/storage/documents
@@ -61,7 +57,6 @@ services:
         condition: service_healthy
     networks:
       - app_network
-      - supabase_network    # para proxy /realtime/ y /auth/
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:80"]
       interval: 30s
@@ -95,9 +90,6 @@ services:
       retries: 5
 
 networks:
-  supabase_network:
-    external: true
-    name: supabase_default       # creada por infra/supabase/docker-compose.yml
   app_network:
     driver: bridge
 
