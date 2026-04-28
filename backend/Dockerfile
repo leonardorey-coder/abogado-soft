@@ -5,8 +5,10 @@
 
 FROM oven/bun:1-alpine AS deps
 WORKDIR /app
+ENV TMPDIR=/tmp \
+    BUN_INSTALL_CACHE_DIR=/tmp/bun-install-cache
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile --production=false
+RUN bun install --frozen-lockfile --backend=copyfile
 
 # ─── Build ────────────────────────────────────────────────────────────────────
 FROM deps AS build

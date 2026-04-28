@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# scripts/deploy.sh — AbogadoSoft en Ubuntu 24 LTS
+# scripts/deploy.sh — AbogadoSoft deploy agnóstico
 #
 # Uso:
 #   Primera instalación:  bash scripts/deploy.sh --install
@@ -9,8 +9,9 @@
 #   Ver estado:           bash scripts/deploy.sh --status
 #
 # Requisitos:
-#   - Ubuntu 24 LTS
 #   - .env en la raíz del repo
+#   - Ubuntu: Docker Engine + Docker Compose v2 plugin
+#   - macOS: Colima + docker-compose clásico (si USE_COLIMA=1)
 # ==============================================================================
 
 set -euo pipefail
@@ -21,12 +22,29 @@ APP_DIR="${APP_DIR:-/opt/abogadosoft}"
 BRANCH="${BRANCH:-main}"
 DB_RESTORED_FLAG="$APP_DIR/.db_restored"
 EMBED_ENV_FILES="${EMBED_ENV_FILES:-0}"
+USE_COLIMA="${USE_COLIMA:-0}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 die()  { echo "ERROR: $*" >&2; exit 1; }
 ok()   { echo "[OK] $*"; }
 warn() { echo "[WARN] $*"; }
+
+compose_cmd() {
+  local env_file="$APP_DIR/.env"
+  (
+    if [ -f "$env_file" ]; then
+      # shellcheck source=/dev/null
+      set -a; source "$env_file"; set +a
+    fi
+
+    if [ "$USE_COLIMA" = "1" ]; then
+      docker-compose -f "$APP_DIR/infra/docker-compose.prod.yml" "$@"
+    else
+      docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" "$@"
+    fi
+  )
+}
 
 write_embedded_env_files() {
   [ "$EMBED_ENV_FILES" = "1" ] || return 0
@@ -94,6 +112,28 @@ EOF
 
 # ─── 1. Prerrequisitos del sistema ───────────────────────────────────────────
 install_prereqs() {
+  if [ "$USE_COLIMA" = "1" ]; then
+    log "Verificando prerrequisitos para macOS + Colima..."
+    command -v docker >/dev/null 2>&1 || die "docker no está instalado."
+    command -v docker-compose >/dev/null 2>&1 || die "docker-compose no está instalado."
+    command -v colima >/dev/null 2>&1 || die "colima no está instalado."
+    command -v bun >/dev/null 2>&1 || die "bun no está instalado."
+    command -v node >/dev/null 2>&1 || die "node no está instalado."
+
+    if ! colima status >/dev/null 2>&1; then
+      log "Iniciando Colima..."
+      colima start
+    fi
+
+    ok "Docker: $(docker --version)"
+    ok "docker-compose: $(docker-compose --version)"
+    ok "Colima listo"
+    ok "Bun: $(bun --version)"
+    ok "Node.js: $(node --version)"
+    log "Prerrequisitos OK"
+    return
+  fi
+
   log "Instalando prerrequisitos en Ubuntu 24..."
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends \
@@ -183,16 +223,16 @@ start_data_services() {
   log "Levantando PostgreSQL y Meilisearch..."
   cd "$APP_DIR/infra"
 
-  docker compose -f docker-compose.prod.yml up -d db meilisearch
+  compose_cmd up -d db meilisearch
 
   log "Esperando PostgreSQL (hasta 60s)..."
   for i in $(seq 1 30); do
-    if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+    if compose_cmd exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
       ok "PostgreSQL listo"
       break
     fi
     sleep 2
-    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker compose -f docker-compose.prod.yml logs db"
+    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa logs del servicio db"
   done
 }
 
@@ -209,8 +249,7 @@ restore_db() {
   [ -f "$DATA_IMPORT_SQL" ] || die "Import de datos no encontrado: $DATA_IMPORT_SQL"
 
   run_psql() {
-    docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
-      psql -U postgres -d abogadosoft
+    compose_cmd exec -T db psql -U postgres -d abogadosoft
   }
 
   log "Aplicando baseline PostgreSQL self-hosted..."
@@ -280,8 +319,8 @@ start_app() {
   log "Levantando stack de app..."
   cd "$APP_DIR/infra"
 
-  docker compose -f docker-compose.prod.yml build --no-cache backend
-  docker compose -f docker-compose.prod.yml up -d
+  compose_cmd build --no-cache backend
+  compose_cmd up -d
 
   ok "App stack levantado"
 }
@@ -303,7 +342,7 @@ healthcheck() {
   check_service "Backend /api/health"  "http://localhost:4001/api/health"
   check_service "Frontend Nginx"       "http://localhost:80"
   check_service "Meilisearch"          "http://localhost:7700/health"
-  if docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+  if compose_cmd exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
     ok "PostgreSQL responde dentro del contenedor"
   else
     warn "PostgreSQL no responde todavía dentro del contenedor"
@@ -311,14 +350,14 @@ healthcheck() {
 
   echo ""
   log "Estado contenedores:"
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps --format "table {{.Name}}\t{{.Status}}"
+  compose_cmd ps --format "table {{.Name}}\t{{.Status}}"
 }
 
 # ─── Modo --status ─────────────────────────────────────────────────────────
 show_status() {
   echo ""
   echo "=== App Stack ==="
-  docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" ps 2>/dev/null || echo "(no iniciado)"
+  compose_cmd ps 2>/dev/null || echo "(no iniciado)"
 }
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
@@ -381,6 +420,7 @@ case "$MODE" in
     echo ""
     echo "Variables opcionales:"
     echo "  EMBED_ENV_FILES=1    Sobrescribe .env con plantilla embebida"
+    echo "  USE_COLIMA=1         Usa Colima + docker-compose clásico en macOS"
     exit 1
     ;;
 esac
