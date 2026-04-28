@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getStorageProvider, backupKey } from './storage/index.js';
+import { getDatabaseUrls } from './env.js';
 
 
 const execAsync = promisify(exec);
@@ -132,7 +133,7 @@ export async function generateSystemBackup(
             const zipFileName = `${backupRecord.name}.zip`;
             const zipFilePath = path.join(process.cwd(), zipFileName);
 
-            const dbUrl = process.env.DATABASE_URL;
+            const { migrationUrl: dbUrl } = getDatabaseUrls();
             if (!dbUrl) throw new Error("No database URL provided for pg_dump");
             const pgDumpUrl = sanitizeDbUrlForPgDump(dbUrl);
 

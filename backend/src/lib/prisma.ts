@@ -1,10 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { getDatabaseUrls } from './env.js';
 
-const connectionString = process.env.DATABASE_URL ?? process.env.DIRECT_URL ?? '';
+const { runtimeUrl: connectionString } = getDatabaseUrls();
 const adapter = new PrismaPg({ connectionString });
 
-// Singleton para evitar múltiples conexiones en dev (hot-reload con Bun --watch)
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 export const prisma =

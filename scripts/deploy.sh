@@ -183,6 +183,24 @@ check_env() {
   ok ".env.prod OK"
 }
 
+# ─── 4. Levantar servicios de datos ───────────────────────────────────────────
+start_data_services() {
+  log "Levantando PostgreSQL y Meilisearch..."
+  cd "$APP_DIR/infra"
+
+  docker compose -f docker-compose.prod.yml up -d db meilisearch
+
+  log "Esperando PostgreSQL (hasta 60s)..."
+  for i in $(seq 1 30); do
+    if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+      ok "PostgreSQL listo"
+      break
+    fi
+    sleep 2
+    [ "$i" -eq 30 ] && die "PostgreSQL no levantó en 60s. Revisa: docker compose -f docker-compose.prod.yml logs db"
+  done
+}
+
 # ─── 5. Restaurar BD desde dump (solo primera vez) ───────────────────────────
 restore_db() {
   if [ -f "$DB_RESTORED_FLAG" ]; then
@@ -190,17 +208,23 @@ restore_db() {
     return
   fi
 
-  PUBLIC_DUMP="$APP_DIR/infra/db/full_dump.sql"
-  [ -f "$PUBLIC_DUMP" ] || die "Dump no encontrado: $PUBLIC_DUMP"
+  BASELINE_SQL="$APP_DIR/infra/postgres/baseline.sql"
+  DATA_IMPORT_SQL="$APP_DIR/infra/postgres/data_import.sql"
+  [ -f "$BASELINE_SQL" ] || die "Baseline no encontrado: $BASELINE_SQL"
+  [ -f "$DATA_IMPORT_SQL" ] || die "Import de datos no encontrado: $DATA_IMPORT_SQL"
 
   run_psql() {
     docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db \
       psql -U postgres -d abogadosoft
   }
 
-  log "Restaurando datos de negocio..."
-  run_psql < "$PUBLIC_DUMP"
-  ok "Restore OK — $(grep -c '^INSERT' "$PUBLIC_DUMP" 2>/dev/null || echo '?') filas"
+  log "Aplicando baseline PostgreSQL self-hosted..."
+  run_psql < "$BASELINE_SQL"
+  ok "Baseline aplicado"
+
+  log "Importando datos de negocio..."
+  run_psql < "$DATA_IMPORT_SQL"
+  ok "Import OK — $(grep -c '^INSERT INTO public\\.' "$DATA_IMPORT_SQL" 2>/dev/null || echo '?') filas"
 
   touch "$DB_RESTORED_FLAG"
   ok "Restore completo"
@@ -284,6 +308,11 @@ healthcheck() {
   check_service "Backend /api/health"  "http://localhost:4001/api/health"
   check_service "Frontend Nginx"       "http://localhost:80"
   check_service "Meilisearch"          "http://localhost:7700/health"
+  if docker compose -f "$APP_DIR/infra/docker-compose.prod.yml" exec -T db pg_isready -U postgres -d abogadosoft -q 2>/dev/null; then
+    ok "PostgreSQL responde dentro del contenedor"
+  else
+    warn "PostgreSQL no responde todavía dentro del contenedor"
+  fi
 
   echo ""
   log "Estado contenedores:"
@@ -307,6 +336,7 @@ case "$MODE" in
     setup_repo
     write_embedded_env_files
     check_env
+    start_data_services
     restore_db
     run_migrations
     build_frontend
@@ -325,6 +355,7 @@ case "$MODE" in
     setup_repo
     write_embedded_env_files
     check_env
+    start_data_services
     run_migrations
     build_frontend
     start_app
@@ -336,6 +367,7 @@ case "$MODE" in
     log "=== SOLO MIGRACIONES ==="
     write_embedded_env_files
     check_env
+    start_data_services
     run_migrations
     ok "Migraciones aplicadas"
     ;;
