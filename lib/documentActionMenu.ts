@@ -30,6 +30,8 @@ export function buildDocumentActionMenuItems(
     onDelete: () => void;
     confirmDeleteDocId: string | null;
     confirmDeleteSecondsLeft: number;
+    /** Si se define, sustituye a doc.currentUserPermission al evaluar el menú */
+    permissionLevel?: DocumentPermissionLevel;
   },
 ): ActionMenuItem[] {
   const {
@@ -40,10 +42,10 @@ export function buildDocumentActionMenuItems(
     onDelete,
     confirmDeleteDocId,
     confirmDeleteSecondsLeft,
+    permissionLevel,
   } = ctx;
 
-  // Obtener el permiso efectivo del usuario
-  const userPermission = doc.currentUserPermission ?? 'read';
+  const userPermission = permissionLevel ?? doc.currentUserPermission ?? 'read';
   
   // Verificar permisos para cada acción
   const canDownload = hasPermission(userPermission, 'download');

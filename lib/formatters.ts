@@ -49,7 +49,7 @@ export function formatTimeAgo(iso: string | Date): string {
     const diffMs = now.getTime() - d.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     if (diffMins < 1) return 'Hace un momento';
-    if (diffMins < 60) return `Hace ${diffMins} m`;
+    if (diffMins < 60) return `Hace ${diffMins} min`;
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `Hace ${diffHours} h`;
     const diffDays = Math.floor(diffHours / 24);

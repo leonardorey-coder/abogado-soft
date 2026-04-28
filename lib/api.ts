@@ -313,7 +313,7 @@ export interface ApiDocumentAssignment {
   createdAt: string;
   assignee: { id: string; name: string; email: string };
   assigner: { id: string; name: string; email: string };
-  document?: { id: string; name: string; type: string };
+  document?: { id: string; name: string; type: string; fileStatus?: string; updatedAt?: string };
 }
 
 export interface ApiDocumentShare {

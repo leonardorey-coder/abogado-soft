@@ -198,13 +198,21 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
   }, [fetchDocuments]);
 
   const updateStatus = useCallback(async (id: string, status: FileStatus) => {
+    let previous: FileStatus | undefined;
+    setDocuments((prev) => {
+      const doc = prev.find((d) => d.id === id);
+      if (doc) previous = doc.fileStatus;
+      return prev.map((d) => (d.id === id ? { ...d, fileStatus: status } : d));
+    });
     try {
       await documentsApi.update(id, { fileStatus: status });
-      setDocuments(prev =>
-        prev.map(d => d.id === id ? { ...d, fileStatus: status } : d)
-      );
     } catch (err) {
       console.error('Error updating status:', err);
+      if (previous !== undefined) {
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === id ? { ...d, fileStatus: previous! } : d)),
+        );
+      }
       throw err;
     }
   }, []);
