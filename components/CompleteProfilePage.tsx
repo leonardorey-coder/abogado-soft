@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_LABELS } from "../lib/constants";
-import { supabase } from "../lib/supabaseAuth";
+import { getAccessToken } from "../lib/auth";
 import { AppBrand } from "./AppBrand";
 
 
@@ -14,12 +14,6 @@ type GroupOption = "join" | "create";
 const inputClass =
   "flex w-full rounded-lg text-gray-900 dark:text-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 h-14 pl-12 pr-4 text-lg placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all";
 
-async function getAccessToken(): Promise<string | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
-}
 
 export const CompleteProfilePage: React.FC = () => {
   const { refreshUser, logout } = useAuth();

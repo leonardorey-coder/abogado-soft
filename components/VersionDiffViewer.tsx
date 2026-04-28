@@ -34,7 +34,8 @@ const API_URL = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:4000
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 async function fetchRevisionDiff(documentId: string, v1: number, v2: number, entityType: 'documents' | 'convenios' = 'documents'): Promise<DiffLine[]> {
-    const token = (window as any).__supabaseSession?.access_token ?? "";
+    const { getAccessToken } = await import('../lib/auth');
+    const token = await getAccessToken() ?? "";
     const res = await fetch(`${API_URL}/${entityType}/${documentId}/diff?v1=${v1}&v2=${v2}`, {
         headers: { Authorization: `Bearer ${token}` },
     });

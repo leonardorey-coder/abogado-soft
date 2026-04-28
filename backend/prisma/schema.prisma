@@ -1,7 +1,6 @@
 // ============================================================================
 // AbogadoSoft — Prisma Schema
-// Mapea 1:1 con supabase/migrations/001_complete_schema.sql
-// PostgreSQL 16 + Supabase (Auth only, data via Prisma)
+// PostgreSQL 16 — Auth JWT propio, datos vía Prisma
 // ============================================================================
 
 generator client {

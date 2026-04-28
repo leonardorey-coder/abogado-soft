@@ -1,68 +1,67 @@
-// ============================================================================
-// AuthContext — Provee estado de autenticación a toda la aplicación
-// Detecta sesión existente al cargar y redirige a login si no hay auth.
-// ============================================================================
-
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { Session } from '@supabase/supabase-js';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
-  supabase,
   getSession,
-  signOut as supabaseSignOut,
-  syncUserAfterOAuth,
+  logout as authLogout,
+  fetchCurrentUser,
+  getAccessToken,
+  loadStoredSession,
   type AppUser,
-} from '../lib/supabaseAuth';
+  type AuthSession,
+} from '../lib/auth';
 import { draftStorage } from '../lib/draftStorage';
 
 interface AuthContextValue {
-  /** Usuario autenticado (perfil de nuestro backend) */
   user: AppUser | null;
-  /** Sesión de Supabase Auth */
-  session: Session | null;
-  /** true mientras se verifica la sesión inicial */
+  session: AuthSession | null;
   loading: boolean;
-  /** Cerrar sesión */
   logout: () => Promise<void>;
-  /** Actualizar datos del usuario desde el backend */
   refreshUser: () => Promise<void>;
-  /** Establecer usuario tras login/register exitoso */
-  setAuth: (user: AppUser, session: Session) => void;
+  setAuth: (user: AppUser, session: AuthSession) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Verificar sesión al montar ─────────────────────────────────────────
+  // ─── Programar auto-refresh ────────────────────────────────────────────────
+  const scheduleRefresh = useCallback((currentSession: AuthSession) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+
+    const msUntilRefresh = currentSession.expiresAt - Date.now() - 5 * 60 * 1000;
+    if (msUntilRefresh <= 0) return;
+
+    refreshTimerRef.current = setTimeout(async () => {
+      const token = await getAccessToken();
+      if (!token) {
+        setUser(null);
+        setSession(null);
+        return;
+      }
+      const stored = loadStoredSession();
+      if (stored) {
+        setSession(stored);
+        scheduleRefresh(stored);
+      }
+    }, msUntilRefresh);
+  }, []);
+
+  // ─── Verificar sesión al montar ─────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
     async function checkSession() {
       try {
         const result = await getSession();
-        if (mounted) {
-          setSession(result.session);
-          if (result.user) {
-            setUser(result.user);
-          } else if (result.session) {
-            // Sesión de Supabase válida pero backend no resolvió el perfil.
-            // Usar datos de Supabase como fallback mínimo.
-            const supaUser = result.session.user;
-            setUser({
-              id: supaUser.id,
-              email: supaUser.email ?? '',
-              name: supaUser.user_metadata?.full_name ?? supaUser.email ?? 'Usuario',
-              role: 'asistente',
-              isActive: true,
-              avatarUrl: supaUser.user_metadata?.avatar_url ?? null,
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error checking session:', err);
+        if (!mounted) return;
+        setSession(result.session);
+        setUser(result.user);
+        if (result.session) scheduleRefresh(result.session);
+      } catch {
+        // sin sesión
       } finally {
         if (mounted) setLoading(false);
       }
@@ -70,92 +69,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkSession();
 
-    // Escuchar cambios de auth (login, logout, token refresh, OAuth callback)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (!mounted) return;
-
-        setSession(newSession);
-
-        if (event === 'SIGNED_IN' && newSession) {
-          const supaUser = newSession.user;
-          const { fetchCurrentUser } = await import('../lib/supabaseAuth');
-
-          // Solo poner loading si no tenemos usuario aún (evita parpadeo innecesario)
-          setUser(prev => {
-            if (!prev) setLoading(true);
-            return prev; // No cambiar el usuario todavía
-          });
-
-          // Intentar obtener usuario existente del backend
-          let appUser = await fetchCurrentUser(newSession.access_token);
-
-          // Si no existe (primer login con Google), crear/sincronizar
-          if (!appUser && supaUser) {
-            appUser = await syncUserAfterOAuth(supaUser, newSession.access_token);
-          }
-
-          if (mounted) {
-            if (appUser) {
-              setUser(appUser);
-            } else {
-              // Backend falló: usar datos de Supabase como fallback
-              setUser(prev => prev ?? ({
-                id: supaUser.id,
-                email: supaUser.email ?? '',
-                name: supaUser.user_metadata?.full_name ?? supaUser.email ?? 'Usuario',
-                role: 'asistente' as const,
-                isActive: true,
-                avatarUrl: supaUser.user_metadata?.avatar_url ?? null,
-              }));
-            }
-            setLoading(false);
-          }
-        }
-
-        if (event === 'SIGNED_OUT') {
-          if (mounted) {
-            setUser(null);
-            setSession(null);
-          }
-        }
-
-        if (event === 'TOKEN_REFRESHED' && newSession) {
-          setSession(newSession);
-        }
-      },
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
-  }, []);
+  }, [scheduleRefresh]);
 
-  // ─── Logout ─────────────────────────────────────────────────────────────
+  // ─── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
-    // Limpiar borradores locales del usuario antes de cerrar sesión
     if (user?.id) {
       await draftStorage.deleteAll(user.id).catch(() => {});
     }
-    await supabaseSignOut();
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    await authLogout();
     setUser(null);
     setSession(null);
   }, [user]);
 
-  // ─── Refrescar datos del usuario ────────────────────────────────────────
+  // ─── Refrescar usuario desde backend ──────────────────────────────────────
   const refreshUser = useCallback(async () => {
-    if (!session) return;
-    const { fetchCurrentUser } = await import('../lib/supabaseAuth');
-    const appUser = await fetchCurrentUser(session.access_token);
+    const token = await getAccessToken();
+    if (!token) return;
+    const appUser = await fetchCurrentUser(token);
     if (appUser) setUser(appUser);
-  }, [session]);
+  }, []);
 
-  // ─── Establecer auth tras login manual ──────────────────────────────────
-  const setAuth = useCallback((newUser: AppUser, newSession: Session) => {
+  // ─── Establecer auth tras login/registro ──────────────────────────────────
+  const setAuth = useCallback((newUser: AppUser, newSession: AuthSession) => {
     setUser(newUser);
     setSession(newSession);
-  }, []);
+    scheduleRefresh(newSession);
+  }, [scheduleRefresh]);
 
   return (
     <AuthContext.Provider value={{ user, session, loading, logout, refreshUser, setAuth }}>
@@ -166,8 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth debe usarse dentro de <AuthProvider>');
-  }
+  if (!ctx) throw new Error('useAuth debe usarse dentro de <AuthProvider>');
   return ctx;
 }

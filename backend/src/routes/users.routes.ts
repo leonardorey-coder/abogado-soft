@@ -22,7 +22,7 @@ const createUserSchema = z.object({
   department: z.string().max(255).optional(),
   position: z.string().max(255).optional(),
   phone: z.string().max(50).optional(),
-  // La contraseña es enviada como texto y hasheada por Supabase Auth
+  // La contraseña es enviada como texto y hasheada por el backend
   password: z.string().min(6),
 });
 

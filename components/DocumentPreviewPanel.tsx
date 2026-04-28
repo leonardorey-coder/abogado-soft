@@ -100,8 +100,8 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ doc }) => {
       try {
         // ── Authenticated file fetch helper ──────────────────────────────
         const fetchFileBlob = async (): Promise<Blob> => {
-          const { supabase } = await import("../lib/supabaseAuth");
-          const token = (await supabase.auth.getSession()).data.session?.access_token;
+          const { getAccessToken } = await import("../lib/auth");
+          const token = await getAccessToken();
           const res = await fetch(`${API_URL}/documents/${doc.id}/file`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
           });

@@ -3,15 +3,14 @@
 // Conecta el frontend con el backend Express/Prisma en localhost:4000
 // ============================================================================
 
-import { supabase } from './supabaseAuth';
+import { getAccessToken as authGetAccessToken } from './auth';
 
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
 
 // ─── Helper para obtener token ──────────────────────────────────────────
 
 async function getAccessToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
+  return authGetAccessToken();
 }
 
 // ─── Fetch genérico con auth automática ─────────────────────────────────
@@ -789,9 +788,8 @@ export const conveniosApi = {
     }),
 
   exportXlsx: async (id: string, filename: string) => {
-    const { supabase } = await import('./supabaseAuth');
-    const session = (await supabase.auth.getSession()).data.session;
-    const token = session?.access_token;
+    const { getAccessToken } = await import('./auth');
+    const token = await getAccessToken();
     const res = await fetch(`${API_URL}/convenios/${id}/export-xlsx`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -977,7 +975,7 @@ export const activityApi = {
     if (params?.from) query.set('from', params.from);
     if (params?.to) query.set('to', params.to);
 
-    const token = await supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+    const token = await getAccessToken();
     const qs = query.toString();
     const url = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'}/activity/export${qs ? `?${qs}` : ''}`;
 
@@ -1282,10 +1280,7 @@ async function uploadPdfBlob(
   pdfBlob: Blob,
   source: 'manual' | 'share',
 ): Promise<ApiDocumentPdf> {
-  const token = await (async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ?? null;
-  })();
+  const token = await getAccessToken();
 
   const formData = new FormData();
   formData.append('pdf', pdfBlob, 'document.pdf');
@@ -1381,8 +1376,7 @@ export const documentPdfsApi = {
 
   /** Descarga un PDF autenticado al disco local */
   download: async (documentId: string, pdfId: string, fileName: string): Promise<void> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token ?? null;
+    const token = await getAccessToken();
 
     const url = getDocumentPdfFileUrl(documentId, pdfId);
     const res = await fetch(url, {

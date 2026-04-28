@@ -18,12 +18,10 @@ interface CheckResult {
     httpStatus?: number;
 }
 
-// Obtener token de Supabase para requests autenticados
 async function getToken(): Promise<string | null> {
     try {
-        const { supabase } = await import("../lib/supabaseAuth");
-        const { data } = await supabase.auth.getSession();
-        return data.session?.access_token ?? null;
+        const { getAccessToken } = await import("../lib/auth");
+        return await getAccessToken();
     } catch {
         return null;
     }
@@ -103,7 +101,8 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     { name: "Auth: Me", group: "Auth", path: "/auth/me" },
     { name: "Auth: Editar Perfil (Prueba)", group: "Auth", path: "/auth/me", method: "PATCH", expectedStatus: [200, 400] },
     { name: "Auth: Registrar (Prueba)", group: "Auth", path: "/auth/register", method: "POST", expectedStatus: [400] },
-    { name: "Auth: Sync (Prueba)", group: "Auth", path: "/auth/sync", method: "POST", expectedStatus: [400] },
+    { name: "Auth: Login (Prueba)", group: "Auth", path: "/auth/login", method: "POST", expectedStatus: [400, 401] },
+    { name: "Auth: Refresh (Prueba)", group: "Auth", path: "/auth/refresh", method: "POST", expectedStatus: [400, 401] },
     { name: "Auth: Logout", group: "Auth", path: "/auth/logout", method: "POST" },
 
     // ─── Documentos (documents.routes.ts) ────────────────────────────────
@@ -513,20 +512,15 @@ const SupabaseCheck: React.FC = () => {
         (async () => {
             const start = performance.now();
             try {
-                const { supabase } = await import("../lib/supabaseAuth");
-                const { data, error } = await supabase.auth.getSession();
+                const { getSession } = await import("../lib/auth");
+                const { session, user } = await getSession();
                 setMs(Math.round(performance.now() - start));
-                if (error) {
-                    setStatus("fail");
-                    setDetail(error.message);
-                } else {
-                    setStatus("ok");
-                    setDetail(
-                        data.session
-                            ? `Sesión activa — ${data.session.user.email}`
-                            : "Sin sesión activa (no autenticado)"
-                    );
-                }
+                setStatus("ok");
+                setDetail(
+                    session
+                        ? `Sesión activa — ${user?.email ?? ''}`
+                        : "Sin sesión activa (no autenticado)"
+                );
             } catch (err: any) {
                 setMs(Math.round(performance.now() - start));
                 setStatus("fail");
@@ -547,8 +541,8 @@ const SupabaseCheck: React.FC = () => {
                 )}
             </div>
             <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-slate-800 dark:text-slate-200">Supabase Auth Session</p>
-                <p className="text-xs text-slate-400 font-mono">supabase.auth.getSession()</p>
+                <p className="font-semibold text-sm text-slate-800 dark:text-slate-200">Auth Session</p>
+                <p className="text-xs text-slate-400 font-mono">auth.getSession()</p>
             </div>
             <div className="text-right shrink-0">
                 {ms > 0 && <p className="text-xs font-bold text-slate-400">{ms}ms</p>}

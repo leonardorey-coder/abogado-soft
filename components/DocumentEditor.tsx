@@ -338,9 +338,8 @@ const PdfIframeThumbnail: React.FC<{ documentId: string; pdfId: string }> = ({ d
     let url: string | null = null;
     (async () => {
       try {
-        const { supabase } = await import('../lib/supabaseAuth');
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token ?? null;
+        const { getAccessToken } = await import('../lib/auth');
+        const token = await getAccessToken();
         const apiUrl = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
         const res = await fetch(`${apiUrl}/documents/${documentId}/pdfs/${pdfId}/file`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -973,9 +972,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     const requestId = ++versionLoadRequestRef.current;
     try {
       setLoadingBlob(true);
-      const { supabase } = await import('../lib/supabaseAuth');
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
+      const { getAccessToken } = await import('../lib/auth');
+      const token = await getAccessToken();
 
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1023,9 +1021,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     if (isPdfDoc || isImageDoc) {
       (async () => {
         try {
-          const { supabase } = await import('../lib/supabaseAuth');
-          const session = (await supabase.auth.getSession()).data.session;
-          const token = session?.access_token;
+          const { getAccessToken } = await import('../lib/auth');
+          const token = await getAccessToken();
           const res = await fetch(getDocumentFileUrl(doc.id), {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
           });
@@ -1043,10 +1040,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         }
       })();
     } else {
-      import('../lib/supabaseAuth').then(({ supabase }) => {
-        supabase.auth.getSession().then(({ data }) => {
+      import('../lib/auth').then(({ getAccessToken }) => {
+        getAccessToken().then((token) => {
           if (cancelled) return;
-          const token = data.session?.access_token;
           const url = getDocumentFileUrl(doc.id);
           setIframeUrl(token ? `${url}?token=${token}` : url);
         });
@@ -1297,9 +1293,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     setSharingPdfId(pdf.id);
     try {
       // 1. Fetch the PDF blob with auth
-      const { supabase: sb } = await import('../lib/supabaseAuth');
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token ?? null;
+      const { getAccessToken } = await import('../lib/auth');
+      const token = await getAccessToken();
       const pdfUrl = getDocumentPdfFileUrl(documentId, pdf.id);
       const res = await fetch(pdfUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

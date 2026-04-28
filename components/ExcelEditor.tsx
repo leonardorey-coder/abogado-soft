@@ -197,7 +197,7 @@ export const ExcelEditor: React.FC = () => {
       const vB = getVNum(selectedVersions[1]);
       if (vA && vB) {
         const res = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api'}/convenios/${convenioId}/diff?v1=${Math.min(vA, vB)}&v2=${Math.max(vA, vB)}`, {
-          headers: { Authorization: `Bearer ${(await (await import('../lib/supabaseAuth')).supabase.auth.getSession()).data.session?.access_token || ''}` },
+          headers: { Authorization: `Bearer ${(await (await import('../lib/auth')).getAccessToken()) || ''}` },
         });
         if (res.ok) setDiffData(await res.json());
       }
