@@ -96,7 +96,7 @@ export const UserProfilePage: React.FC = () => {
   const isAdmin = (currentUser as any)?.role === "admin";
   const isSelf = currentUser?.id === id;
 
-  const token = session?.access_token ?? "";
+  const token = session?.accessToken ?? "";
   const authHeader = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   const [user, setUser] = useState<UserProfile | null>(null);

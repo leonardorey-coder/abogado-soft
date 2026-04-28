@@ -85,7 +85,7 @@ export const TeamPage: React.FC = () => {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const token = session?.access_token ?? "";
+  const token = session?.accessToken ?? "";
 
   const authHeader = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
