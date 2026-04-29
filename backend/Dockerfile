@@ -3,10 +3,11 @@
 # Multi-stage: deps → build → runner
 # ==============================================================================
 
-FROM oven/bun:1-alpine AS deps
+# Usar etiqueta cercana al Bun del lockfile/ci (evita fallos en --frozen-lockfile por cambio menor de semver en :1).
+FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile --production=false
+RUN bun install --frozen-lockfile
 
 # ─── Build ────────────────────────────────────────────────────────────────────
 FROM deps AS build
@@ -17,7 +18,7 @@ RUN bunx prisma generate
 RUN bun build src/server.ts --outdir dist --target bun --minify
 
 # ─── Runner ───────────────────────────────────────────────────────────────────
-FROM oven/bun:1-alpine AS runner
+FROM oven/bun:1.3-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 

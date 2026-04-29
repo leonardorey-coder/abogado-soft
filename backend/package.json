@@ -51,6 +51,7 @@
     "meilisearch": "^0.56.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
     "pdf-parse": "^2.4.5",
     "pg": "^8.18.0",
     "puppeteer": "^24.40.0",
