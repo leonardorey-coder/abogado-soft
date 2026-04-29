@@ -87,8 +87,7 @@ services:
       retries: 3
 
   # ─── Meilisearch ─────────────────────────────────────────────────────────────
-  # Puerto 7700 NO expuesto al host — solo accesible dentro de la red Docker.
-  # El backend lo alcanza en http://meilisearch:7700 (MEILISEARCH_HOST en .env.prod).
+  # Expuesto en localhost (7700) para healthchecks/debug; el backend usa http://meilisearch:7700.
   #
   # Para deshabilitar Meilisearch y usar el buscador interno (Prisma/PostgreSQL):
   #   1. Comentar o eliminar este servicio y el depends_on en `backend`.
@@ -109,10 +108,11 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:7700/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
 
 networks:
   app_network:
