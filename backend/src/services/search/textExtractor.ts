@@ -6,9 +6,18 @@
 import fs from 'fs';
 import path from 'path';
 import mammoth from 'mammoth';
-import * as pdfParseModule from 'pdf-parse';
 
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
+async function getPdfParse() {
+  if (!pdfParseLoader) {
+    pdfParseLoader = (async () => {
+      const mod: any = await import('pdf-parse');
+      const fn = mod.default ?? mod;
+      return fn as (data: Buffer) => Promise<any>;
+    })();
+  }
+  return pdfParseLoader;
+}
 
 /** Tamaño máximo del textContent indexado: 500 KB */
 const MAX_TEXT_BYTES = 500 * 1024;
@@ -43,6 +52,7 @@ export async function extractTextFromFile(localPath: string | null | undefined):
       text = result.value ?? '';
     } else if (ext === '.pdf') {
       const buffer = fs.readFileSync(resolvedPath);
+      const pdfParse = await getPdfParse();
       const data = await pdfParse(buffer);
       text = data.text ?? '';
     } else if (ext === '.txt' || ext === '.rtf') {
@@ -83,6 +93,7 @@ export async function extractHtmlFromBuffer(buffer: Buffer, ext: string): Promis
       return result.value ?? '';
     }
     if (e === 'pdf') {
+      const pdfParse = await getPdfParse();
       const data = await pdfParse(buffer);
       const paragraphs = (data.text ?? '')
         .split('\n')

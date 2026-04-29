@@ -14,11 +14,21 @@ import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js
 import { extractTextFromFile } from '../services/search/textExtractor.js';
 
 import * as Diff from 'diff';
-import * as pdfParseModule from 'pdf-parse';
 import * as XLSX from 'xlsx';
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { getStorageProvider, docKey, versionKey, pdfKey, downloadDocumentBuffer } from '../lib/storage/index.js';
 import { hasRecentDocumentViewedLog } from '../lib/activityViewLog.js';
+
+let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
+async function getPdfParse() {
+  if (!pdfParseLoader) {
+    pdfParseLoader = (async () => {
+      const mod: any = await import('pdf-parse');
+      const fn = mod.default ?? mod;
+      return fn as (data: Buffer) => Promise<any>;
+    })();
+  }
+  return pdfParseLoader;
+}
 
 
 // ─── Helpers de extracción de texto desde Buffer (sin disco) ───────────────────
@@ -60,6 +70,7 @@ async function extractHtmlFromBuffer(buf: Buffer, ext: string): Promise<string> 
   }
   if (normalExt === '.pdf') {
     try {
+      const pdfParse = await getPdfParse();
       const data = await pdfParse(buf);
       const raw = data.text || '';
       return raw.split(/\n\n+/).map((p: string) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');

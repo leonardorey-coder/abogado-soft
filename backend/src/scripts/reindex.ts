@@ -43,11 +43,21 @@ import prisma from '../lib/prisma.js';
 import { getSearchService } from '../services/search/SearchServiceFactory.js';
 import { downloadFile, verifyCredentials } from '../lib/googleDrive.js';
 import mammoth from 'mammoth';
-import * as pdfParseModule from 'pdf-parse';
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import type { SearchableDocument } from '../services/search/ISearchProvider.js';
 
 const BATCH_SIZE = 100;
+
+let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
+async function getPdfParse() {
+  if (!pdfParseLoader) {
+    pdfParseLoader = (async () => {
+      const mod: any = await import('pdf-parse');
+      const fn = mod.default ?? mod;
+      return fn as (data: Buffer) => Promise<any>;
+    })();
+  }
+  return pdfParseLoader;
+}
 
 function formatMs(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
@@ -74,6 +84,7 @@ async function extractTextForDoc(doc: {
         const result = await mammoth.extractRawText({ buffer });
         text = result.value ?? '';
       } else if (ext === 'pdf') {
+        const pdfParse = await getPdfParse();
         const data = await pdfParse(buffer);
         text = data.text ?? '';
       } else if (ext === 'txt' || ext === 'rtf') {
@@ -96,6 +107,7 @@ async function extractTextForDoc(doc: {
           const result = await mammoth.extractRawText({ buffer });
           text = result.value ?? '';
         } else if (ext === 'pdf') {
+          const pdfParse = await getPdfParse();
           const data = await pdfParse(buffer);
           text = data.text ?? '';
         } else if (ext === 'txt' || ext === 'rtf') {
