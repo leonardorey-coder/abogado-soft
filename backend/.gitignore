@@ -22,8 +22,9 @@ Thumbs.db
 # Logs
 *.log
 
-# Storage local
-storage/
+# Storage local (documentos en runtime). Importante NO ignorar código en src/lib/storage/.
+/storage/
+/local-storage/
 
 # Google Service Account credentials
 *.json
