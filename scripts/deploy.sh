@@ -10,7 +10,7 @@
 # Dry-run (simula sin ejecutar nada):
 #   REPO_URL=... bash scripts/deploy.sh --dry
 #
-# Con credenciales externas opcionales:
+# Producción (este script): almacenamiento SOLO vía Cloudflare R2 (no "local" en el servidor).
 #   REPO_URL=... \
 #   R2_ACCOUNT_ID=xxx R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=xxx R2_BUCKET_NAME=xxx \
 #   VITE_LIVEBLOCKS_PUBLIC_KEY=pk_prod_xxx \
@@ -34,7 +34,7 @@ APP_DIR="${APP_DIR:-/opt/abogadosoft}"
 BRANCH="${BRANCH:-main}"
 COMPOSE_FILE="$APP_DIR/infra/docker-compose.prod.yml"
 
-# Credenciales externas (opcionales, vacías si no se pasan)
+# Cloudflare R2 (requerido para este deploy)
 R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}"
 R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
 R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
@@ -73,6 +73,25 @@ env_get() {
 
 # Genera un secret seguro de 48 bytes en base64 URL-safe
 gen_secret() { openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'; }
+
+require_r2_creds() {
+  # Carga valores existentes desde .env.prod si ya existe (re-runs)
+  local env_file="$APP_DIR/.env.prod"
+  [ -z "${R2_ACCOUNT_ID:-}"        ] && R2_ACCOUNT_ID="$(env_get R2_ACCOUNT_ID "$env_file")"
+  [ -z "${R2_ACCESS_KEY_ID:-}"     ] && R2_ACCESS_KEY_ID="$(env_get R2_ACCESS_KEY_ID "$env_file")"
+  [ -z "${R2_SECRET_ACCESS_KEY:-}" ] && R2_SECRET_ACCESS_KEY="$(env_get R2_SECRET_ACCESS_KEY "$env_file")"
+  [ -z "${R2_BUCKET_NAME:-}"       ] && R2_BUCKET_NAME="$(env_get R2_BUCKET_NAME "$env_file")"
+
+  local missing=()
+  [ -z "$R2_ACCOUNT_ID" ]        && missing+=("R2_ACCOUNT_ID")
+  [ -z "$R2_ACCESS_KEY_ID" ]     && missing+=("R2_ACCESS_KEY_ID")
+  [ -z "$R2_SECRET_ACCESS_KEY" ] && missing+=("R2_SECRET_ACCESS_KEY")
+  [ -z "$R2_BUCKET_NAME" ]       && missing+=("R2_BUCKET_NAME")
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    die "Faltan credenciales R2 requeridas para producción: ${missing[*]}. Exporta esas variables antes de correr deploy.sh"
+  fi
+}
 
 # ─── MODO DRY-RUN ─────────────────────────────────────────────────────────────
 # Cada sección verifica el estado real del sistema y reporta lo que pasaría,
@@ -195,18 +214,9 @@ dry_check_env() {
     val "CORS_ORIGIN"        "http://${server_ip}"
     val "VITE_API_URL"       "http://${server_ip}/api"
 
-    # Credenciales externas
-    local storage_would_be="local"
-    if [ -n "$R2_ACCOUNT_ID" ]; then
-      storage_would_be="r2"
-      val "STORAGE_PROVIDER"    "r2 (detectado R2_ACCOUNT_ID)"
-      val "R2_ACCOUNT_ID"       "${R2_ACCOUNT_ID:0:8}…"
-      val "R2_BUCKET_NAME"      "${R2_BUCKET_NAME:-VACÍO}"
-    else
-      val "STORAGE_PROVIDER"    "local (sin R2 creds)"
-      dry_warn "R2_ACCOUNT_ID no pasado — se usará almacenamiento local en el servidor"
-      info "Para usar Cloudflare R2: pasa R2_ACCOUNT_ID=xxx ... al script"
-    fi
+    val "STORAGE_PROVIDER"    "r2 (requerido en deploy)"
+    val "R2_ACCOUNT_ID"       "${R2_ACCOUNT_ID:0:8}…"
+    val "R2_BUCKET_NAME"      "${R2_BUCKET_NAME:-VACÍO}"
 
     [ -z "$VITE_LIVEBLOCKS_PUBLIC_KEY" ] && \
       dry_warn "VITE_LIVEBLOCKS_PUBLIC_KEY no pasado — edición colaborativa desactivada"
@@ -262,16 +272,21 @@ dry_check_stack() {
   if [ -f "$COMPOSE_FILE" ]; then
     ok "docker-compose.prod.yml encontrado"
     if command -v docker &>/dev/null; then
-      # Validar sintaxis del compose (sin ejecutar)
-      local validate_out
-      if validate_out=$(docker compose -f "$COMPOSE_FILE" config --quiet 2>&1); then
-        ok "Sintaxis del compose válida"
+      local env_prod="$APP_DIR/.env.prod"
+      if [ ! -f "$env_prod" ]; then
+        info ".env.prod aún no existe en dry-run — compose se validará después de generate_env en deploy real"
+        cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod config --quiet"
       else
-        dry_error "Error de sintaxis en compose: $validate_out"
+        local validate_out
+        if validate_out=$(docker compose -f "$COMPOSE_FILE" --env-file "$env_prod" config --quiet 2>&1); then
+          ok "Sintaxis del compose válida"
+        else
+          dry_error "Error de sintaxis en compose: $validate_out"
+        fi
       fi
     fi
-    cmd "docker compose -f docker-compose.prod.yml build --no-cache backend"
-    cmd "docker compose -f docker-compose.prod.yml up --detach --remove-orphans"
+    cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod build --no-cache backend"
+    cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod up --detach --remove-orphans"
   else
     info "Compose no disponible aún (repo no clonado) — se validará post-clone"
   fi
@@ -327,6 +342,7 @@ run_dry() {
 
   dry_check_prereqs
   dry_check_repo
+  require_r2_creds
   dry_check_env
   dry_check_migrations
   dry_check_frontend
@@ -416,10 +432,7 @@ generate_env() {
   meili_key="$(env_get MEILISEARCH_KEY "$env_file")"
   [ -z "$meili_key" ] && meili_key="$(gen_secret | cut -c1-32)"
 
-  storage_provider="$(env_get STORAGE_PROVIDER "$env_file")"
-  if [ -z "$storage_provider" ]; then
-    [ -n "$R2_ACCOUNT_ID" ] && storage_provider="r2" || storage_provider="local"
-  fi
+  storage_provider="r2"
 
   [ -z "$R2_ACCOUNT_ID"          ] && R2_ACCOUNT_ID="$(env_get R2_ACCOUNT_ID "$env_file")"
   [ -z "$R2_ACCESS_KEY_ID"       ] && R2_ACCESS_KEY_ID="$(env_get R2_ACCESS_KEY_ID "$env_file")"
@@ -448,7 +461,6 @@ NODE_ENV="production"
 CORS_ORIGIN="http://${server_ip}"
 
 STORAGE_PROVIDER="${storage_provider}"
-STORAGE_PATH="./storage/documents"
 MAX_FILE_SIZE_MB=50
 
 R2_ACCOUNT_ID="${R2_ACCOUNT_ID}"
@@ -471,9 +483,6 @@ MEILISEARCH_KEY="${meili_key}"
 EOF
 
   ok ".env.prod generado → $env_file"
-  if [ "$storage_provider" = "r2" ] && [ -z "$R2_ACCOUNT_ID" ]; then
-    warn "STORAGE_PROVIDER=r2 pero R2_ACCOUNT_ID está vacío"
-  fi
 }
 
 load_env() {
@@ -540,8 +549,12 @@ build_frontend() {
 start_stack() {
   log "Construyendo y levantando contenedores..."
   cd "$APP_DIR/infra"
-  docker compose -f docker-compose.prod.yml build --no-cache backend
-  docker compose -f docker-compose.prod.yml up --detach --remove-orphans
+  docker compose -f docker-compose.prod.yml \
+    --env-file "$APP_DIR/.env.prod" \
+    build --no-cache backend
+  docker compose -f docker-compose.prod.yml \
+    --env-file "$APP_DIR/.env.prod" \
+    up --detach --remove-orphans
   ok "Stack levantado"
 }
 
@@ -566,7 +579,10 @@ healthcheck() {
   check "Meilisearch" "http://localhost:7700/health"
 
   echo ""
-  docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+  cd "$APP_DIR/infra"
+  docker compose -f docker-compose.prod.yml \
+    --env-file "$APP_DIR/.env.prod" \
+    ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
   if [ "$failed" -gt 0 ]; then
     warn "Algunos servicios aún pueden estar iniciando."
@@ -586,6 +602,7 @@ log "=== AbogadoSoft · Deploy en Ubuntu 24 LTS ==="
 install_docker
 install_bun
 setup_repo
+require_r2_creds
 generate_env
 load_env
 start_deps_for_host_migrations
