@@ -19,6 +19,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: abogadosoft
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -100,9 +102,11 @@ services:
     environment:
       MEILI_MASTER_KEY: ${MEILISEARCH_KEY}
       MEILI_ENV: production
+    ports:
+      - "127.0.0.1:7700:7700"
     volumes:
       - meilisearch_data:/meili_data
-    # Sin ports: → solo red interna Docker. No accesible desde fuera del servidor.
+    # Expuesto solo en localhost (healthcheck / debug). No queda abierto a la red.
     networks:
       - app_network
     healthcheck:

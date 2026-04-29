@@ -471,8 +471,9 @@ MEILISEARCH_KEY="${meili_key}"
 EOF
 
   ok ".env.prod generado → $env_file"
-  [ "$storage_provider" = "r2" ] && [ -z "$R2_ACCOUNT_ID" ] && \
+  if [ "$storage_provider" = "r2" ] && [ -z "$R2_ACCOUNT_ID" ]; then
     warn "STORAGE_PROVIDER=r2 pero R2_ACCOUNT_ID está vacío"
+  fi
 }
 
 load_env() {
@@ -487,12 +488,44 @@ load_env() {
   [ -n "${MEILISEARCH_KEY:-}"   ] || die "MEILISEARCH_KEY está vacío en .env.prod"
 }
 
+migrate_db_host_url() {
+  # Prisma ejecuta desde el host SSH: necesita llegar por localhost, no por el hostname `db` de Docker DNS.
+  local url="${DIRECT_URL:-$DATABASE_URL}"
+  printf '%s\n' "${url//@db/@127.0.0.1}"
+}
+
+start_deps_for_host_migrations() {
+  log "Levantando dependencias Docker para migraciones (db + meilisearch)..."
+  cd "$APP_DIR/infra"
+
+  docker compose -f docker-compose.prod.yml \
+    --env-file "$APP_DIR/.env.prod" \
+    up -d db meilisearch
+
+  ok "Esperando Postgres (localhost:5432)..."
+  local i=0
+  until docker exec abogadosoft_db pg_isready -U postgres -d abogadosoft >/dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -le 90 ] || die "Postgres no quedó listo tras ~90 intentos (~3m)"
+    sleep 2
+  done
+
+  ok "Postgres disponible para migraciones"
+}
+
 run_migrations() {
   log "Ejecutando migraciones Prisma..."
   cd "$APP_DIR/backend"
-  export DATABASE_URL="${DIRECT_URL:-$DATABASE_URL}"
+  # Prisma CLI y prisma/config viven en dependencias del backend.
+  # Instalarlas antes evita fallos en el primer deploy de servidor limpio.
+  bun install --frozen-lockfile
+
   bun run prisma:generate
-  bunx prisma migrate deploy
+
+  local migrate_url
+  migrate_url="$(migrate_db_host_url)"
+
+  DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma migrate deploy
   ok "Migraciones aplicadas"
 }
 
@@ -555,6 +588,7 @@ install_bun
 setup_repo
 generate_env
 load_env
+start_deps_for_host_migrations
 run_migrations
 build_frontend
 start_stack
