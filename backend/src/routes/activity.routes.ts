@@ -41,8 +41,11 @@ const activityQuerySchema = paginationQuery.extend({
 function buildWhereClause(query: any, user: any): any {
   const { userId, activity, entityType, entityId, category, from, to } = query;
   const where: any = {
-    // Aislamiento por despacho — SIEMPRE filtrar por firmId
-    firmId: user.firmId,
+    // Aislamiento por despacho: ver logs del despacho O logs sin firmId del propio usuario
+    OR: [
+      { firmId: user.firmId },
+      { firmId: null, userId: user.id },
+    ],
   };
 
   // Asistentes solo ven su propia actividad

@@ -27,10 +27,17 @@ calendarNotesRouter.use(authenticate);
 // Devuelve las notas del usuario autenticado en el rango de fechas dado.
 calendarNotesRouter.get('/', async (req, res, next) => {
   try {
-    const userId = (req as any).user?.id as string;
+    const user = (req as any).user as { id: string; firmId?: string | null };
     const { from, to } = req.query as { from?: string; to?: string };
 
-    const where: any = { userId };
+    // Si el usuario tiene despacho, mostrar notas de todo el despacho (compartidas).
+    // Si no, mostrar solo las propias.
+    const where: any = user.firmId
+      ? {
+          user: { firmId: user.firmId },
+        }
+      : { userId: user.id };
+
     if (from || to) {
       where.dateKey = {};
       if (from) where.dateKey.gte = new Date(from);
@@ -50,6 +57,7 @@ calendarNotesRouter.get('/', async (req, res, next) => {
     next(err);
   }
 });
+
 
 // ── PUT /api/calendar-notes/:dateKey ──────────────────────────────────────
 // Upsert: crea o actualiza la nota del usuario para ese día.
@@ -86,6 +94,7 @@ calendarNotesRouter.put('/:dateKey', async (req, res, next) => {
     if (!existingNote) {
       await prisma.activityLog.create({
         data: {
+          firmId: (req as any).user?.firmId ?? null,
           userId,
           activity: 'CALENDAR_NOTE_CREATED',
           entityType: 'calendar_note',
@@ -101,6 +110,7 @@ calendarNotesRouter.put('/:dateKey', async (req, res, next) => {
     } else if (existingNote.content !== trimmedContent) {
       await prisma.activityLog.create({
         data: {
+          firmId: (req as any).user?.firmId ?? null,
           userId,
           activity: 'CALENDAR_NOTE_UPDATED',
           entityType: 'calendar_note',
@@ -137,26 +147,30 @@ calendarNotesRouter.delete('/:dateKey', async (req, res, next) => {
       where: { dateKey_userId: { dateKey: date, userId } },
     });
 
-    await prisma.calendarNote.deleteMany({
-      where: { dateKey: date, userId },
+    // Solo el autor puede eliminar su nota
+    if (!existingNote) {
+      return res.status(404).json({ error: 'Nota no encontrada.' });
+    }
+
+    await prisma.calendarNote.delete({
+      where: { dateKey_userId: { dateKey: date, userId } },
     });
 
-    if (existingNote) {
-      await prisma.activityLog.create({
-        data: {
-          userId,
-          activity: 'CALENDAR_NOTE_DELETED',
-          entityType: 'calendar_note',
-          entityId: existingNote.id,
-          entityName: `Nota rápida (${formatDateKeyLabel(date)})`,
-          description: `Eliminó una nota rápida de ${formatDateKeyLabel(date)}`,
-          metadata: {
-            dateKey: existingNote.dateKey.toISOString().slice(0, 10),
-            noteContent: existingNote.content,
-          },
+    await prisma.activityLog.create({
+      data: {
+        firmId: (req as any).user?.firmId ?? null,
+        userId,
+        activity: 'CALENDAR_NOTE_DELETED',
+        entityType: 'calendar_note',
+        entityId: existingNote.id,
+        entityName: `Nota rápida (${formatDateKeyLabel(date)})`,
+        description: `Eliminó una nota rápida de ${formatDateKeyLabel(date)}`,
+        metadata: {
+          dateKey: existingNote.dateKey.toISOString().slice(0, 10),
+          noteContent: existingNote.content,
         },
-      });
-    }
+      },
+    });
 
     res.status(204).send();
   } catch (err) {

@@ -21,6 +21,7 @@ import { Document } from "../types";
 import { ApiDocumentAssignment, ApiCalendarNote, calendarNotesApi } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { MiniCalendar, type PendingCalendarItem } from "./MiniCalendar";
+import { useAuth } from "../contexts/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ export function DashboardCalendar({
   assignments,
 }: DashboardCalendarProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [popup, setPopup] = useState<DayPopupState | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -456,36 +458,47 @@ export function DashboardCalendar({
               {popup.view === "note" && (
                 <div className="p-4 space-y-3">
                   {/* Nota existente — clic para editar inline */}
-                  {existingNote && !isEditingNote && (
-                    <div
-                      onClick={() => {
-                        setNoteText(existingNote.content);
-                        setIsEditingNote(true);
-                      }}
-                      className="group cursor-text bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 hover:border-violet-300 dark:hover:border-violet-600 rounded-xl px-3 py-2.5 transition-colors"
-                      title="Clic para editar"
-                    >
-                      <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-                        {existingNote.content}
-                      </p>
-                      <div className="flex items-center justify-between mt-2">
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                          <span className="font-medium text-violet-600 dark:text-violet-400">
-                            {existingNote.user?.name ?? "Tú"}
-                          </span>{" "}
-                          · {timeAgo(existingNote.updatedAt)}
+                  {existingNote && !isEditingNote && (() => {
+                    const isOwner = existingNote.user?.id === user?.id;
+                    return (
+                      <div
+                        onClick={() => {
+                          if (!isOwner) return; // solo el autor puede editar
+                          setNoteText(existingNote.content);
+                          setIsEditingNote(true);
+                        }}
+                        className={`group bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 rounded-xl px-3 py-2.5 transition-colors ${
+                          isOwner
+                            ? "cursor-text hover:border-violet-300 dark:hover:border-violet-600"
+                            : "cursor-default"
+                        }`}
+                        title={isOwner ? "Clic para editar" : undefined}
+                      >
+                        <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                          {existingNote.content}
                         </p>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteNote(); }}
-                          disabled={isSavingNote}
-                          className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-400 transition-colors"
-                          title="Eliminar nota"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                            <span className="font-medium text-violet-600 dark:text-violet-400">
+                              {existingNote.user?.name ?? "Tú"}
+                            </span>{" "}
+                            · {timeAgo(existingNote.updatedAt)}
+                          </p>
+                          {isOwner && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteNote(); }}
+                              disabled={isSavingNote}
+                              className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-400 transition-colors"
+                              title="Eliminar nota"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
+
 
                   {/* Campo de edición inline — solo visible cuando isEditingNote */}
                   {isEditingNote && (

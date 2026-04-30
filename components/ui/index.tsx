@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 import { X, ChevronLeft, ChevronRight, MoreVertical, Loader2, AlertCircle, FolderOpen, CheckCircle2 } from "lucide-react";
 
@@ -206,7 +207,7 @@ interface ActionMenuProps {
 
 export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
   const [open, setOpen] = useState(false);
-  const [placeAbove, setPlaceAbove] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -216,51 +217,61 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
     setOpen(false);
   }, [onClose]);
 
+  const computePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const menuH = menu?.offsetHeight ?? 200;
+    const margin = 6;
+    const vv = window.visualViewport;
+    const viewTop = vv?.offsetTop ?? 0;
+    const viewBottom = viewTop + (vv?.height ?? window.innerHeight);
+    const viewRight = vv?.width ?? window.innerWidth;
+
+    const spaceBelow = viewBottom - rect.bottom - margin;
+    const spaceAbove = rect.top - viewTop - margin;
+    const placeAbove = menuH > spaceBelow && (menuH <= spaceAbove || spaceAbove > spaceBelow);
+
+    const top = placeAbove ? rect.top - menuH - margin : rect.bottom + margin;
+    const right = viewRight - rect.right;
+
+    setMenuStyle({
+      position: "fixed",
+      top: Math.max(viewTop + margin, top),
+      right: Math.max(margin, right),
+      width: 192,
+      zIndex: 9999,
+    });
+  }, []);
+
   useLayoutEffect(() => {
     if (!open) return;
-    const menu = menuRef.current;
-    const trigger = triggerRef.current;
-    if (!menu || !trigger) return;
-
-    const margin = 6;
-    const compute = () => {
-      const m = menuRef.current;
-      const t = triggerRef.current;
-      if (!m || !t) return;
-      const menuH = m.offsetHeight;
-      const rect = t.getBoundingClientRect();
-      const vv = window.visualViewport;
-      const viewTop = vv?.offsetTop ?? 0;
-      const viewBottom = viewTop + (vv?.height ?? window.innerHeight);
-      const spaceBelow = viewBottom - rect.bottom - margin;
-      const spaceAbove = rect.top - viewTop - margin;
-      let above: boolean;
-      if (menuH <= spaceBelow) above = false;
-      else if (menuH <= spaceAbove) above = true;
-      else above = spaceAbove >= spaceBelow;
-      setPlaceAbove(above);
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(menu);
-    window.addEventListener("resize", compute);
-    window.addEventListener("scroll", compute, true);
+    // Initial compute (menu may not be mounted yet, so double-raf)
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(computePosition);
+    });
+    const ro = new ResizeObserver(computePosition);
+    if (menuRef.current) ro.observe(menuRef.current);
+    window.addEventListener("resize", computePosition);
+    window.addEventListener("scroll", computePosition, true);
     const vv = window.visualViewport;
-    vv?.addEventListener("resize", compute);
-    vv?.addEventListener("scroll", compute);
+    vv?.addEventListener("resize", computePosition);
+    vv?.addEventListener("scroll", computePosition);
     return () => {
+      cancelAnimationFrame(raf);
       ro.disconnect();
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("scroll", compute, true);
-      vv?.removeEventListener("resize", compute);
-      vv?.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", computePosition);
+      window.removeEventListener("scroll", computePosition, true);
+      vv?.removeEventListener("resize", computePosition);
+      vv?.removeEventListener("scroll", computePosition);
     };
-  }, [open]);
+  }, [open, computePosition]);
 
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) closeMenu(); };
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && menuRef.current && !menuRef.current.contains(e.target as Node)) closeMenu(); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open, closeMenu]);
@@ -276,14 +287,11 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
       >
         <MoreVertical className="w-5 h-5 sm:w-4 sm:h-4" />
       </button>
-      {open && (
+      {open && createPortal(
         <div
           ref={menuRef}
-          className={`absolute right-0 z-30 min-w-[180px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 animate-in fade-in ${
-            placeAbove
-              ? "bottom-full mb-1 slide-in-from-bottom-1"
-              : "top-full mt-1 slide-in-from-top-1"
-          }`}
+          style={menuStyle}
+          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 animate-in fade-in slide-in-from-top-1"
         >
           {items.map((item, i) => (
             <React.Fragment key={i}>
@@ -307,7 +315,8 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ items, onClose }) => {
               </button>
             </React.Fragment>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

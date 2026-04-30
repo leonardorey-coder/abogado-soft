@@ -342,8 +342,10 @@ documentsRouter.get(
 
       const shareLogs = await prisma.activityLog.findMany({
         where: {
-          firmId: req.user!.firmId!,
-          userId: { in: userIds },
+          OR: [
+            { firmId: req.user!.firmId },
+            { firmId: null, userId: { in: userIds } },
+          ],
           activity: 'DOCUMENT_SHARED',
           entityId: { not: null },
         },
