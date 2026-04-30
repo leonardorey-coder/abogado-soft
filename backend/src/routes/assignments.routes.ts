@@ -45,7 +45,7 @@ assignmentsRouter.get(
 
       const where: any = { assignedTo: req.user!.id };
       if (pendingWork) {
-        where.status = { not: 'completado' };
+        where.status = { notIn: ['completado', 'activo'] };
       } else if (status) {
         where.status = status;
       }
@@ -79,11 +79,15 @@ assignmentsRouter.get(
   validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, status } = req.query as any;
+      const { page, limit, sortOrder, status, pendingWork } = req.query as any;
       const skip = (page - 1) * limit;
 
       const where: any = { assignedBy: req.user!.id };
-      if (status) where.status = status;
+      if (pendingWork) {
+        where.status = { notIn: ['completado', 'activo'] };
+      } else if (status) {
+        where.status = status;
+      }
 
       const [assignments, total] = await Promise.all([
         prisma.documentAssignment.findMany({
@@ -97,7 +101,7 @@ assignmentsRouter.get(
             assigner: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         }),
-        prisma.documentAssignment.count({ where: { assignedBy: req.user!.id } }),
+        prisma.documentAssignment.count({ where }),
       ]);
 
       res.json({ data: assignments, total, page, limit });
@@ -162,6 +166,7 @@ assignmentsRouter.post(
 
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'DOCUMENT_ASSIGNED',
             entityType: 'document',
@@ -172,6 +177,11 @@ assignmentsRouter.post(
               assignmentId: reassigned.id,
               reassigned: true,
               previousStatus: existing.status,
+              assignedById: req.user!.id,
+              assignedToId: data.assignedTo,
+              assignedToName: reassigned.assignee.name,
+              notes: data.notes ?? null,
+              dueDate: dueDate?.toISOString() ?? null,
             },
           },
         });
@@ -213,12 +223,24 @@ assignmentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_ASSIGNED',
           entityType: 'document',
           entityId: data.documentId,
           entityName: assignment.document.name,
           description: `Documento asignado a ${assignment.assignee.name}`,
+          metadata: {
+            assignmentId: assignment.id,
+            field: 'assignmentStatus',
+            from: null,
+            to: 'pendiente',
+            assignedById: req.user!.id,
+            assignedToId: data.assignedTo,
+            assignedToName: assignment.assignee.name,
+            notes: data.notes ?? null,
+            dueDate: dueDate?.toISOString() ?? null,
+          },
         },
       });
 
@@ -269,8 +291,13 @@ assignmentsRouter.patch(
       }
 
       const updateData: any = { ...data };
+      const isTerminalResolution = data.status === 'completado' || data.status === 'rechazado';
+      const isResolvedLate =
+        isTerminalResolution &&
+        !!existing.dueDate &&
+        new Date(existing.dueDate).getTime() < Date.now();
 
-      if (data.status === 'completado' || data.status === 'rechazado') {
+      if (isTerminalResolution) {
         updateData.completedAt = new Date();
       }
 
@@ -284,7 +311,7 @@ assignmentsRouter.patch(
       });
 
       // ── Notificar al asignador en estados terminales ──
-      if (data.status === 'completado' || data.status === 'rechazado') {
+      if (isTerminalResolution) {
         const statusLabel = data.status === 'completado' ? 'completada' : 'rechazada';
         prisma.notification.create({
           data: {
@@ -299,20 +326,37 @@ assignmentsRouter.patch(
       }
 
       if (data.status && data.status !== existing.status) {
-        const isTerminal = data.status === 'completado' || data.status === 'rechazado';
+        const LABELS: Record<string, string> = {
+          visto: 'Visto',
+          editado: 'Editado',
+          completado: 'Completado',
+          rechazado: 'Rechazado',
+          revisado: 'Revisado',
+          pendiente: 'Pendiente',
+        };
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
-            activity: isTerminal ? 'COLLABORATION_ENDED' : 'COLLABORATION_STARTED',
+            activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
             entityType: 'document',
             entityId: existing.documentId,
             entityName: existing.document.name,
-            description: `Estado de asignación: ${ASSIGNMENT_STATUS_LABEL[existing.status] ?? existing.status} → ${ASSIGNMENT_STATUS_LABEL[data.status] ?? data.status}`,
+            description: `Cambió estado de asignación a "${LABELS[data.status] ?? data.status}"${isResolvedLate ? " (tardío)" : ""}`,
             metadata: {
               assignmentId: assignment.id,
+              field: 'assignmentStatus',
+              from: existing.status,
+              to: data.status,
               fromStatus: existing.status,
               toStatus: data.status,
-              automatic: false,
+              assignedById: existing.assignedBy,
+              assignedToId: existing.assignedTo,
+              dueDate: existing.dueDate?.toISOString() ?? null,
+              resolvedLate: isResolvedLate,
+              resolutionTiming: isTerminalResolution
+                ? (isResolvedLate ? 'late' : 'on_time')
+                : null,
             },
           },
         });
@@ -337,7 +381,11 @@ assignmentsRouter.delete(
       const assignmentId = req.params.id as string;
 
       const assignment = await prisma.documentAssignment.findUnique({
-        where: { id: assignmentId }
+        where: { id: assignmentId },
+        include: {
+          document: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true } },
+        },
       });
 
       if (!assignment) {
@@ -350,6 +398,28 @@ assignmentsRouter.delete(
 
       await prisma.documentAssignment.delete({
         where: { id: assignmentId as string }
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          firmId: req.user!.firmId ?? null,
+          userId: req.user!.id,
+          activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
+          entityType: 'document',
+          entityId: assignment.documentId,
+          entityName: assignment.document.name,
+          description: `Revocó asignación de ${assignment.assignee.name}`,
+          metadata: {
+            assignmentId: assignment.id,
+            field: 'assignmentStatus',
+            from: assignment.status,
+            to: 'revocado',
+            fromStatus: assignment.status,
+            toStatus: 'revocado',
+            assignedById: assignment.assignedBy,
+            assignedToId: assignment.assignedTo,
+          },
+        },
       });
 
       res.json({ message: 'Asignación eliminada correctamente' });
