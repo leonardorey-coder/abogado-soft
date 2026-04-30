@@ -9,7 +9,7 @@ activityRouter.use(authenticate);
 
 // ─── Category → filter mapping ─────────────────────────────────────────────
 const CATEGORY_FILTERS: Record<string, any> = {
-  documents: { entityType: { in: ['document'] } },
+  documents: { entityType: { in: ['document', 'calendar_note'] } },
   convenios: { entityType: { in: ['convenio'] } },
   team: {
     OR: [

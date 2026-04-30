@@ -48,6 +48,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
   CASE_DOCUMENT_LINKED: "Vinculó documento a expediente",
   CASE_DOCUMENT_UNLINKED: "Desvinculó documento de expediente",
   DOCUMENT_VIEWED: "Vio documento",
+  CALENDAR_NOTE_CREATED: "Creó nota rápida",
+  CALENDAR_NOTE_UPDATED: "Actualizó nota rápida",
+  CALENDAR_NOTE_DELETED: "Eliminó nota rápida",
 };
 
 type CategoryInfo = {
@@ -94,6 +97,12 @@ const CATEGORY_BY_PAGE: Record<string, CategoryInfo> = {
     colorClass: "text-slate-700 dark:text-slate-300",
     badgeBg: "bg-slate-100 dark:bg-slate-800",
   },
+  calendar: {
+    label: "Calendario",
+    icon: "calendar_month",
+    colorClass: "text-violet-700 dark:text-violet-400",
+    badgeBg: "bg-violet-50 dark:bg-violet-900/30",
+  },
 };
 
 function resolveCategory(activity: string): CategoryInfo {
@@ -107,6 +116,7 @@ function resolveCategory(activity: string): CategoryInfo {
     return CATEGORY_BY_PAGE.documents;
   }
   if (activity.startsWith("DOCUMENT_")) return CATEGORY_BY_PAGE.documents;
+  if (activity.startsWith("CALENDAR_NOTE_")) return CATEGORY_BY_PAGE.calendar;
   if (activity.startsWith("CONVENIO_")) return CATEGORY_BY_PAGE.convenios;
   if (activity.startsWith("GROUP_") || activity === "USER_REGISTERED" || activity === "USER_UPDATED") {
     return CATEGORY_BY_PAGE.team;
@@ -127,6 +137,9 @@ function getActivityIcon(activity: string): { icon: string; iconBg: string; icon
   }
   if (activity === "DOCUMENT_WORKFLOW_STATUS_CHANGED") {
     return { icon: "account_tree", iconBg: "bg-violet-50 dark:bg-violet-900/30", iconColor: "text-violet-600 dark:text-violet-400" };
+  }
+  if (activity.startsWith("CALENDAR_NOTE_")) {
+    return { icon: "sticky_note_2", iconBg: "bg-violet-50 dark:bg-violet-900/30", iconColor: "text-violet-600 dark:text-violet-400" };
   }
   const value = activity.toLowerCase();
   if (value.includes("download") || value.includes("descarg")) return { icon: "download", iconBg: "bg-blue-50 dark:bg-blue-900/30", iconColor: "text-primary" };
@@ -256,13 +269,30 @@ export const BitacoraEntryItem: React.FC<BitacoraEntryItemProps> = ({
     field?: string;
     from?: string | null;
     to?: string | null;
+    noteContent?: string;
   };
+  const isCalendarNoteActivity = entry.activity.startsWith("CALENDAR_NOTE_");
 
   const nameClass =
     "block w-full min-w-0 max-w-full text-left break-words [overflow-wrap:anywhere] line-clamp-2 sm:line-clamp-3";
   const textSize = compact ? "text-xs" : "text-sm";
 
   const renderMainLine = () => {
+    if (isCalendarNoteActivity) {
+      const noteContent = (meta.noteContent ?? "").trim();
+      if (noteContent) {
+        return (
+          <>
+            {action} - <span className="italic text-[#616f89] dark:text-[#a0aec0]">"{noteContent}"</span>
+          </>
+        );
+      }
+      return (
+        <>
+          {action} - <span className="italic text-[#94a3b8] dark:text-[#718096]">"(sin snapshot histórico)"</span>
+        </>
+      );
+    }
     if (entry.activity === "DOCUMENT_FILE_STATUS_CHANGED" && meta.fromStatus && meta.toStatus) {
       const v = isSelf ? "Cambiaste el estado" : "Cambió el estado";
       return <>{v}</>;
@@ -312,7 +342,7 @@ export const BitacoraEntryItem: React.FC<BitacoraEntryItemProps> = ({
         <span className="material-symbols-outlined text-[18px]">{icon}</span>
       </div>
       <div className="min-w-0 flex-1">
-        {entry.entityName ? (
+        {entry.entityName && !isCalendarNoteActivity ? (
           <>
             <p className={`${textSize} text-[#111318] dark:text-white leading-snug`}>
               <span className="font-bold">{actor}</span> {renderMainLine()}

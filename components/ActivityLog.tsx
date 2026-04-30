@@ -101,7 +101,15 @@ function getGroupLabel(dateStr: string): { label: string; groupDate: string } {
 }
 
 function toISO(dateStr: string, endOfDay = false): string {
-  return endOfDay ? `${dateStr}T23:59:59.999Z` : `${dateStr}T00:00:00.000Z`;
+  // Interpreta la fecha en zona local y luego la convierte a ISO (UTC)
+  // para evitar desfases al filtrar "Hoy" / "Personalizado".
+  const localDate = new Date(`${dateStr}T00:00:00`);
+  if (endOfDay) {
+    localDate.setHours(23, 59, 59, 999);
+  } else {
+    localDate.setHours(0, 0, 0, 0);
+  }
+  return localDate.toISOString();
 }
 
 function getDateRange(period: PeriodFilter, customFrom: string, customTo: string): { from?: string; to?: string } {
