@@ -1,14 +1,24 @@
 // ============================================================================
 // DashboardCalendar — Widget de calendario para el dashboard
 // Combina documentos (expirationDateRaw) + asignaciones (dueDate)
-// en un mapa de pendientes por fecha. Muestra popup al hacer click en un día.
+// en un mapa de pendientes por fecha. Muestra popup al hacer click en un día
+// con pendientes, y permite agregar/ver notas rápidas (hot notes) en cualquier día.
 // ============================================================================
 
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Table, X, ArrowRight, Calendar } from "lucide-react";
+import {
+  FileText,
+  Table,
+  X,
+  ArrowRight,
+  Calendar,
+  StickyNote,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { Document } from "../types";
-import { ApiDocumentAssignment } from "../lib/api";
+import { ApiDocumentAssignment, ApiCalendarNote, calendarNotesApi } from "../lib/api";
 import { getDocumentRoute } from "../lib/routes";
 import { MiniCalendar, type PendingCalendarItem } from "./MiniCalendar";
 
@@ -23,6 +33,7 @@ interface DayPopupState {
   dateKey: string; // "YYYY-MM-DD"
   items: PendingCalendarItem[];
   anchorRect: DOMRect;
+  view: "items" | "note"; // qué tab está activo
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -61,6 +72,29 @@ function formatDateKeyLabel(dateKey: string): string {
   });
 }
 
+/** Formatea una fecha ISO a tiempo relativo en español */
+function timeAgo(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "hace un momento";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `hace ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `hace ${hrs} h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `hace ${days} día${days !== 1 ? "s" : ""}`;
+  const weeks = Math.floor(days / 7);
+  return `hace ${weeks} semana${weeks !== 1 ? "s" : ""}`;
+}
+
+/** Primer y último día del mes actual para el fetch de notas */
+function monthRange(year: number, month: number): { from: string; to: string } {
+  const from = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const to = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { from, to };
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function DashboardCalendar({
@@ -68,9 +102,52 @@ export function DashboardCalendar({
   assignments,
 }: DashboardCalendarProps) {
   const navigate = useNavigate();
+
   const [popup, setPopup] = useState<DayPopupState | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Estado de notas ───────────────────────────────────────────────────────
+  const [noteText, setNoteText] = useState("");
+  const [existingNote, setExistingNote] = useState<ApiCalendarNote | null>(null);
+  const [notesByDate, setNotesByDate] = useState<Map<string, ApiCalendarNote>>(new Map());
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+
+  // ── Mes/año visible (sincronizado con MiniCalendar interno via lifting) ───
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  // ── Fetch de notas al cambiar mes ────────────────────────────────────────
+  const fetchNotes = useCallback(async (year: number, month: number) => {
+    const { from, to } = monthRange(year, month);
+    try {
+      const notes = await calendarNotesApi.list(from, to);
+      setNotesByDate((prev) => {
+        const next = new Map(prev);
+        for (const note of notes) {
+          const key = note.dateKey.slice(0, 10);
+          next.set(key, note);
+        }
+        return next;
+      });
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotes(viewYear, viewMonth);
+  }, [viewYear, viewMonth, fetchNotes]);
+
+  // ── Set de días con nota (para MiniCalendar) ──────────────────────────────
+  const notesDaySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const key of notesByDate.keys()) s.add(key);
+    return s;
+  }, [notesByDate]);
 
   // ── Construir mapa pendingByDate ──────────────────────────────────────────
 
@@ -87,7 +164,6 @@ export function DashboardCalendar({
     for (const doc of documents) {
       if (!doc.expirationDateRaw) continue;
       if (doc.fileStatus !== "PENDIENTE") continue;
-      // expirationDateRaw es ISO → "YYYY-MM-DD"
       const key = doc.expirationDateRaw.slice(0, 10);
       addToMap(key, {
         id: doc.id,
@@ -99,11 +175,10 @@ export function DashboardCalendar({
       });
     }
 
-    // 2. Asignaciones recibidas con dueDate — misma lógica que "Pendientes":
-    // isAssignmentOpen = s !== "completado" (incluye: pendiente, visto, editado, revisado, rechazado)
+    // 2. Asignaciones recibidas con dueDate
     for (const a of assignments) {
       if (!a.dueDate) continue;
-      if (a.status === "completado") continue; // única exclusión — idéntico a isAssignmentOpen()
+      if (a.status === "completado") continue;
       if (!a.document) continue;
       const key = a.dueDate.slice(0, 10);
       addToMap(key, {
@@ -135,17 +210,23 @@ export function DashboardCalendar({
   // ── Handler de click en día ───────────────────────────────────────────────
 
   const handleDayClick = (dateKey: string, items: PendingCalendarItem[]) => {
-    if (items.length === 0) return;
-
     // Buscar la celda del día para posicionar el popup
     const container = containerRef.current;
     const btn = container?.querySelector(`[data-date-key="${dateKey}"]`);
     const rect = btn?.getBoundingClientRect() ?? container?.getBoundingClientRect();
 
+    const note = notesByDate.get(dateKey) ?? null;
+    setExistingNote(note);
+    setNoteText(note?.content ?? "");
+    // Si hay nota existente → mostrar nota (no editar); si no hay → entrar directo en edición
+    setIsEditingNote(!note);
+
+    // Si el día tiene pendientes, mostrar primero la lista; si solo tiene nota, ir directo a note
     setPopup({
       dateKey,
       items,
       anchorRect: rect as DOMRect,
+      view: items.length > 0 ? "items" : "note",
     });
   };
 
@@ -157,6 +238,49 @@ export function DashboardCalendar({
     navigate(getDocumentRoute(item.documentId, item.docType ?? "DOCX"));
   };
 
+  // ── Guardar nota ──────────────────────────────────────────────────────────
+
+  const handleSaveNote = async () => {
+    if (!popup || !noteText.trim()) return;
+    setIsSavingNote(true);
+    try {
+      const saved = await calendarNotesApi.upsert(popup.dateKey, noteText.trim());
+      setExistingNote(saved);
+      setIsEditingNote(false); // colapsar al modo visualización
+      setNotesByDate((prev) => {
+        const next = new Map(prev);
+        next.set(popup.dateKey, saved);
+        return next;
+      });
+    } catch {
+      // ignoro — podría mostrar toast
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  // ── Eliminar nota ─────────────────────────────────────────────────────────
+
+  const handleDeleteNote = async () => {
+    if (!popup) return;
+    setIsSavingNote(true);
+    try {
+      await calendarNotesApi.delete(popup.dateKey);
+      setExistingNote(null);
+      setNoteText("");
+      setIsEditingNote(true); // tras borrar, entrar en edición para escribir una nueva
+      setNotesByDate((prev) => {
+        const next = new Map(prev);
+        next.delete(popup.dateKey);
+        return next;
+      });
+    } catch {
+      // ignoro
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   // ── Total pendientes ──────────────────────────────────────────────────────
 
   const totalPending = useMemo(() => {
@@ -166,6 +290,13 @@ export function DashboardCalendar({
     }
     return count;
   }, [pendingByDate]);
+
+  // Focus textarea al activar edición
+  useEffect(() => {
+    if (isEditingNote && popup?.view === "note") {
+      setTimeout(() => textareaRef.current?.focus(), 60);
+    }
+  }, [isEditingNote, popup?.view]);
 
   return (
     <div
@@ -193,26 +324,31 @@ export function DashboardCalendar({
       <MiniCalendar
         mode="display"
         pendingByDate={pendingByDate}
+        notesByDate={notesDaySet}
         onDayClick={handleDayClick}
+        onMonthChange={(year, month) => {
+          setViewYear(year);
+          setViewMonth(month);
+        }}
       />
 
       {/* ── Day Popup ── */}
       {popup && (
         <>
-          {/* Backdrop blur sutil */}
+          {/* Backdrop sutil */}
           <div className="fixed inset-0 z-40" aria-hidden="true" />
 
           <div
             ref={popupRef}
-            className="fixed z-50 w-72 calendar-day-popup"
+            className="fixed z-50 w-80 calendar-day-popup"
             style={{
               top: Math.min(
                 popup.anchorRect.bottom + 8,
-                window.innerHeight - 320,
+                window.innerHeight - 380,
               ),
               left: Math.min(
                 popup.anchorRect.left,
-                window.innerWidth - 296,
+                window.innerWidth - 328,
               ),
             }}
           >
@@ -220,64 +356,187 @@ export function DashboardCalendar({
               {/* Popup Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700/60">
                 <div>
-                  <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                    Pendientes
+                  <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                    {popup.view === "note" && (
+                      <StickyNote size={11} className="text-violet-500 dark:text-violet-400" />
+                    )}
+                    {popup.items.length > 0 && popup.view === "items"
+                      ? "Pendientes"
+                      : "Nota del día"}
                   </p>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
                     {formatDateKeyLabel(popup.dateKey)}
                   </p>
                 </div>
-                <button
-                  onClick={() => setPopup(null)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {/* Tab: nota (solo si hay items, para poder alternar) */}
+                  {popup.items.length > 0 && (
+                    <>
+                      <button
+                        onClick={() =>
+                          setPopup((p) => p && { ...p, view: "note" })
+                        }
+                        title="Nota del día"
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          popup.view === "note"
+                            ? "text-violet-600 dark:text-violet-400"
+                            : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                        }`}
+                      >
+                        <StickyNote size={13} />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setPopup((p) => p && { ...p, view: "items" })
+                        }
+                        title="Pendientes del día"
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          popup.view === "items"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                        }`}
+                      >
+                        <Calendar size={13} />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => setPopup(null)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
               </div>
 
-              {/* Popup Items */}
-              <ul className="divide-y divide-slate-50 dark:divide-slate-700/50 max-h-60 overflow-y-auto">
-                {popup.items.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      onClick={() => handleItemClick(item)}
-                      disabled={!item.documentId}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
+              {/* ── Vista: Pendientes ─────────────────────────────────── */}
+              {popup.view === "items" && (
+                <ul className="divide-y divide-slate-50 dark:divide-slate-700/50 max-h-60 overflow-y-auto">
+                  {popup.items.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        onClick={() => handleItemClick(item)}
+                        disabled={!item.documentId}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
+                      >
+                        {getDocTypeIcon(item.docType)}
+
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                            {item.type === "assignment"
+                              ? `Asignación · ${
+                                  item.status === "pendiente"
+                                    ? "Pendiente"
+                                    : item.status === "visto"
+                                      ? "Visto"
+                                      : item.status === "editado"
+                                        ? "Editado"
+                                        : item.status ?? ""
+                                }`
+                              : `Documento · ${item.docType ?? ""}`}
+                          </p>
+                        </div>
+
+                        {item.documentId && (
+                          <ArrowRight
+                            size={13}
+                            className="text-slate-300 dark:text-slate-600 group-hover:text-blue-500 flex-shrink-0 transition-colors"
+                          />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* ── Vista: Nota del día ───────────────────────────────── */}
+              {popup.view === "note" && (
+                <div className="p-4 space-y-3">
+                  {/* Nota existente — clic para editar inline */}
+                  {existingNote && !isEditingNote && (
+                    <div
+                      onClick={() => {
+                        setNoteText(existingNote.content);
+                        setIsEditingNote(true);
+                      }}
+                      className="group cursor-text bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 hover:border-violet-300 dark:hover:border-violet-600 rounded-xl px-3 py-2.5 transition-colors"
+                      title="Clic para editar"
                     >
-                      {getDocTypeIcon(item.docType)}
-
-                      <div className="flex-1 min-w-0 text-left">
-                        <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {item.name}
+                      <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                        {existingNote.content}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                          <span className="font-medium text-violet-600 dark:text-violet-400">
+                            {existingNote.user?.name ?? "Tú"}
+                          </span>{" "}
+                          · {timeAgo(existingNote.updatedAt)}
                         </p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                          {item.type === "assignment"
-                            ? `Asignación · ${
-                                item.status === "pendiente"
-                                  ? "Pendiente"
-                                  : item.status === "visto"
-                                    ? "Visto"
-                                    : item.status === "editado"
-                                      ? "Editado"
-                                      : item.status ?? ""
-                              }`
-                            : `Documento · ${item.docType ?? ""}`}
-                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteNote(); }}
+                          disabled={isSavingNote}
+                          className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-400 transition-colors"
+                          title="Eliminar nota"
+                        >
+                          <Trash2 size={11} />
+                        </button>
                       </div>
+                    </div>
+                  )}
 
-                      {item.documentId && (
-                        <ArrowRight
-                          size={13}
-                          className="text-slate-300 dark:text-slate-600 group-hover:text-blue-500 flex-shrink-0 transition-colors"
-                        />
-                      )}
+                  {/* Campo de edición inline — solo visible cuando isEditingNote */}
+                  {isEditingNote && (
+                    <div className="relative">
+                      <textarea
+                        ref={textareaRef}
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            handleSaveNote();
+                          }
+                          if (e.key === "Escape") {
+                            setIsEditingNote(false);
+                          }
+                        }}
+                        placeholder="Escribe una nota para este día…"
+                        rows={3}
+                        className="w-full resize-none text-xs bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600/60 rounded-xl px-3 py-2.5 text-slate-700 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-violet-400 dark:focus:border-violet-500 focus:ring-1 focus:ring-violet-200 dark:focus:ring-violet-800/40 transition-all"
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                          ⌘+Enter · Esc para cancelar
+                        </p>
+                        <button
+                          onClick={handleSaveNote}
+                          disabled={isSavingNote || !noteText.trim()}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          <Send size={10} />
+                          {isSavingNote ? "Guardando…" : "Guardar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Estado vacío — sin nota y no editando */}
+                  {!existingNote && !isEditingNote && (
+                    <button
+                      onClick={() => setIsEditingNote(true)}
+                      className="w-full text-[11px] text-slate-400 dark:text-slate-500 hover:text-violet-500 dark:hover:text-violet-400 py-3 border border-dashed border-slate-200 dark:border-slate-600/60 hover:border-violet-300 dark:hover:border-violet-600 rounded-xl transition-colors"
+                    >
+                      + Añadir nota para este día
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  )}
+                </div>
+              )}
 
               {/* Más items indicator */}
-              {popup.items.length > 5 && (
+              {popup.view === "items" && popup.items.length > 5 && (
                 <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700/50">
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
                     +{popup.items.length - 5} más

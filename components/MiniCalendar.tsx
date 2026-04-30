@@ -21,14 +21,18 @@ export interface PendingCalendarItem {
 interface MiniCalendarProps {
   /** Mapa de "YYYY-MM-DD" → items pendientes. Solo en mode="display" */
   pendingByDate?: Map<string, PendingCalendarItem[]>;
+  /** Mapa de "YYYY-MM-DD" → true si el día tiene nota. Solo en mode="display" */
+  notesByDate?: Set<string>;
   /** Modo del calendario */
   mode?: "display" | "select";
   /** Fecha seleccionada en formato "YYYY-MM-DD". Solo en mode="select" */
   selectedDate?: string | null;
   /** Callback cuando el usuario selecciona un día. Solo en mode="select" */
   onSelectDate?: (isoDate: string) => void;
-  /** Callback cuando el usuario hace click en un día con pendientes. Solo en mode="display" */
+  /** Callback cuando el usuario hace click en un día. Solo en mode="display" */
   onDayClick?: (isoDate: string, items: PendingCalendarItem[]) => void;
+  /** Callback cuando el usuario navega a otro mes (year, month 0-indexed) */
+  onMonthChange?: (year: number, month: number) => void;
 }
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -79,10 +83,12 @@ function getCalendarDays(year: number, month: number): (Date | null)[] {
 
 export function MiniCalendar({
   pendingByDate,
+  notesByDate,
   mode = "display",
   selectedDate,
   onSelectDate,
   onDayClick,
+  onMonthChange,
 }: MiniCalendarProps) {
   const today = new Date();
   const todayKey = toLocalDateKey(today);
@@ -98,18 +104,18 @@ export function MiniCalendar({
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
       setCurrentMonth(11);
-      setCurrentYear((y) => y - 1);
+      setCurrentYear((y) => { onMonthChange?.(y - 1, 11); return y - 1; });
     } else {
-      setCurrentMonth((m) => m - 1);
+      setCurrentMonth((m) => { onMonthChange?.(currentYear, m - 1); return m - 1; });
     }
   };
 
   const handleNextMonth = () => {
     if (currentMonth === 11) {
       setCurrentMonth(0);
-      setCurrentYear((y) => y + 1);
+      setCurrentYear((y) => { onMonthChange?.(y + 1, 0); return y + 1; });
     } else {
-      setCurrentMonth((m) => m + 1);
+      setCurrentMonth((m) => { onMonthChange?.(currentYear, m + 1); return m + 1; });
     }
   };
 
@@ -118,10 +124,9 @@ export function MiniCalendar({
     if (mode === "select") {
       onSelectDate?.(key);
     } else {
+      // In display mode, always fire onDayClick — parent decides what to show
       const items = pendingByDate?.get(key) ?? [];
-      if (items.length > 0) {
-        onDayClick?.(key, items);
-      }
+      onDayClick?.(key, items);
     }
   };
 
@@ -174,6 +179,7 @@ export function MiniCalendar({
           const isSelected = mode === "select" && key === selectedDate;
           const pendingItems = pendingByDate?.get(key) ?? [];
           const hasPending = pendingItems.length > 0;
+          const hasNote = mode === "display" && (notesByDate?.has(key) ?? false);
           const isPast = mode === "select" && date < new Date(today.setHours(0, 0, 0, 0));
 
           let dayClass =
@@ -198,19 +204,24 @@ export function MiniCalendar({
           return (
             <button
               key={key}
+              data-date-key={key}
               onClick={() => !isPast && handleDayClick(date)}
               disabled={isPast && mode === "select"}
               className={dayClass}
               title={
                 hasPending && mode === "display"
-                  ? `${pendingItems.length} pendiente${pendingItems.length > 1 ? "s" : ""}`
+                  ? `${pendingItems.length} pendiente${pendingItems.length > 1 ? "s" : ""}${
+                      hasNote ? " · Tiene nota" : ""
+                    }`
+                  : hasNote
+                  ? "Tiene nota"
                   : undefined
               }
             >
               <span>{date.getDate()}</span>
 
-              {/* Dot indicator para días con pendientes */}
-              {hasPending && mode === "display" && !isToday && (
+              {/* Dots: pendientes + nota */}
+              {mode === "display" && !isToday && (hasPending || hasNote) && (
                 <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">
                   {pendingItems.slice(0, 3).map((item, i) => (
                     <span
@@ -222,12 +233,18 @@ export function MiniCalendar({
                       }`}
                     />
                   ))}
+                  {hasNote && (
+                    <span className="block w-1 h-1 rounded-full bg-violet-500 dark:bg-violet-400" />
+                  )}
                 </span>
               )}
 
               {/* Dot indicator cuando también es hoy */}
-              {hasPending && mode === "display" && isToday && (
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-amber-400" />
+              {mode === "display" && isToday && (hasPending || hasNote) && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-[2px]">
+                  {hasPending && <span className="block w-1 h-1 rounded-full bg-amber-400" />}
+                  {hasNote && <span className="block w-1 h-1 rounded-full bg-violet-400" />}
+                </span>
               )}
             </button>
           );
@@ -244,6 +261,10 @@ export function MiniCalendar({
           <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
             <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 inline-block" />
             Asignaciones
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-violet-500 dark:bg-violet-400 inline-block" />
+            Notas
           </span>
         </div>
       )}

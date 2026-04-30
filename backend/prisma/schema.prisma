@@ -172,6 +172,9 @@ enum ActivityType {
   DOCUMENT_FILE_STATUS_CHANGED
   DOCUMENT_WORKFLOW_STATUS_CHANGED
   DOCUMENT_VIEWED
+  CALENDAR_NOTE_CREATED
+  CALENDAR_NOTE_UPDATED
+  CALENDAR_NOTE_DELETED
 
   @@map("activity_type")
 }
@@ -224,6 +227,7 @@ model User {
   accessPinsCreated      DocumentAccessPin[]  @relation("PinCreator")
   accessPinsRedeemed     DocumentAccessPin[]  @relation("PinRedeemer")
   documentPdfs           DocumentPdf[]
+  calendarNotes          CalendarNote[]
 
   @@index([email])
   @@index([role])
@@ -866,4 +870,25 @@ model DocumentPdf {
   @@index([documentId])
   @@index([createdAt(sort: Desc)])
   @@map("document_pdfs")
+}
+
+// ─────────────────────────────────────────────
+// 25. NOTAS RÁPIDAS DEL CALENDARIO (Hot Notes)
+// ─────────────────────────────────────────────
+
+model CalendarNote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Fecha del día en formato Date (sin hora). "YYYY-MM-DD"
+  dateKey   DateTime @map("date_key") @db.Date
+  content   String
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dateKey, userId], map: "uq_calendar_note_date_user")
+  @@index([userId])
+  @@index([dateKey])
+  @@map("calendar_notes")
 }

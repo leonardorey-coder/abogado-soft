@@ -1397,3 +1397,37 @@ export const documentPdfsApi = {
   },
 };
 
+
+// ─── NOTAS RÁPIDAS DEL CALENDARIO ───────────────────────────────────────────
+
+export interface ApiCalendarNote {
+  id: string;
+  dateKey: string; // ISO — "YYYY-MM-DDT00:00:00.000Z"
+  content: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; avatarUrl: string | null };
+}
+
+export const calendarNotesApi = {
+  /** Lista las notas del usuario autenticado en un rango de fechas. */
+  list: (from?: string, to?: string): Promise<ApiCalendarNote[]> => {
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    const qs = q.toString();
+    return apiFetch<ApiCalendarNote[]>(`/calendar-notes${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Crea o actualiza la nota del usuario para un día específico (upsert). */
+  upsert: (dateKey: string, content: string): Promise<ApiCalendarNote> =>
+    apiFetch<ApiCalendarNote>(`/calendar-notes/${dateKey}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+
+  /** Elimina la nota del usuario para un día específico. */
+  delete: (dateKey: string): Promise<void> =>
+    apiFetch<void>(`/calendar-notes/${dateKey}`, { method: 'DELETE' }),
+};
