@@ -65,42 +65,9 @@ function EditorPanelToggleIcon({ side }: { side: 'left' | 'right' }) {
   );
 }
 
-// ─── Active Users Component ──────────────────────────────────────────────────
 
-interface ActiveUser {
-  name: string;
-  email: string;
-  color?: string;
-}
 
-const ActiveUsersIndicator: React.FC<{ users: ActiveUser[] }> = ({ users }) => {
-  if (users.length === 0) return null;
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 font-medium">En línea:</span>
-      <div className="flex -space-x-2">
-        {users.slice(0, 5).map((user, idx) => (
-          <div
-            key={user.email || idx}
-            className="size-7 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-            style={{ backgroundColor: user.color || '#6366f1' }}
-            title={user.name}
-          >
-            {(user.name || '?').charAt(0).toUpperCase()}
-          </div>
-        ))}
-        {users.length > 5 && (
-          <div className="size-7 rounded-full border-2 border-white dark:border-gray-800 bg-gray-400 flex items-center justify-center text-[10px] font-bold text-white">
-            +{users.length - 5}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ─── SuperDoc Editor Component with Liveblocks ───────────────────────────────
+// ─── SuperDoc Editor Component ──────────────────────────────────────────────
 
 interface SuperDocEditorProps {
   documentId: string;
@@ -113,7 +80,6 @@ interface SuperDocEditorProps {
   editorMountRef?: React.RefObject<HTMLDivElement | null>;
   onReady?: (editor: SuperDoc) => void;
   onUpdate?: () => void;
-  onActiveUsersChange?: (users: ActiveUser[]) => void;
   onBeforeDestroyBlob?: (blob: Blob | null) => Promise<void> | void;
 }
 
@@ -155,7 +121,7 @@ function docxFileFromBlob(blob: Blob, documentName: string): File {
 }
 
 const SuperDocEditor = forwardRef<SuperDocEditorRef, SuperDocEditorProps>(
-  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', superdocRole = 'editor', editorMountRef, onReady, onUpdate, onActiveUsersChange, onBeforeDestroyBlob }, ref) => {
+  ({ documentId, documentBlob, documentName, userName, userEmail, initialMode = 'editing', superdocRole = 'editor', editorMountRef, onReady, onUpdate, onBeforeDestroyBlob }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const superdocRef = useRef<SuperDoc | null>(null);
     const [isReady, setIsReady] = useState(false);
@@ -537,9 +503,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
 
   // Share Modal
   const [showShareModal, setShowShareModal] = useState(false);
-
-  // Active users for real-time collaboration
-  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false);
@@ -1539,7 +1502,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         )}
         {!showDiff && (
           <div className="hidden md:flex items-center gap-2 ml-1 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-600">
-            {activeUsers.length > 0 && <ActiveUsersIndicator users={activeUsers} />}
             <SaveStatusBadge
               hasChanges={hasChanges}
               isSaving={isSaving}
@@ -1574,7 +1536,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
     handleDownload,
     exitCompare,
     pageStripOpen,
-    activeUsers,
     setShowShareModal,
     isDocx,
     isConvertingPdf,
@@ -1827,7 +1788,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
                       markVersionDraftDirty(activeVersionId);
                       scheduleDraftSave();
                     }}
-                    onActiveUsersChange={setActiveUsers}
                     onBeforeDestroyBlob={hasPendingDraftSave ? saveProvidedBlob : undefined}
                   />
                 </div>
