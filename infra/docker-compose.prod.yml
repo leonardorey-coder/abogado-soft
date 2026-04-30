@@ -55,7 +55,7 @@ services:
       # Credencial Google Service Account (debe existir en el servidor):
       - ../backend/abogadosoft-service-account.json:/app/abogadosoft-service-account.json:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4001/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -81,10 +81,11 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
-      interval: 30s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 12
+      start_period: 20s
 
   # ─── Meilisearch ─────────────────────────────────────────────────────────────
   # Expuesto en localhost (7700) para healthchecks/debug; el backend usa http://meilisearch:7700.
