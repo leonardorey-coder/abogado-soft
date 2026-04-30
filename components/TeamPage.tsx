@@ -86,8 +86,21 @@ export const TeamPage: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const token = session?.accessToken ?? "";
-
   const authHeader = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  // Carga el despacho al montar para mostrar nombre/descripción en el header
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/groups?page=1&limit=1`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((res) => {
+        const first = (res.data?.[0] ?? null) as GroupInfo | null;
+        setSelectedGroup(first);
+        setGroupNameDraft(first?.name ?? "");
+        setGroupDescriptionDraft(first?.description ?? "");
+      })
+      .catch(() => {});
+  }, [token]);
 
   const loadData = useCallback(() => {
     if (!token) return;
@@ -362,9 +375,13 @@ export const TeamPage: React.FC = () => {
         {/* Title + Actions */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-black tracking-tight dark:text-white">Mi Equipo</h2>
+            <h2 className="text-3xl font-black tracking-tight dark:text-white">
+              {selectedGroup?.name ?? "Mi Equipo"}
+            </h2>
             <p className="text-[#616f89] dark:text-[#a0aec0] text-base mt-1">
-              Gestione los usuarios y permisos de su despacho — {activeUsers.length} activos
+              {selectedGroup?.description
+                ? selectedGroup.description
+                : `Gestione los usuarios y permisos de su despacho`}{" "}— {activeUsers.length} activos
             </p>
           </div>
           <div className="flex items-center gap-3">

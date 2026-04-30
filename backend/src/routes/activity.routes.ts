@@ -37,52 +37,69 @@ const activityQuerySchema = paginationQuery.extend({
   to: z.string().datetime().optional(),
 });
 
-/** Build shared where-clause from common query params */
+/**
+ * Construye el where-clause de Prisma usando un array AND para evitar colisiones
+ * entre el OR de aislamiento de firma y los OR de filtros de categoría.
+ *
+ * Reglas:
+ *  - Admin → ve toda la actividad del despacho; puede filtrar por userId.
+ *  - No-admin → ve SOLO su propia actividad, siempre.
+ */
 function buildWhereClause(query: any, user: any): any {
-  const { userId, activity, entityType, entityId, category, from, to } = query;
-  const where: any = {
-    // Aislamiento por despacho: ver logs del despacho O logs sin firmId del propio usuario
-    OR: [
-      { firmId: user.firmId },
-      { firmId: null, userId: user.id },
-    ],
-  };
+  const { userId: queryUserId, activity, entityType, entityId, category, from, to } = query;
 
-  // Asistentes solo ven su propia actividad
-  if (user.role !== 'admin') {
-    where.userId = user.id;
-  } else if (userId) {
-    where.userId = userId;
-  }
+  // Acumulador de condiciones (se combinan con AND implícito)
+  const conditions: any[] = [];
 
-  // Category filter (takes precedence over individual entityType/activity)
-  if (category && CATEGORY_FILTERS[category]) {
-    const catFilter = CATEGORY_FILTERS[category];
-    if (catFilter.OR) {
-      where.OR = catFilter.OR;
-    } else {
-      Object.assign(where, catFilter);
-    }
+  // ── 1. Aislamiento por despacho ──────────────────────────────────────────
+  // Los logs sin firmId (creados durante onboarding) solo son visibles por su propio usuario.
+  if (user.firmId) {
+    conditions.push({
+      OR: [
+        { firmId: user.firmId },
+        { firmId: null, userId: user.id },
+      ],
+    });
   } else {
-    if (activity) where.activity = activity;
-    if (entityType) where.entityType = entityType;
+    // Sin despacho: solo sus propios logs
+    conditions.push({ userId: user.id });
   }
 
-  if (entityId) {
-    where.entityId = entityId;
+  // ── 2. Restricción de usuario ────────────────────────────────────────────
+  // No-admin: SIEMPRE solo su propia actividad.
+  // Admin: toda la del despacho; puede filtrar por un userId específico.
+  if (user.role !== 'admin') {
+    conditions.push({ userId: user.id });
+  } else if (queryUserId) {
+    conditions.push({ userId: queryUserId });
   }
 
+  // ── 3. Filtro de categoría o entidad/actividad específica ─────────────────
+  if (category && CATEGORY_FILTERS[category]) {
+    // Añadir como condición AND separada — no sobreescribe el OR de firma
+    conditions.push(CATEGORY_FILTERS[category]);
+  } else {
+    if (activity) conditions.push({ activity });
+    if (entityType) conditions.push({ entityType });
+  }
+
+  // ── 4. Filtro por entidad específica ─────────────────────────────────────
+  if (entityId) conditions.push({ entityId });
+
+  // ── 5. Rango de fechas ────────────────────────────────────────────────────
   if (from || to) {
-    where.createdAt = {};
-    if (from) where.createdAt.gte = new Date(from);
-    if (to) where.createdAt.lte = new Date(to);
+    const createdAt: any = {};
+    if (from) createdAt.gte = new Date(from);
+    if (to) createdAt.lte = new Date(to);
+    conditions.push({ createdAt });
   }
 
-  return where;
+  // Devolver AND si hay múltiples condiciones, o la única condición directamente
+  return conditions.length === 1 ? conditions[0] : { AND: conditions };
 }
 
 // ─── GET /api/activity ──────────────────────────────────────────────────────
-// Bitácora de actividad. Admin ve todo, asistente ve solo su actividad.
+// Bitácora de actividad. Admin ve todo el despacho, asistente ve solo su actividad.
 activityRouter.get(
   '/',
   validateQuery(activityQuerySchema),
@@ -152,24 +169,30 @@ activityRouter.get(
 );
 
 // ─── GET /api/activity/stats ────────────────────────────────────────────────
-// Estadísticas de actividad para el dashboard.
+// Estadísticas de actividad del despacho (solo admin).
 activityRouter.get(
   '/stats',
   authorize('admin'),
-  async (_req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const firmId = req.user!.firmId;
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const weekStart = new Date(todayStart);
       weekStart.setDate(weekStart.getDate() - 7);
 
+      // Filtro base de firma para las estadísticas
+      const firmFilter = firmId
+        ? { OR: [{ firmId }, { firmId: null, userId: req.user!.id }] }
+        : { userId: req.user!.id };
+
       const [todayCount, weekCount, byType] = await Promise.all([
-        prisma.activityLog.count({ where: { createdAt: { gte: todayStart } } }),
-        prisma.activityLog.count({ where: { createdAt: { gte: weekStart } } }),
+        prisma.activityLog.count({ where: { AND: [firmFilter, { createdAt: { gte: todayStart } }] } }),
+        prisma.activityLog.count({ where: { AND: [firmFilter, { createdAt: { gte: weekStart } }] } }),
         prisma.activityLog.groupBy({
           by: ['activity'],
           _count: true,
-          where: { createdAt: { gte: weekStart } },
+          where: { AND: [firmFilter, { createdAt: { gte: weekStart } }] },
           orderBy: { _count: { activity: 'desc' } },
           take: 10,
         }),
