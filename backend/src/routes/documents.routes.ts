@@ -739,6 +739,7 @@ documentsRouter.get(
           if (!alreadyLogged) {
             await prisma.activityLog.create({
               data: {
+                firmId: req.user!.firmId ?? null,
                 userId: req.user!.id,
                 activity: 'DOCUMENT_VIEWED',
                 entityType: 'document',
@@ -756,31 +757,39 @@ documentsRouter.get(
               assignedTo: req.user!.id,
               status: 'pendiente',
             },
-            select: { id: true },
+            select: { id: true, assignedBy: true },
           });
 
           if (pendingAssignments.length === 0) return;
 
-          await prisma.documentAssignment.updateMany({
+          const transition = await prisma.documentAssignment.updateMany({
             where: { id: { in: pendingAssignments.map(a => a.id) } },
             data: { status: 'visto' },
           });
 
-          await prisma.activityLog.createMany({
-            data: pendingAssignments.map(a => ({
+          if (transition.count <= 0) return;
+
+          const firstAssignment = pendingAssignments[0];
+          await prisma.activityLog.create({
+            data: {
+              firmId: req.user!.firmId ?? null,
               userId: req.user!.id,
-              activity: 'COLLABORATION_STARTED',
+              activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
               entityType: 'document',
               entityId: docId,
               entityName: document.name,
               description: 'Estado automático de asignación: Pendiente → Visto',
               metadata: {
-                assignmentId: a.id,
-                fromStatus: 'pendiente',
-                toStatus: 'visto',
+                assignmentId: firstAssignment?.id,
+                field: 'assignmentStatus',
+                from: 'pendiente',
+                to: 'visto',
                 automatic: true,
+                transitionCount: transition.count,
+                assignedById: firstAssignment?.assignedBy ?? null,
+                assignedToId: req.user!.id,
               },
-            })),
+            },
           });
         } catch (err) {
           console.error('[Document open tracking] Error:', err);
@@ -1072,6 +1081,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_CREATED',
           entityType: 'document',
@@ -1132,6 +1142,7 @@ documentsRouter.patch(
       if (previous.fileStatus !== document.fileStatus) {
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'DOCUMENT_FILE_STATUS_CHANGED',
             entityType: 'document',
@@ -1150,6 +1161,7 @@ documentsRouter.patch(
       if (previous.collaborationStatus !== document.collaborationStatus) {
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
             entityType: 'document',
@@ -1169,6 +1181,7 @@ documentsRouter.patch(
       if (previous.sharingStatus !== document.sharingStatus) {
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
             entityType: 'document',
@@ -1190,6 +1203,7 @@ documentsRouter.patch(
       if (otherKeys.length > 0) {
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'DOCUMENT_UPDATED',
             entityType: 'document',
@@ -1251,6 +1265,7 @@ documentsRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_DELETED',
           entityType: 'document',
@@ -1347,6 +1362,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_RESTORED',
           entityType: 'document',
@@ -1411,6 +1427,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_VERSION_CREATED',
           entityType: 'document',
@@ -1501,12 +1518,18 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_COMMENT_ADDED',
           entityType: 'document',
           entityId: documentId,
           entityName: docMeta.name,
           description: `Comentario en: ${docMeta.name}`,
+          metadata: {
+            commentId: comment.id,
+            commentContent: req.body.content,
+            parentCommentId: req.body.parentId ?? null,
+          },
         },
       });
 
@@ -1683,6 +1706,7 @@ documentsRouter.post(
           }),
           prisma.activityLog.create({
             data: {
+              firmId: req.user!.firmId ?? null,
               userId: req.user!.id,
               activity: 'DOCUMENT_VERSION_CREATED',
               entityType: 'document',
@@ -1772,6 +1796,7 @@ documentsRouter.post(
           }),
           prisma.activityLog.create({
             data: {
+              firmId: req.user!.firmId ?? null,
               userId: req.user!.id,
               activity: 'DOCUMENT_UPDATED',
               entityType: 'document',
@@ -1813,7 +1838,7 @@ documentsRouter.post(
               assignedTo: req.user!.id,
               status: { in: ['pendiente', 'visto'] },
             },
-            select: { id: true, status: true },
+            select: { id: true, status: true, assignedBy: true },
           });
 
           if (assignmentsToUpdate.length === 0) return;
@@ -1823,21 +1848,29 @@ documentsRouter.post(
             data: { status: 'revisado' },
           });
 
-          await prisma.activityLog.createMany({
-            data: assignmentsToUpdate.map(a => ({
+          const first = assignmentsToUpdate[0];
+          await prisma.activityLog.create({
+            data: {
+              firmId: req.user!.firmId ?? null,
               userId: req.user!.id,
-              activity: 'COLLABORATION_STARTED',
+              activity: 'DOCUMENT_WORKFLOW_STATUS_CHANGED',
               entityType: 'document',
               entityId: docId,
               entityName: doc.name,
-              description: `Estado automático de asignación: ${a.status === 'pendiente' ? 'Pendiente' : 'Visto'} → Revisado`,
+              description: `Estado automático de asignación: ${first?.status === 'pendiente' ? 'Pendiente' : 'Visto'} → Revisado`,
               metadata: {
-                assignmentId: a.id,
-                fromStatus: a.status,
+                assignmentId: first?.id,
+                field: 'assignmentStatus',
+                from: first?.status ?? null,
+                to: 'revisado',
+                fromStatus: first?.status ?? null,
                 toStatus: 'revisado',
                 automatic: true,
+                transitionCount: assignmentsToUpdate.length,
+                assignedById: first?.assignedBy ?? null,
+                assignedToId: req.user!.id,
               },
-            })),
+            },
           });
         } catch (err) {
           console.error('[Assignment auto-status] Error →revisado:', err);
@@ -1936,14 +1969,25 @@ documentsRouter.put(
       });
 
       // Log de actividad
+      const detailItems = incoming.map((p) => ({
+        permissionLevel: p.permissionLevel,
+        userId: p.userId ?? null,
+        groupId: p.groupId ?? null,
+        expiresAt: p.expiresAt ?? null,
+      }));
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_PERMISSION_CHANGED',
           entityType: 'document',
           entityId: docId,
           description: `Permisos actualizados (${incoming.length} registros)`,
-          metadata: { count: incoming.length },
+          metadata: {
+            count: incoming.length,
+            action: 'batch_replace',
+            details: detailItems,
+          },
         },
       });
 
@@ -2030,11 +2074,20 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_PERMISSION_CHANGED',
           entityType: 'document',
           entityId: docId,
           description: `Permiso ${permissionLevel} otorgado`,
+          metadata: {
+            action: existing ? 'updated' : 'granted',
+            permissionLevel,
+            targetUserId: userId ?? null,
+            targetGroupId: groupId ?? null,
+            targetName: (permission as any)?.user?.name ?? (permission as any)?.group?.name ?? null,
+            expiresAt: expiresAt ?? null,
+          },
         },
       });
 
@@ -2055,16 +2108,31 @@ documentsRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const permId = Array.isArray(req.params.permId) ? req.params.permId[0] : req.params.permId;
+      const existingPermission = await prisma.documentPermission.findUnique({
+        where: { id: permId },
+        include: {
+          user: { select: { id: true, name: true } },
+          group: { select: { id: true, name: true } },
+        },
+      });
 
       await prisma.documentPermission.delete({ where: { id: permId } });
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_PERMISSION_CHANGED',
           entityType: 'document',
           entityId: paramId(req),
           description: 'Permiso eliminado',
+          metadata: {
+            action: 'removed',
+            permissionLevel: existingPermission?.permissionLevel ?? null,
+            targetUserId: existingPermission?.userId ?? null,
+            targetGroupId: existingPermission?.groupId ?? null,
+            targetName: existingPermission?.user?.name ?? existingPermission?.group?.name ?? null,
+          },
         },
       });
 
@@ -2114,6 +2182,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_PERMISSION_CHANGED',
           entityType: 'document',
@@ -2200,6 +2269,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId,
           activity: 'DOCUMENT_PERMISSION_CHANGED',
           entityType: 'document',
@@ -2395,6 +2465,7 @@ documentsRouter.post(
           }),
           prisma.activityLog.create({
             data: {
+              firmId: req.user!.firmId ?? null,
               userId: req.user!.id, activity: 'DOCUMENT_VERSION_CREATED',
               entityType: 'document', entityId: docId, entityName: doc.name,
               description: `Tabla Excel guardada con nueva versión v${newVersion}`,
@@ -2427,6 +2498,7 @@ documentsRouter.post(
 
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id, activity: 'DOCUMENT_UPDATED',
             entityType: 'document', entityId: docId, entityName: doc.name,
             description: 'Tabla Excel actualizada',
@@ -2478,6 +2550,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_SHARED',
           entityType: 'document',
@@ -2488,6 +2561,7 @@ documentsRouter.post(
             sharedWith,
             shareMethod,
             note: note || null,
+            detailText: `${sharedWith} (${shareMethod})${note ? ` — ${note}` : ''}`,
           },
         },
       });
@@ -2605,6 +2679,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'DOCUMENT_EXTRACTED',
           entityType: 'document',

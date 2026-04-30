@@ -327,6 +327,7 @@ authRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'LOGOUT',
           entityType: 'user',

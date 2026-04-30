@@ -14,6 +14,7 @@
     "prisma:migrate": "bunx prisma migrate dev",
     "prisma:studio": "bunx prisma studio",
     "prisma:seed": "bun prisma/seed.ts",
+    "audit:activity-firmid": "bun src/scripts/auditActivityFirmId.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },

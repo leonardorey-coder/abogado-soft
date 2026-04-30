@@ -42,8 +42,9 @@ const activityQuerySchema = paginationQuery.extend({
  * entre el OR de aislamiento de firma y los OR de filtros de categoría.
  *
  * Reglas:
- *  - Admin → ve toda la actividad del despacho; puede filtrar por userId.
- *  - No-admin → ve SOLO su propia actividad, siempre.
+ *  - Con firmId: se muestra actividad del despacho (aislada por firma).
+ *  - Admin puede filtrar por userId.
+ *  - Sin firmId: solo su propia actividad.
  */
 function buildWhereClause(query: any, user: any): any {
   const { userId: queryUserId, activity, entityType, entityId, category, from, to } = query;
@@ -65,12 +66,9 @@ function buildWhereClause(query: any, user: any): any {
     conditions.push({ userId: user.id });
   }
 
-  // ── 2. Restricción de usuario ────────────────────────────────────────────
-  // No-admin: SIEMPRE solo su propia actividad.
-  // Admin: toda la del despacho; puede filtrar por un userId específico.
-  if (user.role !== 'admin') {
-    conditions.push({ userId: user.id });
-  } else if (queryUserId) {
+  // ── 2. Filtro opcional por usuario (cualquier rol) ────────────────────────
+  // La visibilidad base ya está aislada por firma; este filtro solo refina.
+  if (queryUserId) {
     conditions.push({ userId: queryUserId });
   }
 

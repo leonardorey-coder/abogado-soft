@@ -191,6 +191,7 @@ groupsRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'GROUP_UPDATED',
           entityType: 'group',
@@ -228,6 +229,7 @@ groupsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'GROUP_MEMBER_ADDED',
           entityType: 'group',
@@ -258,6 +260,7 @@ groupsRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'GROUP_MEMBER_REMOVED',
           entityType: 'group',
@@ -309,6 +312,7 @@ groupsRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'GROUP_DELETED',
           entityType: 'group',

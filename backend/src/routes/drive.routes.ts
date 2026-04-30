@@ -159,7 +159,7 @@ export async function syncDocumentToDrive(
         where: { id: documentId },
         select: {
             id: true, name: true, type: true,
-            driveFileId: true, version: true,
+            driveFileId: true, version: true, firmId: true,
         },
     });
 
@@ -253,6 +253,7 @@ export async function syncDocumentToDrive(
             }),
             prisma.activityLog.create({
                 data: {
+                    firmId: doc.firmId ?? null,
                     userId,
                     activity: 'DOCUMENT_UPDATED',
                     entityType: 'document',

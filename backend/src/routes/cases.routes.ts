@@ -176,6 +176,7 @@ casesRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CASE_UPDATED',
           entityType: 'case',
@@ -233,6 +234,7 @@ casesRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CASE_DOCUMENT_LINKED',
           entityType: 'case',
@@ -264,6 +266,7 @@ casesRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CASE_DOCUMENT_UNLINKED',
           entityType: 'case',

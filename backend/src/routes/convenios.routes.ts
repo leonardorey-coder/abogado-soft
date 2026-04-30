@@ -271,6 +271,7 @@ conveniosRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CONVENIO_UPDATED',
           entityType: 'convenio',
@@ -321,6 +322,7 @@ conveniosRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CONVENIO_DELETED',
           entityType: 'convenio',
@@ -430,6 +432,7 @@ conveniosRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CONVENIO_VERSION_CREATED' as any,
           entityType: 'convenio',
@@ -484,6 +487,7 @@ conveniosRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId ?? null,
           userId: req.user!.id,
           activity: 'CONVENIO_COMMENT_ADDED' as any,
           entityType: 'convenio',
@@ -560,6 +564,7 @@ conveniosRouter.post(
 
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'CONVENIO_VERSION_CREATED' as any,
             entityType: 'convenio',
@@ -581,6 +586,7 @@ conveniosRouter.post(
 
         await prisma.activityLog.create({
           data: {
+            firmId: req.user!.firmId ?? null,
             userId: req.user!.id,
             activity: 'CONVENIO_UPDATED' as any,
             entityType: 'convenio',
