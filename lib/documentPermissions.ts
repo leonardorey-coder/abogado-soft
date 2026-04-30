@@ -9,7 +9,8 @@ export function canChangeDocumentFileStatus(
   doc: Pick<Document, "currentUserPermission" | "ownerId">,
   userId: string | undefined,
 ): boolean {
-  if (hasWritePermission(doc.currentUserPermission)) return true;
+  const level = doc.currentUserPermission ?? "none";
+  if (level !== "none") return true;
   if (userId && doc.ownerId && doc.ownerId === userId) return true;
   return false;
 }

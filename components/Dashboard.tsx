@@ -277,9 +277,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const refreshAssignments = useCallback(() => {
     setAssignmentsLoading(true);
-    assignmentsApi
-      .listReceived({ limit: 40, pendingWork: true })
-      .then((res) => setAssignmentsReceived(res.data ?? []))
+    Promise.all([
+      assignmentsApi.listReceived({ limit: 40, pendingWork: true }),
+      assignmentsApi.listSent({ limit: 40, pendingWork: true }),
+    ])
+      .then(([receivedRes, sentRes]) => {
+        const all = [...(receivedRes.data ?? []), ...(sentRes.data ?? [])];
+        const seen = new Set<string>();
+        const unique = all.filter((a) => {
+          if (seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        });
+        setAssignmentsReceived(unique);
+      })
       .catch(() => setAssignmentsReceived([]))
       .finally(() => setAssignmentsLoading(false));
   }, []);
@@ -450,7 +461,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Computed data ────────────────────────────────────────────────────
 
-  const isAssignmentOpen = (s: string) => s !== "completado";
+  const isAssignmentOpen = (s: string) =>
+    s !== "completado" && s !== "activo" && s !== "revocado";
   const assignmentPendingSortOrder: Record<string, number> = {
     pendiente: 0,
     visto: 1,
@@ -763,7 +775,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <>
                       <div className="px-5 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/60">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                          Asignados a ti
+                          Asignaciones
                         </p>
                       </div>
                       {pendingAssignments.map((a) => {

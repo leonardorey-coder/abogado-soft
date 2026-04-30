@@ -37,6 +37,9 @@ interface DayPopupState {
   view: "items" | "note"; // qué tab está activo
 }
 
+const isAssignmentPending = (status: string) =>
+  status !== "completado" && status !== "activo" && status !== "revocado";
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getDocTypeIcon(type?: string) {
@@ -180,7 +183,7 @@ export function DashboardCalendar({
     // 2. Asignaciones recibidas con dueDate
     for (const a of assignments) {
       if (!a.dueDate) continue;
-      if (a.status === "completado") continue;
+      if (!isAssignmentPending(a.status)) continue;
       if (!a.document) continue;
       const key = a.dueDate.slice(0, 10);
       addToMap(key, {

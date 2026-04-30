@@ -895,11 +895,13 @@ export const assignmentsApi = {
     page?: number;
     limit?: number;
     status?: string;
+    pendingWork?: boolean;
   }): Promise<PaginatedResponse<ApiDocumentAssignment>> => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.status) query.set('status', params.status);
+    if (params?.pendingWork) query.set('pendingWork', 'true');
     const qs = query.toString();
     const raw = await apiFetch<{
       data: ApiDocumentAssignment[];
