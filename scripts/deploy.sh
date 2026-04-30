@@ -534,8 +534,14 @@ run_migrations() {
   local migrate_url
   migrate_url="$(migrate_db_host_url)"
 
-  DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma migrate deploy
-  ok "Migraciones aplicadas"
+  if [ -d "$APP_DIR/backend/prisma/migrations" ] && [ "$(find "$APP_DIR/backend/prisma/migrations" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -gt 0 ]; then
+    DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma migrate deploy
+    ok "Migraciones aplicadas (migrate deploy)"
+  else
+    warn "No hay carpeta prisma/migrations versionada — aplicando schema con db push"
+    DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma db push
+    ok "Schema aplicado (db push)"
+  fi
 }
 
 build_frontend() {
