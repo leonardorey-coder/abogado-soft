@@ -212,7 +212,7 @@ dry_check_env() {
     val "MEILISEARCH_KEY"    "(auto-generado, 32 chars)"
     val "DATABASE_URL"       "postgresql://postgres:***@db:5432/abogadosoft"
     val "CORS_ORIGIN"        "http://${server_ip}"
-    val "VITE_API_URL"       "http://${server_ip}/api"
+    val "VITE_API_URL"       "/api (mismo host que el frontend; Nginx hace proxy)"
 
     val "STORAGE_PROVIDER"    "r2 (requerido en deploy)"
     val "R2_ACCOUNT_ID"       "${R2_ACCOUNT_ID:0:8}…"
@@ -222,7 +222,7 @@ dry_check_env() {
       dry_warn "VITE_LIVEBLOCKS_PUBLIC_KEY no pasado — edición colaborativa desactivada"
 
     if [ "$server_ip" = "DESCONOCIDA" ]; then
-      dry_warn "No se pudo detectar IP del servidor — CORS_ORIGIN y VITE_API_URL quedarán incorrectos"
+      dry_warn "No se pudo detectar IP del servidor — CORS_ORIGIN podría quedar incorrecto si accedes por otra IP/dominio"
       info "En el servidor real, hostname -I detectará la IP correctamente"
     fi
   fi
@@ -474,7 +474,7 @@ GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS}"
 GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS}"
 GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS}"
 
-VITE_API_URL="http://${server_ip}/api"
+VITE_API_URL="/api"
 VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY}"
 
 SEARCH_ENGINE="meilisearch"
