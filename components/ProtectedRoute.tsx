@@ -30,7 +30,10 @@ export const ProtectedRoute: React.FC = () => {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (user.needsProfileSetup && location.pathname !== "/completar-perfil") {
+    // `needsProfileSetup` puede venir undefined justo después de login/registro
+    // (la sesión se guarda antes de hidratar `/auth/me`). En ese caso, asumimos true
+    // hasta que el backend confirme lo contrario.
+    if (user.needsProfileSetup !== false && location.pathname !== "/completar-perfil") {
         return <Navigate to="/completar-perfil" replace />;
     }
 

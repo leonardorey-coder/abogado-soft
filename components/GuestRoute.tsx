@@ -23,11 +23,11 @@ export const GuestRoute: React.FC = () => {
         );
     }
 
-    if (user && !user.needsProfileSetup) {
+    if (user && user.needsProfileSetup === false) {
         return <Navigate to="/" replace />;
     }
 
-    if (user && user.needsProfileSetup) {
+    if (user && user.needsProfileSetup !== false) {
         return <Navigate to="/completar-perfil" replace />;
     }
 

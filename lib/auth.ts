@@ -228,7 +228,10 @@ export async function fetchCurrentUser(accessToken: string): Promise<AppUser | n
   try {
     const res = await apiRequest('/auth/me', { token: accessToken });
     if (!res.ok) return null;
-    return await res.json() as AppUser;
+    const data = await res.json() as AppUser & { needsProfileSetup?: boolean };
+    if (typeof data.needsProfileSetup === 'boolean') return data;
+    const needsProfileSetup = !data.groupMemberships || data.groupMemberships.length === 0;
+    return { ...data, needsProfileSetup };
   } catch {
     return null;
   }

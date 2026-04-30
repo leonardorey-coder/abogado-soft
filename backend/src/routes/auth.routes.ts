@@ -91,7 +91,16 @@ authRouter.post(
           phone: data.phone,
           role: data.role,
         },
-        select: { id: true, email: true, name: true, role: true, officeName: true, createdAt: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          officeName: true,
+          createdAt: true,
+          _count: { select: { groupMemberships: true } },
+        },
       });
 
       await prisma.userSettings.create({ data: { userId: user.id } });
@@ -109,7 +118,14 @@ authRouter.post(
 
       const { accessToken, refreshToken } = await issueTokens(user.id, user.email, req);
 
-      res.status(201).json({ user, accessToken, refreshToken });
+      const { _count, ...publicUser } = user;
+      const needsProfileSetup = _count.groupMemberships === 0;
+
+      res.status(201).json({
+        user: { ...publicUser, needsProfileSetup },
+        accessToken,
+        refreshToken,
+      });
     } catch (error) {
       next(error);
     }
