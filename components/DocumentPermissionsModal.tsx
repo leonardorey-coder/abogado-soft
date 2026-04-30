@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { Document, DocumentPermissionLevel } from "../types";
 import { permissionsApi, usersApi, ApiUser, SetPermissionPayload } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -44,6 +45,111 @@ interface DocumentPermissionsModalProps {
   document: Document & { ownerId?: string; owner?: { id: string; name: string; email: string } | null };
   onClose: () => void;
   onSave?: () => void;
+}
+
+// ── PermissionDropdown — renderizado via portal para evitar overflow clipping ──
+interface PermissionDropdownProps {
+  memberId: string;
+  currentLevel: DocumentPermissionLevel;
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onChange: (level: DocumentPermissionLevel) => void;
+}
+
+function PermissionDropdown({ memberId: _memberId, currentLevel, isOpen, onOpen, onClose, onChange }: PermissionDropdownProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+
+  const computePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight ?? 220;
+    const margin = 6;
+    const vv = window.visualViewport;
+    const viewBottom = (vv?.offsetTop ?? 0) + (vv?.height ?? window.innerHeight);
+    const viewRight = vv?.width ?? window.innerWidth;
+    const spaceBelow = viewBottom - rect.bottom - margin;
+    const placeAbove = menuH > spaceBelow;
+    const top = placeAbove ? rect.top - menuH - margin : rect.bottom + margin;
+    setStyle({
+      position: "fixed",
+      top: Math.max(margin, top),
+      right: Math.max(margin, viewRight - rect.right),
+      width: 192,
+      zIndex: 99999,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const raf = requestAnimationFrame(() => requestAnimationFrame(computePosition));
+    window.addEventListener("resize", computePosition);
+    window.addEventListener("scroll", computePosition, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", computePosition);
+      window.removeEventListener("scroll", computePosition, true);
+    };
+  }, [isOpen, computePosition]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const h = (e: MouseEvent) => {
+      if (triggerRef.current?.contains(e.target as Node)) return;
+      if (menuRef.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [isOpen, onClose]);
+
+  return (
+    <div className="shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={getLevelBadgeClass(currentLevel)}
+        onClick={onOpen}
+      >
+        {PERMISSION_LABELS[currentLevel]}
+        <span className="material-symbols-outlined text-[18px]">expand_more</span>
+      </button>
+
+      {isOpen && createPortal(
+        <div
+          ref={menuRef}
+          style={style}
+          className="bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-2 overflow-hidden animate-in fade-in slide-in-from-top-1"
+        >
+          {LEVEL_ORDER.filter(l => l !== "none").map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => { onChange(level); onClose(); }}
+              className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${
+                currentLevel === level ? "text-primary font-bold bg-primary/5" : "text-slate-700 dark:text-slate-300 font-medium"
+              }`}
+            >
+              {PERMISSION_LABELS[level]}
+              {currentLevel === level && <span className="material-symbols-outlined text-base">check</span>}
+            </button>
+          ))}
+          <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+          <button
+            type="button"
+            onClick={() => { onChange("none"); onClose(); }}
+            className="w-full px-4 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            Quitar acceso
+          </button>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
 }
 
 export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> = ({
@@ -258,43 +364,14 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
                             Propietario
                           </span>
                         ) : canManage ? (
-                          <div className="shrink-0 relative">
-                            <button
-                              type="button"
-                              className={getLevelBadgeClass(member.level)}
-                              onClick={() => setOpenDropdownId(openDropdownId === member.id ? null : member.id)}
-                            >
-                              {PERMISSION_LABELS[member.level]}
-                              <span className="material-symbols-outlined text-[18px]">expand_more</span>
-                            </button>
-
-                            {openDropdownId === member.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setOpenDropdownId(null)} />
-                                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                                  {LEVEL_ORDER.filter(l => l !== "none").map((level) => (
-                                    <button
-                                      key={level}
-                                      type="button"
-                                      onClick={() => setMemberLevel(member.id, level)}
-                                      className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${member.level === level ? "text-primary font-bold bg-primary/5" : "text-slate-700 dark:text-slate-300 font-medium"}`}
-                                    >
-                                      {PERMISSION_LABELS[level]}
-                                      {member.level === level && <span className="material-symbols-outlined text-base">check</span>}
-                                    </button>
-                                  ))}
-                                  <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
-                                  <button
-                                    type="button"
-                                    onClick={() => setMemberLevel(member.id, "none")}
-                                    className="w-full px-4 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                  >
-                                    Quitar acceso
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                          <PermissionDropdown
+                            memberId={member.id}
+                            currentLevel={member.level}
+                            isOpen={openDropdownId === member.id}
+                            onOpen={() => setOpenDropdownId(openDropdownId === member.id ? null : member.id)}
+                            onClose={() => setOpenDropdownId(null)}
+                            onChange={(level) => setMemberLevel(member.id, level)}
+                          />
                         ) : (
                           <span className={getLevelBadgeClass(member.level) + " cursor-default"}>
                             {PERMISSION_LABELS[member.level]}
