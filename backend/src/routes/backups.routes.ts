@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import fs from 'fs';
 import path from 'path';
@@ -14,6 +15,7 @@ import {
 
 export const backupsRouter = Router();
 backupsRouter.use(authenticate);
+backupsRouter.use(requireFirm);
 // authorize('admin') se aplica individualmente en POST y DELETE
 
 const createBackupSchema = z.object({
@@ -29,9 +31,11 @@ backupsRouter.get(
     try {
       const { page, limit } = req.query as any;
       const skip = (page - 1) * limit;
+      const firmId = req.user!.firmId!;
 
       const [backups, total] = await Promise.all([
         prisma.backup.findMany({
+          where: { firmId },
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
@@ -39,7 +43,7 @@ backupsRouter.get(
             creator: { select: { id: true, name: true } },
           },
         }),
-        prisma.backup.count(),
+        prisma.backup.count({ where: { firmId } }),
       ]);
 
       const backupsWithProgress = backups.map(b => {
@@ -108,7 +112,8 @@ backupsRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { name, type } = req.body;
-      const backupId = await generateSystemBackup(name, type, req.user!.id);
+      const firmId = req.user!.firmId!;
+      const backupId = await generateSystemBackup(name, type, req.user!.id, firmId);
       const backup = await prisma.backup.findUnique({ where: { id: backupId } });
 
       res.status(201).json({
@@ -128,7 +133,7 @@ backupsRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const backup = await prisma.backup.findUniqueOrThrow({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
       });
 
       if (backup.status !== 'completed' || (!backup.filePath && !backup.cloudUrl)) {
@@ -163,8 +168,9 @@ backupsRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const backup = await prisma.backup.findUniqueOrThrow({
-        where: { id: req.params.id },
+      const firmId = req.user!.firmId!;
+      const backup = await prisma.backup.findFirstOrThrow({
+        where: { id: req.params.id as string, firmId },
         include: { creator: { select: { id: true, name: true } } },
       });
 
@@ -188,8 +194,9 @@ backupsRouter.delete(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const backup = await prisma.backup.findUniqueOrThrow({
-        where: { id: req.params.id }
+      const firmId = req.user!.firmId!;
+      const backup = await prisma.backup.findFirstOrThrow({
+        where: { id: req.params.id as string, firmId }
       });
 
       // Eliminar de Drive si existe
@@ -206,7 +213,7 @@ backupsRouter.delete(
         fs.unlinkSync(backup.filePath);
       }
 
-      await prisma.backup.delete({ where: { id: req.params.id } });
+      await prisma.backup.delete({ where: { id: req.params.id as string } });
 
       res.json({ message: 'Respaldo eliminado correctamente' });
     } catch (error) {

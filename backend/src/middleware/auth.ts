@@ -8,6 +8,7 @@ export interface AuthUser {
   name: string;
   role: 'admin' | 'asistente';
   isActive: boolean;
+  firmId: string | null;
 }
 
 declare global {
@@ -45,7 +46,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, name: true, role: true, isActive: true },
+      select: { id: true, email: true, name: true, role: true, isActive: true, firmId: true },
     });
 
     if (!user) {
@@ -106,7 +107,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
       if (payload?.sub) {
         const user = await prisma.user.findUnique({
           where: { id: payload.sub },
-          select: { id: true, email: true, name: true, role: true, isActive: true },
+          select: { id: true, email: true, name: true, role: true, isActive: true, firmId: true },
         });
         if (user?.isActive) {
           req.user = user;

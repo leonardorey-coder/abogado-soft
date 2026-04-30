@@ -2,10 +2,12 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validateQuery, paginationQuery } from '../middleware/validate.js';
 
 export const activityRouter = Router();
 activityRouter.use(authenticate);
+activityRouter.use(requireFirm);
 
 // ─── Category → filter mapping ─────────────────────────────────────────────
 const CATEGORY_FILTERS: Record<string, any> = {
@@ -38,7 +40,10 @@ const activityQuerySchema = paginationQuery.extend({
 /** Build shared where-clause from common query params */
 function buildWhereClause(query: any, user: any): any {
   const { userId, activity, entityType, entityId, category, from, to } = query;
-  const where: any = {};
+  const where: any = {
+    // Aislamiento por despacho — SIEMPRE filtrar por firmId
+    firmId: user.firmId,
+  };
 
   // Asistentes solo ven su propia actividad
   if (user.role !== 'admin') {

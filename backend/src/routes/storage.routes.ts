@@ -69,10 +69,10 @@ storageRouter.post(
 
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: documentId },
-        select: { id: true, type: true, groupId: true },
+        select: { id: true, type: true, groupId: true, firmId: true },
       });
 
-      const key = docKey(doc.groupId, doc.id, doc.type);
+      const key = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
       const uploadUrl = await storage.getSignedUploadUrl(key, mimeType, 900);
 
       res.json({ uploadUrl, storageKey: key });
@@ -105,21 +105,21 @@ storageRouter.post(
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
         select: {
-          id: true, name: true, type: true, groupId: true,
+          id: true, name: true, type: true, groupId: true, firmId: true,
           version: true, storageKey: true, driveFileId: true, localPath: true,
         },
       });
 
       const mimeType = getMimeType(doc.type);
       const storage = getStorageProvider();
-      const dKey = docKey(doc.groupId, doc.id, doc.type);
+      const dKey = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
 
       await prisma.document.update({ where: { id: docId }, data: { syncStatus: 'syncing' } });
 
       try {
         if (createVersion) {
           const newVersion = doc.version + 1;
-          const vKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
+          const vKey = versionKey(doc.firmId, doc.groupId, doc.id, newVersion, doc.type);
 
           // Snapshot atómico: copy → update
           if (doc.storageKey) {

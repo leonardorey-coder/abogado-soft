@@ -40,7 +40,7 @@ notificationsRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const notification = await prisma.notification.update({
-        where: { id: req.params.id, userId: req.user!.id },
+        where: { id: req.params.id as string, userId: req.user!.id },
         data: { isRead: true, readAt: new Date() },
       });
       res.json(notification);

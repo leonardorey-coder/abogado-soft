@@ -106,7 +106,8 @@ async function runPgDumpWithFallback(connectionString: string, outputPath: strin
 export async function generateSystemBackup(
     manualName: string | null = null,
     backupType: string = 'full',
-    userId: string | null = null
+    userId: string | null = null,
+    firmId: string | null = null
 ): Promise<string> {
     const backupRecord = await prisma.backup.create({
         data: {
@@ -115,8 +116,9 @@ export async function generateSystemBackup(
             status: 'in_progress',
             size: null,
             filePath: null,
+            firmId: firmId ?? undefined,
             startedAt: new Date(),
-            documentsCount: await prisma.document.count({ where: { isDeleted: false } }),
+            documentsCount: await prisma.document.count({ where: { isDeleted: false, ...(firmId ? { firmId } : {}) } }),
             createdBy: userId ?? 'system_cron',
         },
     });
@@ -153,7 +155,7 @@ export async function generateSystemBackup(
             // 3. Subir ZIP a R2 usando upload por stream (evita OOM con archivos grandes)
             activeBackupsProgress.set(backupRecord.id, 75);
             const storage = getStorageProvider();
-            const bKey = backupKey(backupRecord.name);
+            const bKey = backupKey(firmId, backupRecord.name);
             const zipStream = fs.createReadStream(zipFilePath);
             await storage.uploadStream(bKey, zipStream as any, 'application/zip', stats.size);
 

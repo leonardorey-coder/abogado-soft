@@ -450,13 +450,14 @@ function DocumentThumbnail({ doc }: { doc: Document }) {
 
     async function loadPreview() {
       try {
+        setLoading(true);
+        const file = await getShareableDocumentFile(doc.id, doc.name);
+        if (cancelled) return;
+
         if (file.size > MAX_PREVIEW_BYTES) {
           setFailed(true);
           return;
         }
-        setLoading(true);
-        const file = await getShareableDocumentFile(doc.id, doc.name);
-        if (cancelled) return;
 
         if (doc.type === "PDF") {
           nextUrl = URL.createObjectURL(file);
@@ -1036,7 +1037,7 @@ export function MiEscritorio() {
   const [permissionsDocument, setPermissionsDocument] = useState<Document | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const [confirmDeleteSecondsLeft, setConfirmDeleteSecondsLeft] = useState(0);
-  const deleteConfirmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deleteConfirmTimerRef = useRef<number | null>(null);
   const syncRunRef = useRef(0);
   const {
     documents,

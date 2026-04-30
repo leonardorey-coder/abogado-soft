@@ -21,9 +21,9 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(2).max(255),
-  officeName: z.string().max(255).optional(),
+  officeName: z.string().min(2).max(255).optional(),
   phone: z.string().max(50).optional(),
-  role: z.enum(['admin', 'asistente']).default('asistente'),
+  role: z.enum(['admin', 'asistente']).default('admin'),
 });
 
 const loginSchema = z.object({
@@ -82,14 +82,23 @@ authRouter.post(
 
       const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
+      // ── Crear el Firm (despacho) solo si se proporcionó officeName ─────────
+      let firm: { id: string; name: string } | null = null;
+      if (data.officeName?.trim()) {
+        firm = await prisma.firm.create({
+          data: { name: data.officeName.trim() },
+        });
+      }
+
       const user = await prisma.user.create({
         data: {
           email: data.email,
           name: data.name,
           passwordHash,
-          officeName: data.officeName,
+          officeName: data.officeName?.trim() || null,
           phone: data.phone,
-          role: data.role,
+          role: 'admin',
+          firmId: firm?.id ?? null,
         },
         select: {
           id: true,
@@ -98,6 +107,7 @@ authRouter.post(
           role: true,
           isActive: true,
           officeName: true,
+          firmId: true,
           createdAt: true,
           _count: { select: { groupMemberships: true } },
         },
@@ -107,22 +117,26 @@ authRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: firm?.id ?? null,
           userId: user.id,
           activity: 'USER_REGISTERED',
           entityType: 'user',
           entityId: user.id,
           entityName: user.name,
-          description: `Nuevo usuario registrado: ${user.name} (${user.email})`,
+          description: firm
+            ? `Nuevo despacho registrado: ${firm.name} — admin: ${user.name} (${user.email})`
+            : `Nuevo usuario registrado sin despacho: ${user.name} (${user.email})`,
         },
       });
 
       const { accessToken, refreshToken } = await issueTokens(user.id, user.email, req);
 
       const { _count, ...publicUser } = user;
-      const needsProfileSetup = _count.groupMemberships === 0;
+      const needsProfileSetup = _count.groupMemberships === 0 || !user.firmId;
 
       res.status(201).json({
         user: { ...publicUser, needsProfileSetup },
+        ...(firm ? { firm: { id: firm.id, name: firm.name } } : {}),
         accessToken,
         refreshToken,
       });

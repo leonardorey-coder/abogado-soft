@@ -72,7 +72,7 @@ async function migrateDocuments() {
         { localPath: { not: null } },           // Tiene disco
       ],
     },
-    select: { id: true, type: true, groupId: true, mimeType: true, driveFileId: true, localPath: true, name: true },
+    select: { id: true, type: true, groupId: true, firmId: true, mimeType: true, driveFileId: true, localPath: true, name: true },
   });
 
   log(`Documentos pendientes: ${docs.length}`);
@@ -81,7 +81,7 @@ async function migrateDocuments() {
     const batch = docs.slice(i, i + BATCH_SIZE);
 
     await Promise.allSettled(batch.map(async (doc) => {
-      const key = docKey(doc.groupId, doc.id, doc.type);
+      const key = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
 
       log(`[Doc] ${doc.name} (${doc.id.slice(0, 8)}) → ${key}`);
 
@@ -134,7 +134,7 @@ async function migrateVersions() {
     select: {
       id: true, documentId: true, version: true,
       cloudUrl: true, localPath: true,
-      document: { select: { type: true, groupId: true } },
+      document: { select: { type: true, groupId: true, firmId: true } },
     },
   });
 
@@ -144,8 +144,8 @@ async function migrateVersions() {
     const batch = versions.slice(i, i + BATCH_SIZE);
 
     await Promise.allSettled(batch.map(async (ver: any) => {
-      const { type, groupId } = ver.document;
-      const key = versionKey(groupId, ver.documentId, ver.version, type);
+      const { type, groupId, firmId } = ver.document;
+      const key = versionKey(firmId, groupId, ver.documentId, ver.version, type);
 
       log(`[Ver] v${ver.version} de ${ver.documentId.slice(0, 8)} → ${key}`);
 
@@ -196,7 +196,7 @@ async function migratePdfs() {
     select: {
       id: true, documentId: true, name: true,
       driveFileId: true, localPath: true,
-      document: { select: { groupId: true } },
+      document: { select: { groupId: true, firmId: true } },
     },
   });
 
@@ -206,7 +206,7 @@ async function migratePdfs() {
     const batch = pdfs.slice(i, i + BATCH_SIZE);
 
     await Promise.allSettled(batch.map(async (pdf: any) => {
-      const key = pdfKey(pdf.document.groupId, pdf.documentId, pdf.id);
+      const key = pdfKey(pdf.document.firmId, pdf.document.groupId, pdf.documentId, pdf.id);
 
       log(`[PDF] ${pdf.name} → ${key}`);
 

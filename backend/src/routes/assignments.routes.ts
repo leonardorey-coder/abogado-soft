@@ -237,7 +237,8 @@ assignmentsRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const existing = await prisma.documentAssignment.findUnique({
-        where: { id: req.params.id }
+        where: { id: req.params.id as string },
+        include: { document: { select: { id: true, name: true } } },
       });
 
       if (!existing) {
@@ -274,7 +275,7 @@ assignmentsRouter.patch(
       }
 
       const assignment = await prisma.documentAssignment.update({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
         data: updateData,
         include: {
           document: { select: { id: true, name: true } },
@@ -305,7 +306,7 @@ assignmentsRouter.patch(
             activity: isTerminal ? 'COLLABORATION_ENDED' : 'COLLABORATION_STARTED',
             entityType: 'document',
             entityId: existing.documentId,
-            entityName: assignment.document.name,
+            entityName: existing.document.name,
             description: `Estado de asignación: ${ASSIGNMENT_STATUS_LABEL[existing.status] ?? existing.status} → ${ASSIGNMENT_STATUS_LABEL[data.status] ?? data.status}`,
             metadata: {
               assignmentId: assignment.id,
@@ -333,7 +334,7 @@ assignmentsRouter.delete(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const assignmentId = req.params.id;
+      const assignmentId = req.params.id as string;
 
       const assignment = await prisma.documentAssignment.findUnique({
         where: { id: assignmentId }
@@ -348,7 +349,7 @@ assignmentsRouter.delete(
       }
 
       await prisma.documentAssignment.delete({
-        where: { id: assignmentId }
+        where: { id: assignmentId as string }
       });
 
       res.json({ message: 'Asignación eliminada correctamente' });

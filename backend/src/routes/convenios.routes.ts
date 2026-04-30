@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import * as Diff from 'diff';
 import * as XLSX from 'xlsx';
@@ -49,6 +50,7 @@ function computeConvenioDiffSummary(oldData: any, newData: any): ConvenioDiffSum
 
 export const conveniosRouter = Router();
 conveniosRouter.use(authenticate);
+conveniosRouter.use(requireFirm);
 
 const createConvenioSchema = z.object({
   numero: z.string().min(1).max(100),
@@ -79,7 +81,8 @@ conveniosRouter.get(
     try {
       const { page, limit, sortOrder, estado, search, documentType } = req.query as any;
       const skip = (page - 1) * limit;
-      const where: any = {};
+      const firmId = req.user!.firmId!;
+      const where: any = { firmId };
 
       if (estado) where.estado = estado;
       if (documentType) {
@@ -129,8 +132,8 @@ conveniosRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const convenio = await prisma.convenio.findUniqueOrThrow({
-        where: { id: req.params.id },
+      const convenio = await prisma.convenio.findFirstOrThrow({
+        where: { id: req.params.id as string, firmId: req.user!.firmId! },
         include: {
           responsable: { select: { id: true, name: true, email: true } },
           documents: {
@@ -170,6 +173,7 @@ conveniosRouter.get(
           if (dup) return;
           await prisma.activityLog.create({
             data: {
+              firmId: req.user!.firmId!,
               userId: req.user!.id,
               activity: 'DOCUMENT_VIEWED',
               entityType: 'convenio',
@@ -197,9 +201,11 @@ conveniosRouter.post(
     try {
       const data = req.body;
 
+      const firmId = req.user!.firmId!;
       const convenio = await prisma.convenio.create({
         data: {
           ...data,
+          firmId,
           responsableId: req.user!.id,
           fechaInicio: new Date(data.fechaInicio),
           fechaFin: new Date(data.fechaFin),
@@ -208,6 +214,7 @@ conveniosRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'CONVENIO_CREATED',
           entityType: 'convenio',
@@ -258,7 +265,7 @@ conveniosRouter.patch(
       if (data.fechaFin) data.fechaFin = new Date(data.fechaFin);
 
       const convenio = await prisma.convenio.update({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
         data,
       });
 
@@ -309,7 +316,7 @@ conveniosRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const convenio = await prisma.convenio.delete({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
       });
 
       await prisma.activityLog.create({
@@ -354,7 +361,7 @@ conveniosRouter.post(
     try {
       const link = await prisma.convenioDocument.create({
         data: {
-          convenioId: req.params.id,
+          convenioId: req.params.id as string,
           documentId: req.body.documentId,
           addedBy: req.user!.id,
         },
@@ -376,8 +383,8 @@ conveniosRouter.delete(
       await prisma.convenioDocument.delete({
         where: {
           convenioId_documentId: {
-            convenioId: req.params.id,
-            documentId: req.params.documentId,
+            convenioId: req.params.id as string,
+            documentId: req.params.documentId as string,
           }
         },
       });
@@ -400,7 +407,7 @@ conveniosRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const conv = await prisma.convenio.findUniqueOrThrow({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
       });
 
       const newVersionNum = conv.version + 1;
@@ -452,7 +459,7 @@ conveniosRouter.post(
   validate(createCommentSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const convenioId = req.params.id;
+      const convenioId = req.params.id as string;
       const convMeta = await prisma.convenio.findUnique({
         where: { id: convenioId },
         select: { numero: true, institucion: true },
@@ -517,7 +524,7 @@ conveniosRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { tableData, changeNote, createVersion } = req.body;
-      const convenioId = req.params.id;
+      const convenioId = req.params.id as string;
 
       const conv = await prisma.convenio.findUniqueOrThrow({
         where: { id: convenioId },
@@ -599,7 +606,7 @@ conveniosRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const conv = await prisma.convenio.findUniqueOrThrow({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
         select: { numero: true, institucion: true, tableData: true },
       });
 
@@ -642,10 +649,10 @@ conveniosRouter.get(
 
       const [ver1, ver2] = await Promise.all([
         prisma.convenioVersion.findUnique({
-          where: { convenioId_version: { convenioId: req.params.id, version: v1Num } },
+          where: { convenioId_version: { convenioId: req.params.id as string, version: v1Num } },
         }),
         prisma.convenioVersion.findUnique({
-          where: { convenioId_version: { convenioId: req.params.id, version: v2Num } },
+          where: { convenioId_version: { convenioId: req.params.id as string, version: v2Num } },
         }),
       ]);
 

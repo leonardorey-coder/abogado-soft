@@ -2,12 +2,14 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
 
 
 export const casesRouter = Router();
 casesRouter.use(authenticate);
+casesRouter.use(requireFirm);
 
 const createCaseSchema = z.object({
   caseNumber: z.string().min(1).max(100),
@@ -37,7 +39,8 @@ casesRouter.get(
     try {
       const { page, limit, sortOrder, status, search, caseType } = req.query as any;
       const skip = (page - 1) * limit;
-      const where: any = {};
+      const firmId = req.user!.firmId!;
+      const where: any = { firmId };
 
       if (status) where.status = status;
       if (caseType) where.caseType = { contains: caseType, mode: 'insensitive' };
@@ -76,8 +79,8 @@ casesRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const case_ = await prisma.case.findUniqueOrThrow({
-        where: { id: req.params.id },
+      const case_ = await prisma.case.findFirstOrThrow({
+        where: { id: req.params.id as string, firmId: req.user!.firmId! },
         include: {
           responsible: { select: { id: true, name: true, email: true } },
           documents: { select: { id: true, name: true, type: true, fileStatus: true, updatedAt: true } },
@@ -103,10 +106,11 @@ casesRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = req.body;
-
+      const firmId = req.user!.firmId!;
       const case_ = await prisma.case.create({
         data: {
           ...data,
+          firmId,
           responsibleId: req.user!.id,
           startDate: data.startDate ? new Date(data.startDate) : undefined,
           endDate: data.endDate ? new Date(data.endDate) : undefined,
@@ -115,6 +119,7 @@ casesRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'CASE_CREATED',
           entityType: 'case',
@@ -165,7 +170,7 @@ casesRouter.patch(
       if (data.endDate) data.endDate = new Date(data.endDate);
 
       const case_ = await prisma.case.update({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
         data,
       });
 
@@ -220,7 +225,7 @@ casesRouter.post(
     try {
       const link = await prisma.caseDocument.create({
         data: {
-          caseId: req.params.id,
+          caseId: req.params.id as string,
           documentId: req.body.documentId,
           addedBy: req.user!.id,
         },
@@ -231,7 +236,7 @@ casesRouter.post(
           userId: req.user!.id,
           activity: 'CASE_DOCUMENT_LINKED',
           entityType: 'case',
-          entityId: req.params.id,
+          entityId: req.params.id as string,
           description: `Documento vinculado al expediente`,
         },
       });
@@ -251,8 +256,8 @@ casesRouter.delete(
       await prisma.caseDocument.delete({
         where: {
           caseId_documentId: {
-            caseId: req.params.id,
-            documentId: req.params.docId,
+            caseId: req.params.id as string,
+            documentId: req.params.docId as string,
           },
         },
       });
@@ -262,7 +267,7 @@ casesRouter.delete(
           userId: req.user!.id,
           activity: 'CASE_DOCUMENT_UNLINKED',
           entityType: 'case',
-          entityId: req.params.id,
+          entityId: req.params.id as string,
         },
       });
 

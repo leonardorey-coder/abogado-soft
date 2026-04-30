@@ -180,11 +180,38 @@ enum ActivityType {
 }
 
 // ─────────────────────────────────────────────
-// 3. USUARIOS
+// 3. DESPACHO (TENANT RAÍZ)
+// ─────────────────────────────────────────────
+
+model Firm {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(255)
+  slug      String?  @unique @db.VarChar(100)
+  logoUrl   String?  @map("logo_url")
+  plan      String   @default("free") @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  users        User[]
+  groups       Group[]
+  documents    Document[]
+  convenios    Convenio[]
+  cases        Case[]
+  activityLogs ActivityLog[]
+  backups      Backup[]
+
+  @@index([slug])
+  @@map("firms")
+}
+
+// ─────────────────────────────────────────────
+// 4. USUARIOS
 // ─────────────────────────────────────────────
 
 model User {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId       String?   @map("firm_id") @db.Uuid
   email        String    @unique @db.VarChar(255)
   name         String    @db.VarChar(255)
   passwordHash String?   @map("password_hash") @db.VarChar(255)
@@ -201,6 +228,7 @@ model User {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   // Relaciones
+  firm                   Firm?                @relation(fields: [firmId], references: [id], onDelete: SetNull)
   ownedGroups            Group[]              @relation("GroupOwner")
   groupMemberships       GroupMember[]
   ownedDocuments         Document[]           @relation("DocOwner")
@@ -232,6 +260,7 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isActive])
+  @@index([firmId])
   @@map("users")
 }
 
@@ -241,6 +270,7 @@ model User {
 
 model Group {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId      String?  @map("firm_id") @db.Uuid
   name        String   @db.VarChar(255)
   description String?
   inviteCode  String?  @unique @map("invite_code") @db.VarChar(64)
@@ -249,12 +279,14 @@ model Group {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
+  firm        Firm?                @relation(fields: [firmId], references: [id], onDelete: SetNull)
   owner       User                 @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     GroupMember[]
   documents   Document[]
   permissions DocumentPermission[]
 
   @@index([ownerId])
+  @@index([firmId])
   @@map("groups")
 }
 
@@ -284,6 +316,7 @@ model GroupMember {
 
 model Document {
   id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId    String?      @map("firm_id") @db.Uuid
   name      String       @db.VarChar(500)
   type      DocumentType
   size      BigInt       @default(0)
@@ -326,6 +359,7 @@ model Document {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
+  firm    Firm?  @relation(fields: [firmId], references: [id], onDelete: SetNull)
   owner   User?  @relation("DocOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   deleter User?  @relation("DocDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
   group   Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
@@ -342,6 +376,7 @@ model Document {
   accessPins        DocumentAccessPin[]
   pdfs              DocumentPdf[]
 
+  @@index([firmId])
   @@index([ownerId])
   @@index([groupId])
   @@index([isDeleted])
@@ -476,6 +511,7 @@ model DocumentComment {
 
 model ActivityLog {
   id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId      String?      @map("firm_id") @db.Uuid
   userId      String?      @map("user_id") @db.Uuid
   activity    ActivityType
   entityType  String?      @map("entity_type") @db.VarChar(50)
@@ -486,8 +522,10 @@ model ActivityLog {
   ipAddress   String?      @map("ip_address") @db.Inet
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
+  firm Firm? @relation(fields: [firmId], references: [id], onDelete: SetNull)
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([firmId])
   @@index([userId])
   @@index([activity])
   @@index([entityType, entityId])
@@ -501,6 +539,7 @@ model ActivityLog {
 
 model Convenio {
   id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId        String?        @map("firm_id") @db.Uuid
   numero        String         @unique @db.VarChar(100)
   institucion   String         @db.VarChar(255)
   departamento  String?        @db.VarChar(255)
@@ -521,11 +560,13 @@ model Convenio {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
+  firm        Firm?              @relation(fields: [firmId], references: [id], onDelete: SetNull)
   responsable User?              @relation(fields: [responsableId], references: [id], onDelete: SetNull)
   documents   ConvenioDocument[]
   versions    ConvenioVersion[]
   comments    ConvenioComment[]
 
+  @@index([firmId])
   @@index([estado])
   @@index([fechaFin])
   @@index([responsableId])
@@ -605,6 +646,7 @@ model ConvenioDocument {
 
 model Backup {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId         String?      @map("firm_id") @db.Uuid
   name           String       @db.VarChar(500)
   type           String       @default("full") @db.VarChar(50)
   status         BackupStatus @default(pending)
@@ -612,7 +654,7 @@ model Backup {
   filePath       String?      @map("file_path")
   /// @deprecated — Usar storageKey (R2). driveFileId del zip en Drive.
   cloudUrl       String?      @map("cloud_url")
-  /// Clave del archivo ZIP en R2. Formato: "backups/{name}.zip"
+  /// Clave del archivo ZIP en R2. Formato: "backups/{firmId}/{name}.zip"
   storageKey     String?      @map("storage_key") @db.VarChar(512)
   size           BigInt?
   checksum       String?      @db.VarChar(128)
@@ -624,8 +666,10 @@ model Backup {
   metadata       Json?        @db.JsonB
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
+  firm    Firm? @relation(fields: [firmId], references: [id], onDelete: SetNull)
   creator User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
+  @@index([firmId])
   @@index([status])
   @@index([createdAt(sort: Desc)])
   @@map("backups")
@@ -660,6 +704,7 @@ model AdminAccessLog {
 
 model Case {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId        String?   @map("firm_id") @db.Uuid
   caseNumber    String    @unique @map("case_number") @db.VarChar(100)
   title         String    @db.VarChar(500)
   client        String?   @db.VarChar(255)
@@ -673,10 +718,12 @@ model Case {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
+  firm          Firm?          @relation(fields: [firmId], references: [id], onDelete: SetNull)
   responsible   User?          @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
   documents     Document[]     @relation("DocCase")
   caseDocuments CaseDocument[]
 
+  @@index([firmId])
   @@index([caseNumber])
   @@index([status])
   @@index([responsibleId])

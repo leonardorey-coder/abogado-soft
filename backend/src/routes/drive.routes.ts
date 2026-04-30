@@ -423,7 +423,7 @@ driveRouter.get(
         const { documentId } = req.params;
         try {
             const doc = await prisma.document.findUniqueOrThrow({
-                where: { id: documentId },
+                where: { id: documentId as string },
                 select: { driveFileId: true },
             });
 
@@ -436,7 +436,7 @@ driveRouter.get(
 
             // Enriquecer con datos locales (versiones guardadas en DB)
             const dbVersions = await prisma.documentVersion.findMany({
-                where: { documentId },
+                where: { documentId: documentId as string },
                 include: { creator: { select: { id: true, name: true } } },
                 orderBy: { version: 'desc' },
             });
@@ -458,7 +458,7 @@ driveRouter.get(
         const { documentId, revisionId } = req.params;
         try {
             const doc = await prisma.document.findUniqueOrThrow({
-                where: { id: documentId },
+                where: { id: documentId as string },
                 select: { driveFileId: true, name: true, type: true },
             });
 
@@ -467,7 +467,7 @@ driveRouter.get(
                 return;
             }
 
-            const content = await downloadRevision(doc.driveFileId, revisionId);
+            const content = await downloadRevision(doc.driveFileId, revisionId as string);
 
             res.setHeader('Content-Type', getMimeType(doc.type));
             res.setHeader('Content-Disposition', `attachment; filename="${doc.name}_rev${revisionId}.${doc.type}"`);

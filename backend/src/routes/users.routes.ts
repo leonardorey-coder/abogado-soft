@@ -1,16 +1,19 @@
 // ============================================================================
 // Users Routes — CRUD completo de usuarios de "Mi Despacho"
 // GET lista/detalle, POST crear, PATCH editar/rol/status, DELETE desactivar
+// Todos los endpoints filtran/validan por req.user.firmId (multi-tenancy)
 // ============================================================================
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 
 export const usersRouter = Router();
 usersRouter.use(authenticate);
+usersRouter.use(requireFirm);
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -64,24 +67,15 @@ usersRouter.get(
         sortOrder: 'asc' | 'desc';
       };
       const skip = (page - 1) * limit;
+      const firmId = req.user!.firmId!;
 
-      // Filtros opcionales por query string
       const search = (req.query.search as string) ?? '';
       const roleFilter = req.query.role as string | undefined;
       const statusFilter = req.query.isActive as string | undefined;
 
-      // Obtener los grupos del solicitante
-      const currentUserGroups = await prisma.groupMember.findMany({
-        where: { userId: req.user!.id },
-        select: { groupId: true }
-      });
-      const groupIds = currentUserGroups.map(gm => gm.groupId);
-
+      // Filtrar por despacho — solo usuarios del mismo Firm
       const baseWhere: any = {
-        OR: [
-          { id: req.user!.id },
-          { groupMemberships: { some: { groupId: { in: groupIds } } } }
-        ],
+        firmId,
         ...(roleFilter && { role: roleFilter as any }),
         ...(statusFilter !== undefined && { isActive: statusFilter === 'true' }),
       };
@@ -120,20 +114,10 @@ usersRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const currentUserGroups = await prisma.groupMember.findMany({
-        where: { userId: req.user!.id },
-        select: { groupId: true }
-      });
-      const groupIds = currentUserGroups.map(gm => gm.groupId);
+      const firmId = req.user!.firmId!;
 
       const user = await prisma.user.findFirstOrThrow({
-        where: {
-          id: req.params.id,
-          OR: [
-            { id: req.user!.id },
-            { groupMemberships: { some: { groupId: { in: groupIds } } } }
-          ]
-        },
+        where: { id: req.params.id as string, firmId },
         select: {
           id: true, email: true, name: true, role: true,
           avatarUrl: true, officeName: true, department: true,
@@ -158,6 +142,7 @@ usersRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, name, role, officeName, department, position, phone, password } = req.body;
+      const firmId = req.user!.firmId!;
 
       // Verificar que el email no esté en uso
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -166,7 +151,6 @@ usersRouter.post(
         return;
       }
 
-      // Hashear contraseña con bcrypt (disponible en Bun)
       const bcrypt = await import('bcryptjs');
       const passwordHash = await bcrypt.hash(password, 12);
 
@@ -181,6 +165,7 @@ usersRouter.post(
           position,
           phone,
           isActive: true,
+          firmId,                    // ← hereda el despacho del admin creador
         },
         select: {
           id: true, email: true, name: true, role: true,
@@ -189,8 +174,11 @@ usersRouter.post(
         },
       });
 
+      await prisma.userSettings.create({ data: { userId: user.id } });
+
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'USER_REGISTERED',
           entityType: 'user',
@@ -216,27 +204,19 @@ usersRouter.patch(
   validate(updateUserSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const targetId = req.params.id;
+      const targetId = req.params.id as string;
       const isAdmin = req.user!.role === 'admin';
       const isSelf = req.user!.id === targetId;
+      const firmId = req.user!.firmId!;
 
       if (!isSelf) {
         if (!isAdmin) {
           res.status(403).json({ error: 'Sin permiso para editar este usuario.' });
           return;
         }
-
-        const currentUserGroups = await prisma.groupMember.findMany({
-          where: { userId: req.user!.id },
-          select: { groupId: true }
-        });
-        const groupIds = currentUserGroups.map(gm => gm.groupId);
-
-        const sharesGroup = await prisma.groupMember.findFirst({
-          where: { userId: targetId, groupId: { in: groupIds } }
-        });
-
-        if (!sharesGroup) {
+        // Verificar que el target pertenece al mismo despacho
+        const target = await prisma.user.findFirst({ where: { id: targetId, firmId } });
+        if (!target) {
           res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
           return;
         }
@@ -262,6 +242,7 @@ usersRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'USER_UPDATED',
           entityType: 'user',
@@ -289,24 +270,16 @@ usersRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { role } = req.body;
-      const targetId = req.params.id;
+      const targetId = req.params.id as string;
+      const firmId = req.user!.firmId!;
 
       if (req.user!.id === targetId) {
         res.status(400).json({ error: 'No puedes cambiar tu propio rol.' });
         return;
       }
 
-      const currentUserGroups = await prisma.groupMember.findMany({
-        where: { userId: req.user!.id },
-        select: { groupId: true }
-      });
-      const groupIds = currentUserGroups.map(gm => gm.groupId);
-
-      const sharesGroup = await prisma.groupMember.findFirst({
-        where: { userId: targetId, groupId: { in: groupIds } }
-      });
-
-      if (!sharesGroup) {
+      const target = await prisma.user.findFirst({ where: { id: targetId, firmId } });
+      if (!target) {
         res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
         return;
       }
@@ -319,6 +292,7 @@ usersRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'USER_UPDATED',
           entityType: 'user',
@@ -346,24 +320,16 @@ usersRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { isActive } = req.body;
-      const targetId = req.params.id;
+      const targetId = req.params.id as string;
+      const firmId = req.user!.firmId!;
 
       if (req.user!.id === targetId) {
         res.status(400).json({ error: 'No puedes desactivar tu propia cuenta.' });
         return;
       }
 
-      const currentUserGroups = await prisma.groupMember.findMany({
-        where: { userId: req.user!.id },
-        select: { groupId: true }
-      });
-      const groupIds = currentUserGroups.map(gm => gm.groupId);
-
-      const sharesGroup = await prisma.groupMember.findFirst({
-        where: { userId: targetId, groupId: { in: groupIds } }
-      });
-
-      if (!sharesGroup) {
+      const target = await prisma.user.findFirst({ where: { id: targetId, firmId } });
+      if (!target) {
         res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
         return;
       }
@@ -376,6 +342,7 @@ usersRouter.patch(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'USER_UPDATED',
           entityType: 'user',
@@ -402,24 +369,16 @@ usersRouter.delete(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const targetId = req.params.id;
+      const targetId = req.params.id as string;
+      const firmId = req.user!.firmId!;
 
       if (req.user!.id === targetId) {
         res.status(400).json({ error: 'No puedes eliminar tu propia cuenta.' });
         return;
       }
 
-      const currentUserGroups = await prisma.groupMember.findMany({
-        where: { userId: req.user!.id },
-        select: { groupId: true }
-      });
-      const groupIds = currentUserGroups.map(gm => gm.groupId);
-
-      const sharesGroup = await prisma.groupMember.findFirst({
-        where: { userId: targetId, groupId: { in: groupIds } }
-      });
-
-      if (!sharesGroup) {
+      const target = await prisma.user.findFirst({ where: { id: targetId, firmId } });
+      if (!target) {
         res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
         return;
       }
@@ -432,6 +391,7 @@ usersRouter.delete(
 
       await prisma.activityLog.create({
         data: {
+          firmId,
           userId: req.user!.id,
           activity: 'USER_UPDATED',
           entityType: 'user',

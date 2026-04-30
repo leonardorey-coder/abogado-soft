@@ -9,6 +9,7 @@ import mammoth from 'mammoth';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requirePermission, getEffectivePermission } from '../middleware/checkPermission.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
 import { extractTextFromFile } from '../services/search/textExtractor.js';
@@ -160,6 +161,7 @@ const uploadMiddleware = multer({
 
 export const documentsRouter = Router();
 documentsRouter.use(authenticate);
+documentsRouter.use(requireFirm);
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -222,6 +224,7 @@ documentsRouter.get(
       // using a subquery to deduplicate by entityId keeping the most recent
       const recentLogs = await prisma.activityLog.findMany({
         where: {
+          firmId: req.user!.firmId!,
           userId: { in: userIds },
           activity: 'DOCUMENT_VIEWED',
           entityId: { not: null },
@@ -339,6 +342,7 @@ documentsRouter.get(
 
       const shareLogs = await prisma.activityLog.findMany({
         where: {
+          firmId: req.user!.firmId!,
           userId: { in: userIds },
           activity: 'DOCUMENT_SHARED',
           entityId: { not: null },
@@ -427,9 +431,10 @@ documentsRouter.get(
       const { page, limit } = req.query as any;
       const skip = (page - 1) * limit;
 
+      const firmId = req.user!.firmId!;
       const [documents, total] = await Promise.all([
         prisma.document.findMany({
-          where: { isDeleted: true, ownerId: req.user!.id },
+          where: { isDeleted: true, firmId, ownerId: req.user!.id },
           skip,
           take: limit,
           orderBy: { deletedAt: 'desc' },
@@ -437,7 +442,7 @@ documentsRouter.get(
             deleter: { select: { id: true, name: true } },
           },
         }),
-        prisma.document.count({ where: { isDeleted: true, ownerId: req.user!.id } }),
+        prisma.document.count({ where: { isDeleted: true, firmId, ownerId: req.user!.id } }),
       ]);
 
       res.json({ data: serializeBigInt(documents), total, page, limit });
@@ -537,6 +542,7 @@ documentsRouter.get(
       }
 
       const where: any = {
+        firmId: req.user!.firmId!,
         isDeleted: includeDeleted ? undefined : false,
         // Si es admin global, puede ver todo; si no, aplicar filtros de acceso
         ...(isGlobalAdmin ? {} : { OR: accessConditions }),
@@ -829,6 +835,7 @@ documentsRouter.post(
           groupId: defaultGroupId || undefined,
           caseId: req.body.caseId || undefined,
           tags: req.body.tags ? JSON.parse(req.body.tags) : [],
+          firmId: req.user!.firmId || undefined,
         },
         include: {
           owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
@@ -837,6 +844,7 @@ documentsRouter.post(
 
       await prisma.activityLog.create({
         data: {
+          firmId: req.user!.firmId || undefined,
           userId: req.user!.id,
           activity: 'DOCUMENT_CREATED',
           entityType: 'document',
@@ -850,7 +858,7 @@ documentsRouter.post(
       let syncResult = null;
       try {
         const storage = getStorageProvider();
-        const key = docKey(document.groupId, document.id, ext);
+        const key = docKey(document.firmId, document.groupId, document.id, ext);
         await storage.upload(key, file.buffer, file.mimetype);
         await prisma.document.update({
           where: { id: document.id },
@@ -1581,7 +1589,7 @@ documentsRouter.post(
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
         select: {
-          id: true, name: true, type: true, groupId: true,
+          id: true, name: true, type: true, groupId: true, firmId: true,
           version: true, storageKey: true, driveFileId: true, localPath: true, ownerId: true,
         },
       });
@@ -1613,10 +1621,10 @@ documentsRouter.post(
         const newVersion = doc.version + 1;
         const diffSummary = await computeDiffSummaryFromBuffers(oldBuffer, fileBuffer, doc.type);
 
-        const dKey = docKey(doc.groupId, doc.id, doc.type);
-        const currentVKey = versionKey(doc.groupId, doc.id, doc.version, doc.type);
+        const dKey = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
+        const currentVKey = versionKey(doc.firmId, doc.groupId, doc.id, doc.version, doc.type);
         // Key para el snapshot de la NUEVA versión (contiene el nuevo contenido)
-        const newVKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
+        const newVKey = versionKey(doc.firmId, doc.groupId, doc.id, newVersion, doc.type);
         const currentVersionRecord = await prisma.documentVersion.findFirst({
           where: { documentId: docId, version: doc.version },
           select: { storageKey: true },
@@ -1718,9 +1726,9 @@ documentsRouter.post(
         // y al volver a ella se mostrará contenido antiguo.
         //
         const diffSummary = await computeDiffSummaryFromBuffers(oldBuffer, fileBuffer, doc.type);
-        const dKey = docKey(doc.groupId, doc.id, doc.type);
+        const dKey = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
         // Key del snapshot para la versión ACTUAL (se mantiene sincronizada en cada overwrite)
-        const currentVKey = versionKey(doc.groupId, doc.id, doc.version, doc.type);
+        const currentVKey = versionKey(doc.firmId, doc.groupId, doc.id, doc.version, doc.type);
 
         let syncResult: { ok: boolean; error?: string } | null = null;
         try {
@@ -2353,7 +2361,7 @@ documentsRouter.post(
 
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
-        select: { id: true, name: true, type: true, groupId: true, storageKey: true, driveFileId: true, localPath: true, version: true, ownerId: true },
+        select: { id: true, name: true, type: true, groupId: true, firmId: true, storageKey: true, driveFileId: true, localPath: true, version: true, ownerId: true },
       });
 
       const headers = tableData.columns.map((c: any) => c.name);
@@ -2393,8 +2401,8 @@ documentsRouter.post(
         ]);
 
         let syncResult = null;
-        const dKey = docKey(doc.groupId, doc.id, doc.type);
-        const vKey = versionKey(doc.groupId, doc.id, newVersion, doc.type);
+        const dKey = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
+        const vKey = versionKey(doc.firmId, doc.groupId, doc.id, newVersion, doc.type);
         try {
           const storage = getStorageProvider();
           if (doc.storageKey) await storage.copy(doc.storageKey, vKey);
@@ -2426,7 +2434,7 @@ documentsRouter.post(
         let syncResult = null;
         try {
           const storage = getStorageProvider();
-          const dKey = docKey(doc.groupId, doc.id, doc.type);
+          const dKey = docKey(doc.firmId, doc.groupId, doc.id, doc.type);
           await storage.update(dKey, xlsxBuf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
           await prisma.document.update({ where: { id: docId }, data: { storageKey: dKey, syncStatus: 'completed', lastSyncAt: new Date() } });
           syncResult = { ok: true };
@@ -2559,7 +2567,7 @@ documentsRouter.post(
 
       const doc = await prisma.document.findUniqueOrThrow({
         where: { id: docId },
-        select: { id: true, name: true, type: true, groupId: true },
+        select: { id: true, name: true, type: true, groupId: true, firmId: true },
       });
 
       const baseName = doc.name.replace(/\.(docx?|pdf)$/i, '');
@@ -2582,7 +2590,7 @@ documentsRouter.post(
       // Subir PDF a R2 (best-effort)
       try {
         const storage = getStorageProvider();
-        const key = pdfKey(doc.groupId, docId, pdfRecord.id);
+        const key = pdfKey(doc.firmId, doc.groupId, docId, pdfRecord.id);
         await storage.upload(key, req.file.buffer, 'application/pdf');
         await (prisma as any).documentPdf.update({
           where: { id: pdfRecord.id },
