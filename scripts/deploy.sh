@@ -15,6 +15,15 @@
 #   R2_ACCOUNT_ID=xxx R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=xxx R2_BUCKET_NAME=xxx \
 #   VITE_LIVEBLOCKS_PUBLIC_KEY=pk_prod_xxx \
 #   bash scripts/deploy.sh
+#
+# Docker / disco en redeploy:
+#   Por defecto el backend se construye CON caché de capas (no duplica todo en cada deploy).
+#   Tras levantar el stack se ejecuta `docker image prune -f` para quitar la imagen vieja
+#   sin tag (<none>) que deja el compose al sustituir la imagen.
+#   DOCKER_BUILD_NO_CACHE=1     — forzar rebuild sin caché (más lento, mucho más pico de disco).
+#   DOCKER_IMAGE_PRUNE=0        — no ejecutar image prune tras el deploy.
+#   DOCKER_BUILDER_PRUNE=1      — además recortar caché de BuildKit (próximo build más lento).
+#   DOCKER_BUILD_TMPDIR=/ruta   — TMPDIR durante build (si /tmp queda sin espacio).
 # ==============================================================================
 
 set -euo pipefail
@@ -43,6 +52,12 @@ VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY:-}"
 GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
 GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
 GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
+
+# Docker (redeploy sin inflar disco innecesariamente)
+DOCKER_BUILD_NO_CACHE="${DOCKER_BUILD_NO_CACHE:-0}"
+DOCKER_IMAGE_PRUNE="${DOCKER_IMAGE_PRUNE:-1}"
+DOCKER_BUILDER_PRUNE="${DOCKER_BUILDER_PRUNE:-0}"
+DOCKER_BUILD_TMPDIR="${DOCKER_BUILD_TMPDIR:-}"
 
 # ─── Colores ──────────────────────────────────────────────────────────────────
 C_RESET='\033[0m'
@@ -285,8 +300,9 @@ dry_check_stack() {
         fi
       fi
     fi
-    cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod build --no-cache backend"
+    cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod build backend  # + --no-cache si DOCKER_BUILD_NO_CACHE=1"
     cmd "docker compose -f docker-compose.prod.yml --env-file $APP_DIR/.env.prod up --detach --remove-orphans"
+    cmd "docker image prune -f  # omitir con DOCKER_IMAGE_PRUNE=0"
   else
     info "Compose no disponible aún (repo no clonado) — se validará post-clone"
   fi
@@ -552,16 +568,44 @@ build_frontend() {
   ok "Frontend listo → dist/ ($(du -sh dist/ | cut -f1))"
 }
 
+docker_cleanup_after_deploy() {
+  if [ "${DOCKER_IMAGE_PRUNE:-1}" = "1" ]; then
+    log "Liberando imágenes Docker huérfanas (sustituye la anterior al retaguear)..."
+    docker image prune -f || true
+    ok "docker image prune ejecutado"
+  fi
+  if [ "${DOCKER_BUILDER_PRUNE:-0}" = "1" ]; then
+    log "Recortando caché de Docker BuildKit..."
+    if docker builder prune -f 2>/dev/null; then
+      ok "docker builder prune ejecutado"
+    else
+      warn "docker builder prune no disponible o falló (se ignora)"
+    fi
+  fi
+}
+
 start_stack() {
   log "Construyendo y levantando contenedores..."
   cd "$APP_DIR/infra"
-  docker compose -f docker-compose.prod.yml \
-    --env-file "$APP_DIR/.env.prod" \
-    build --no-cache backend
+  if [ -n "$DOCKER_BUILD_TMPDIR" ]; then
+    export TMPDIR="$DOCKER_BUILD_TMPDIR"
+    val "TMPDIR (build)" "$TMPDIR"
+  fi
+  if [ "${DOCKER_BUILD_NO_CACHE:-0}" = "1" ]; then
+    warn "DOCKER_BUILD_NO_CACHE=1: rebuild completo (más tiempo y uso de disco durante el build)."
+    docker compose -f docker-compose.prod.yml \
+      --env-file "$APP_DIR/.env.prod" \
+      build --no-cache backend
+  else
+    docker compose -f docker-compose.prod.yml \
+      --env-file "$APP_DIR/.env.prod" \
+      build backend
+  fi
   docker compose -f docker-compose.prod.yml \
     --env-file "$APP_DIR/.env.prod" \
     up --detach --remove-orphans
   ok "Stack levantado"
+  docker_cleanup_after_deploy
 }
 
 healthcheck() {
