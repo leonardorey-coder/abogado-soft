@@ -66,6 +66,7 @@ export const TeamPage: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentFilter, setAssignmentFilter] = useState<"todos" | "pendientes" | "aceptados" | "completados" | "rechazados" | "compartidos">("todos");
 
   // CRUD state
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<TeamUser | null>(null);
@@ -349,6 +350,68 @@ export const TeamPage: React.FC = () => {
 
   const activeUsers = users.filter((u) => u.isActive);
   const inactiveUsers = users.filter((u) => !u.isActive);
+  const pendingAssignments = assignments.filter((a) => a.status === "pendiente");
+  const acceptedAssignments = assignments.filter((a) => ["visto", "editado", "revisado"].includes(a.status));
+  const completedAssignments = assignments.filter((a) => a.status === "completado");
+  const rejectedAssignments = assignments.filter((a) => a.status === "rechazado");
+  const sharedAssignments: any[] = [];
+
+  const visibleAssignments = assignmentFilter === "todos"
+    ? assignments
+    : assignmentFilter === "pendientes"
+      ? pendingAssignments
+      : assignmentFilter === "aceptados"
+        ? acceptedAssignments
+        : assignmentFilter === "completados"
+          ? completedAssignments
+          : assignmentFilter === "rechazados"
+            ? rejectedAssignments
+            : sharedAssignments;
+
+  const assignmentPills = [
+    {
+      key: "todos" as const,
+      label: "Todos",
+      count: assignments.length,
+      icon: "check_circle",
+      colorClass: "bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+    },
+    {
+      key: "pendientes" as const,
+      label: "Pendientes",
+      count: pendingAssignments.length,
+      icon: "pending",
+      colorClass: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50",
+    },
+    {
+      key: "aceptados" as const,
+      label: "Aceptados",
+      count: acceptedAssignments.length,
+      icon: "visibility",
+      colorClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50",
+    },
+    {
+      key: "completados" as const,
+      label: "Completados",
+      count: completedAssignments.length,
+      icon: "verified",
+      colorClass: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50",
+    },
+    {
+      key: "rechazados" as const,
+      label: "Rechazados",
+      count: rejectedAssignments.length,
+      icon: "cancel",
+      colorClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50",
+    },
+    {
+      key: "compartidos" as const,
+      label: "Compartidos",
+      count: sharedAssignments.length,
+      icon: "share",
+      colorClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-900/50",
+    },
+  ];
 
   if (loading && users.length === 0) {
     return (
@@ -724,36 +787,37 @@ export const TeamPage: React.FC = () => {
           </div>
 
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-            {[
-              { label: 'Todos', count: assignments.length, icon: 'check_circle', colorClass: 'bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
-              { label: 'Pendientes', count: assignments.filter(a => a.status === 'pendiente').length, icon: 'pending', colorClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50' },
-              { label: 'Aceptados', count: assignments.filter(a => ['visto', 'editado', 'revisado'].includes(a.status)).length, icon: 'visibility', colorClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50' },
-              { label: 'Completados', count: assignments.filter(a => a.status === 'completado').length, icon: 'verified', colorClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50' },
-              { label: 'Rechazados', count: assignments.filter(a => a.status === 'rechazado').length, icon: 'cancel', colorClass: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50' },
-              { label: 'Compartidos', count: 0, icon: 'share', colorClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-900/50' }
-            ].map((st) => (
-              <div
-                key={st.label}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm whitespace-nowrap border-2 ${st.colorClass}`}
+            {assignmentPills.map((st) => (
+              <button
+                key={st.key}
+                type="button"
+                onClick={() => setAssignmentFilter(st.key)}
+                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm whitespace-nowrap border-2 transition-all ${
+                  assignmentFilter === st.key
+                    ? "bg-primary text-white border-primary"
+                    : st.colorClass
+                }`}
               >
-                <span className="material-symbols-outlined text-[20px]">{st.icon}</span>
+                <span className={`material-symbols-outlined text-[20px] ${assignmentFilter === st.key ? "text-white" : ""}`}>{st.icon}</span>
                 {st.label} ({st.count})
-              </div>
+              </button>
             ))}
           </div>
 
-          {assignments.length === 0 ? (
+          {visibleAssignments.length === 0 ? (
             <div className="mt-6 bg-[#f8fafb] dark:bg-[#141921] rounded-2xl p-8 text-center border-2 border-dashed border-[#dbdfe6] dark:border-[#2d3748]">
               <div className="w-16 h-16 bg-white dark:bg-[#1a212f] rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 dark:border-slate-800">
                 <span className="material-symbols-outlined text-[32px] text-slate-300 dark:text-slate-600">inbox</span>
               </div>
               <p className="text-[#616f89] dark:text-[#64748b] text-base font-medium max-w-sm mx-auto">
-                No hay documentos asignados o compartidos que requieran tu atención en este momento.
+                {assignmentFilter === "todos"
+                  ? "No hay documentos asignados o compartidos que requieran tu atención en este momento."
+                  : "No hay documentos en este filtro por ahora."}
               </p>
             </div>
           ) : (
             <div className="mt-6 space-y-3">
-              {assignments.map(assign => (
+              {visibleAssignments.map(assign => (
                 <div
                   key={assign.id}
                   onClick={() => navigate(`/documento/${assign.documentId}`)}
@@ -776,7 +840,12 @@ export const TeamPage: React.FC = () => {
                         {assign.document?.name || 'Documento sin nombre'}
                       </p>
                       <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">
-                        Asignado por: {getViewerLabel({
+                        Asignado a {getViewerLabel({
+                          subjectId: assign.assignee?.id,
+                          subjectName: assign.assignee?.name,
+                          currentUserId: currentUser?.id,
+                          fallback: "Usuario",
+                        })} por: {getViewerLabel({
                           subjectId: assign.assigner?.id,
                           subjectName: assign.assigner?.name,
                           currentUserId: currentUser?.id,
