@@ -36,6 +36,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   ADMIN_ACCESS_GRANTED: "Concedi\u00f3 acceso admin",
   ADMIN_ACCESS_DENIED: "Deneg\u00f3 acceso admin",
   BACKUP_CREATED: "Cre\u00f3 respaldo",
+  BACKUP_DOWNLOADED: "Descarg\u00f3 respaldo",
   BACKUP_RESTORED: "Restaur\u00f3 respaldo",
   USER_REGISTERED: "Se registr\u00f3",
   USER_UPDATED: "Actualiz\u00f3 perfil",
@@ -135,7 +136,7 @@ function resolveCategory(activity: string): CategoryInfo {
   ) {
     return CATEGORY_BY_PAGE.team;
   }
-  if (["LOGIN", "LOGOUT", "CONNECTION_STARTED", "CONNECTION_ENDED", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(activity)) {
+  if (["LOGIN", "LOGOUT", "CONNECTION_STARTED", "CONNECTION_ENDED", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_DOWNLOADED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(activity)) {
     return CATEGORY_BY_PAGE.security;
   }
   return CATEGORY_BY_PAGE.general;

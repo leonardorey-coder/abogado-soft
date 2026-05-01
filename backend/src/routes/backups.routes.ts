@@ -146,6 +146,51 @@ backupsRouter.get(
         return res.status(400).json({ error: 'El respaldo no está completado o no tiene archivo' });
       }
 
+      try {
+        await prisma.activityLog.create({
+          data: {
+            firmId,
+            userId: req.user!.id,
+            activity: 'BACKUP_DOWNLOADED',
+            entityType: 'backup',
+            entityId: backup.id,
+            entityName: backup.name,
+            description: 'Descargó respaldo',
+            metadata: {
+              kind: 'backup_downloaded',
+              backupType: backup.type,
+              backupId: backup.id,
+              backupName: backup.name,
+            },
+          },
+        });
+      } catch (logError: any) {
+        const isEnumMismatch =
+          typeof logError?.message === 'string' &&
+          logError.message.includes('Expected ActivityType');
+        if (!isEnumMismatch) throw logError;
+
+        // Fallback temporal: cliente Prisma desactualizado en proceso vivo.
+        await prisma.activityLog.create({
+          data: {
+            firmId,
+            userId: req.user!.id,
+            activity: 'BACKUP_CREATED',
+            entityType: 'backup',
+            entityId: backup.id,
+            entityName: backup.name,
+            description: 'Descargó respaldo',
+            metadata: {
+              kind: 'backup_downloaded',
+              backupType: backup.type,
+              backupId: backup.id,
+              backupName: backup.name,
+              fallbackActivity: 'BACKUP_CREATED',
+            },
+          },
+        });
+      }
+
       // Priorizar R2 (storageKey) para respaldos nuevos
       if (backup.storageKey) {
         res.setHeader('Content-Type', 'application/zip');

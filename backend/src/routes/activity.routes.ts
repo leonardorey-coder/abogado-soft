@@ -28,6 +28,7 @@ const CATEGORY_FILTERS: Record<string, any> = {
         'ADMIN_ACCESS_GRANTED',
         'ADMIN_ACCESS_DENIED',
         'BACKUP_CREATED',
+        'BACKUP_DOWNLOADED',
         'BACKUP_RESTORED',
         'SETTINGS_CHANGED',
       ],

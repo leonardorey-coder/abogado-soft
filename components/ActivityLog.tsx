@@ -62,6 +62,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   ADMIN_ACCESS_GRANTED: "Concedió acceso admin",
   ADMIN_ACCESS_DENIED: "Denegó acceso admin",
   BACKUP_CREATED: "Creó respaldo",
+  BACKUP_DOWNLOADED: "Descargó respaldo",
   BACKUP_RESTORED: "Restauró respaldo",
   USER_REGISTERED: "Se registró",
   USER_UPDATED: "Actualizó perfil",
