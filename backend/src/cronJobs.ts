@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { generateSystemBackup } from './lib/backupService.js';
+import prisma from './lib/prisma.js';
 
 export function setupCronJobs() {
     // Schedule a daily backup at midnight
@@ -8,7 +9,15 @@ export function setupCronJobs() {
     cron.schedule('0 0 * * *', async () => {
         console.log('[Cron] Ejecutando respaldo automático diario (00:00)...');
         try {
-            await generateSystemBackup(null, `diario_${new Date().toISOString().split('T')[0]}_auto`, 'diario');
+            const firms = await prisma.firm.findMany({
+                where: { isActive: true },
+                select: { id: true },
+            });
+            await Promise.allSettled(
+                firms.map((firm) =>
+                    generateSystemBackup('Respaldo Diario Automático', 'daily_auto', 'system_cron', firm.id),
+                ),
+            );
             console.log('[Cron] Respaldo diario automático completado exitosamente.');
         } catch (error) {
             console.error('[Cron] Error en el respaldo diario automático:', error);

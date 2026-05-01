@@ -150,6 +150,29 @@ export async function generateSystemBackup(
                     completedAt: new Date(),
                 },
             });
+            const isAutomatic =
+                !userId ||
+                userId === 'system_cron' ||
+                manualName === 'Respaldo Diario Automático' ||
+                backupType.includes('_auto');
+            await prisma.activityLog.create({
+                data: {
+                    firmId: firmId ?? null,
+                    userId: userId && userId !== 'system_cron' ? userId : null,
+                    activity: 'BACKUP_CREATED',
+                    entityType: 'backup',
+                    entityId: backupRecord.id,
+                    entityName: backupRecord.name,
+                    description: isAutomatic ? 'Respaldo automático completado' : 'Respaldo manual completado',
+                    metadata: {
+                        kind: 'backup_created',
+                        trigger: isAutomatic ? 'automatic' : 'manual',
+                        backupType,
+                        backupId: backupRecord.id,
+                        backupName: backupRecord.name,
+                    },
+                },
+            });
             activeBackupsProgress.set(backupRecord.id, 100);
         } catch (error: any) {
             console.error('Backup Error:', error);
