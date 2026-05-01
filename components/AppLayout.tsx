@@ -17,7 +17,15 @@ import {
 import { getNavGroups, navigationConfig } from "../lib/navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
-import { documentsApi, backupsApi, notificationsApi, type ApiNotification } from "../lib/api";
+import {
+  documentsApi,
+  backupsApi,
+  notificationsApi,
+  usersApi,
+  activityApi,
+  type ApiNotification,
+  type ApiActivityLog,
+} from "../lib/api";
 import { useDocuments } from "../lib/useDocuments";
 import { ModalFrame } from "./ui/index";
 import { UserAvatar } from "./UserAvatar";
@@ -30,6 +38,14 @@ import { AssignWithDeadlinePopup, type AssignDropPayload } from "./AssignWithDea
 import { DOC_DRAG_END_EVENT, DOC_DRAG_START_EVENT } from "../lib/docDrag";
 import { AppBrand } from "./AppBrand";
 
+type ConnectionState = "active" | "closed" | "disabled";
+
+type HeaderTeamMember = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  state: ConnectionState;
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Types
@@ -247,6 +263,7 @@ interface TopBarProps {
   editorTopBar: EditorTopBarSlots | null;
   unreadCount: number;
   onBellClick: () => void;
+  teamMembers: HeaderTeamMember[];
 }
 
 
@@ -260,6 +277,7 @@ const TopBar: React.FC<TopBarProps> = ({
   editorTopBar,
   unreadCount,
   onBellClick,
+  teamMembers,
 }) => {
 
   const navigate = useNavigate();
@@ -340,6 +358,44 @@ const TopBar: React.FC<TopBarProps> = ({
 
       {!isEditorRoute && (
         <div className="flex items-center gap-1.5 shrink-0">
+          {teamMembers.length > 0 && (
+            <div className="hidden sm:flex items-center gap-1.5 mr-1">
+              {teamMembers.slice(0, 5).map((member) => {
+                const isActive = member.state === "active";
+                const isDisabled = member.state === "disabled";
+                const dotColor = isActive
+                  ? "bg-green-500"
+                  : isDisabled
+                    ? "bg-red-500"
+                    : "bg-slate-400";
+
+                return (
+                  <button
+                    key={member.id}
+                    type="button"
+                    title={`${member.name} · ${isActive ? "Conexión activa" : isDisabled ? "Deshabilitado" : "Conexión cerrada"}`}
+                    className="relative rounded-full ring-2 ring-white dark:ring-slate-800 hover:scale-105 transition-transform"
+                    onClick={() => navigate(`/equipo/usuario/${member.id}`)}
+                    aria-label={`Abrir perfil de ${member.name}`}
+                  >
+                    <UserAvatar
+                      name={member.name}
+                      avatarUrl={member.avatarUrl ?? undefined}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <span className="absolute -right-0.5 -bottom-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-white dark:bg-slate-800">
+                      <span className={`relative inline-flex h-2 w-2 rounded-full ${dotColor}`}>
+                        {isActive && (
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+                        )}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Bell button */}
           <button
             type="button"
@@ -359,10 +415,10 @@ const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onUploadClick}
             className="inline-flex items-center justify-center gap-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-blue-700 shadow-sm transition-colors"
-            aria-label="Nuevo documento"
+            aria-label="Subir archivo"
           >
             <Upload className="w-5 h-5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Nuevo documento</span>
+            <span className="hidden sm:inline">Subir archivo</span>
           </button>
         </div>
       )}
@@ -588,6 +644,7 @@ export const AppLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [headerTeamMembers, setHeaderTeamMembers] = useState<HeaderTeamMember[]>([]);
 
   const [documentsInvalidateSeq, setDocumentsInvalidateSeq] = useState(0);
   const { refresh: refreshDocumentsHook } = useDocuments({ autoFetch: false });
@@ -613,6 +670,72 @@ export const AppLayout: React.FC = () => {
     }
   }, []);
 
+  const computeConnectionState = useCallback(
+    (member: { isActive: boolean }, latestEvent?: ApiActivityLog): ConnectionState => {
+      if (!member.isActive) return "disabled";
+      if (!latestEvent) return "closed";
+
+      const activity = (latestEvent.activity ?? "").toUpperCase();
+      const description = (latestEvent.description ?? "").toLowerCase();
+      const activeEvents = new Set(["CONNECTION_STARTED", "LOGIN"]);
+      const closedEvents = new Set(["CONNECTION_ENDED", "LOGOUT"]);
+
+      if (activeEvents.has(activity) || description.includes("inició conexión")) {
+        return "active";
+      }
+      if (closedEvents.has(activity) || description.includes("cerró conexión")) {
+        return "closed";
+      }
+      return "closed";
+    },
+    [],
+  );
+
+  const fetchHeaderTeamMembers = useCallback(async () => {
+    try {
+      const [usersRes, activityRes] = await Promise.all([
+        usersApi.list({ limit: 50 }),
+        activityApi.list({ page: 1, limit: 100, entityType: "user" }),
+      ]);
+      const allUsers = usersRes.data ?? [];
+      const activityItems = activityRes.data ?? [];
+      const latestConnectionEventByUser = new Map<string, ApiActivityLog>();
+      for (const item of activityItems) {
+        const uid = item.userId ?? item.user?.id ?? null;
+        if (!uid || latestConnectionEventByUser.has(uid)) continue;
+        const activity = (item.activity ?? "").toUpperCase();
+        if (
+          activity === "CONNECTION_STARTED" ||
+          activity === "CONNECTION_ENDED" ||
+          activity === "LOGIN" ||
+          activity === "LOGOUT"
+        ) {
+          latestConnectionEventByUser.set(uid, item);
+        }
+      }
+      const otherMembers = allUsers.filter((u) => u.id !== user?.id);
+      const sourceMembers = otherMembers.length > 0 ? otherMembers : allUsers;
+      const members = sourceMembers
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          avatarUrl: u.avatarUrl,
+          state: computeConnectionState(
+            { isActive: u.isActive },
+            latestConnectionEventByUser.get(u.id),
+          ),
+        }))
+        .sort((a, b) => {
+          const priority: Record<ConnectionState, number> = { active: 0, closed: 1, disabled: 2 };
+          return priority[a.state] - priority[b.state];
+        })
+        .slice(0, 8);
+      setHeaderTeamMembers(members);
+    } catch {
+      setHeaderTeamMembers([]);
+    }
+  }, [computeConnectionState, user?.id]);
+
   // Initial load + polling cada 30s
   useEffect(() => {
     setNotifLoading(true);
@@ -620,6 +743,24 @@ export const AppLayout: React.FC = () => {
     const interval = setInterval(fetchNotifications, 30_000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
+
+  useEffect(() => {
+    void fetchHeaderTeamMembers();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void fetchHeaderTeamMembers();
+    }, 2_000);
+    const handleVisibilityOrFocus = () => {
+      void fetchHeaderTeamMembers();
+    };
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    };
+  }, [fetchHeaderTeamMembers]);
 
   const handleMarkRead = useCallback(async (id: string) => {
     try {
@@ -863,6 +1004,7 @@ export const AppLayout: React.FC = () => {
             editorTopBar={editorTopBar}
             unreadCount={unreadCount}
             onBellClick={() => setNotifOpen((prev) => !prev)}
+            teamMembers={headerTeamMembers}
           />
 
 
