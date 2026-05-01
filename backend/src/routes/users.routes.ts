@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -355,7 +356,7 @@ usersRouter.patch(
       const activityRows: Array<{
         activity: MediaActivity | 'USER_UPDATED';
         description: string;
-        metadata?: Record<string, unknown>;
+        metadata?: Prisma.InputJsonValue;
       }> = [...mediaLogs];
       if (hasProfileFields) {
         const detail =
