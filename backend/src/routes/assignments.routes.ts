@@ -21,6 +21,7 @@ const updateAssignmentSchema = z.object({
 
 const assignmentsQuerySchema = paginationQuery.extend({
   status: z.enum(['pendiente', 'visto', 'editado', 'revisado', 'completado', 'rechazado']).optional(),
+  userId: z.string().uuid().optional(),
   /** Si true: asignaciones recibidas aún no marcadas como completadas (incl. visto, editado, revisado, rechazado). */
   pendingWork: z.coerce.boolean().optional(),
 });
@@ -40,10 +41,22 @@ assignmentsRouter.get(
   validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, status, pendingWork } = req.query as any;
+      const { page, limit, sortOrder, status, pendingWork, userId } = req.query as any;
       const skip = (page - 1) * limit;
+      const requester = req.user!;
+      let targetUserId = requester.id;
 
-      const where: any = { assignedTo: req.user!.id };
+      if (userId && requester.role === 'admin' && requester.firmId) {
+        const targetUser = await prisma.user.findFirst({
+          where: { id: userId, firmId: requester.firmId },
+          select: { id: true },
+        });
+        if (targetUser) {
+          targetUserId = targetUser.id;
+        }
+      }
+
+      const where: any = { assignedTo: targetUserId };
       if (pendingWork) {
         where.status = { notIn: ['completado', 'activo'] };
       } else if (status) {
@@ -79,10 +92,22 @@ assignmentsRouter.get(
   validateQuery(assignmentsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, sortOrder, status, pendingWork } = req.query as any;
+      const { page, limit, sortOrder, status, pendingWork, userId } = req.query as any;
       const skip = (page - 1) * limit;
+      const requester = req.user!;
+      let targetUserId = requester.id;
 
-      const where: any = { assignedBy: req.user!.id };
+      if (userId && requester.role === 'admin' && requester.firmId) {
+        const targetUser = await prisma.user.findFirst({
+          where: { id: userId, firmId: requester.firmId },
+          select: { id: true },
+        });
+        if (targetUser) {
+          targetUserId = targetUser.id;
+        }
+      }
+
+      const where: any = { assignedBy: targetUserId };
       if (pendingWork) {
         where.status = { notIn: ['completado', 'activo'] };
       } else if (status) {
