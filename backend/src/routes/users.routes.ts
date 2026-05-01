@@ -35,6 +35,8 @@ const updateUserSchema = z.object({
   department: z.string().max(255).optional().nullable(),
   position: z.string().max(255).optional().nullable(),
   phone: z.string().max(50).optional().nullable(),
+  avatarUrl: z.string().max(1_000_000).optional().nullable(),
+  coverUrl: z.string().max(1_000_000).optional().nullable(),
 });
 
 const changeRoleSchema = z.object({
@@ -123,9 +125,14 @@ usersRouter.get(
           avatarUrl: true, officeName: true, department: true,
           position: true, phone: true, isActive: true,
           lastLogin: true, createdAt: true, updatedAt: true,
+          settings: { select: { storagePath: true } },
         },
       });
-      res.json(user);
+      const { settings, ...userData } = user;
+      res.json({
+        ...userData,
+        coverUrl: settings?.storagePath ?? null,
+      });
     } catch (error) {
       next(error);
     }
@@ -222,7 +229,7 @@ usersRouter.patch(
         }
       }
 
-      const { name, officeName, department, position, phone } = req.body;
+      const { name, officeName, department, position, phone, avatarUrl, coverUrl } = req.body;
 
       const user = await prisma.user.update({
         where: { id: targetId },
@@ -232,13 +239,22 @@ usersRouter.patch(
           ...(department !== undefined && { department }),
           ...(position !== undefined && { position }),
           ...(phone !== undefined && { phone }),
+          ...(avatarUrl !== undefined && { avatarUrl }),
         },
         select: {
           id: true, email: true, name: true, role: true,
           officeName: true, department: true, position: true,
-          phone: true, isActive: true, updatedAt: true,
+          phone: true, avatarUrl: true, isActive: true, updatedAt: true,
         },
       });
+
+      if (coverUrl !== undefined) {
+        await prisma.userSettings.upsert({
+          where: { userId: targetId },
+          update: { storagePath: coverUrl },
+          create: { userId: targetId, storagePath: coverUrl },
+        });
+      }
 
       await prisma.activityLog.create({
         data: {
@@ -252,7 +268,10 @@ usersRouter.patch(
         },
       });
 
-      res.json(user);
+      res.json({
+        ...user,
+        coverUrl: coverUrl !== undefined ? coverUrl : null,
+      });
     } catch (error) {
       next(error);
     }

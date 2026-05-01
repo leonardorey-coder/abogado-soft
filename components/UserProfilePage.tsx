@@ -3,7 +3,7 @@
 // Muestra datos personales, rol, estado, despacho, permisos, asignaciones y bitácora
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getRoleLabel } from "../lib/constants";
@@ -22,6 +22,7 @@ interface UserProfile {
   name: string;
   role: string;
   avatarUrl?: string | null;
+  coverUrl?: string | null;
   phone?: string | null;
   officeName?: string | null;
   department?: string | null;
@@ -106,6 +107,72 @@ export const UserProfilePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"assignments" | "activity">("assignments");
   const [assignTab, setAssignTab] = useState<"recibidos" | "enviados">("recibidos");
+  const [isAvatarDragging, setIsAvatarDragging] = useState(false);
+  const [isCoverDragging, setIsCoverDragging] = useState(false);
+  const [uploadingTarget, setUploadingTarget] = useState<"avatar" | "cover" | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const canEditPhotos = true;
+
+  const updateUserMedia = useCallback(async (payload: { avatarUrl?: string | null; coverUrl?: string | null }) => {
+    if (!token || !id) return;
+    const res = await fetch(`${API_URL}/users/${id}`, {
+      method: "PATCH",
+      headers: authHeader,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const response = await res.json().catch(() => ({}));
+      throw new Error(response.error ?? "No se pudo actualizar la imagen.");
+    }
+    setUser((prev) => (prev ? { ...prev, ...payload } : prev));
+  }, [authHeader, id, token]);
+
+  const readImageFile = useCallback((file: File) => new Promise<string>((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Solo se permiten imágenes."));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error("La imagen debe pesar menos de 5MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(file);
+  }), []);
+
+  const handleImageChange = useCallback(async (target: "avatar" | "cover", file: File) => {
+    try {
+      setError(null);
+      setUploadingTarget(target);
+      const dataUrl = await readImageFile(file);
+      await updateUserMedia(target === "avatar" ? { avatarUrl: dataUrl } : { coverUrl: dataUrl });
+    } catch (err: any) {
+      setError(err.message ?? "No se pudo cargar la imagen.");
+    } finally {
+      setUploadingTarget(null);
+      setIsAvatarDragging(false);
+      setIsCoverDragging(false);
+    }
+  }, [readImageFile, updateUserMedia]);
+
+  const handleRemoveImage = useCallback(async (target: "avatar" | "cover") => {
+    try {
+      setError(null);
+      setUploadingTarget(target);
+      await updateUserMedia(target === "avatar" ? { avatarUrl: null } : { coverUrl: null });
+    } catch (err: any) {
+      setError(err.message ?? "No se pudo eliminar la imagen.");
+    } finally {
+      setUploadingTarget(null);
+    }
+  }, [updateUserMedia]);
+
+  const isImageDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
+    return Array.from(event.dataTransfer?.items ?? []).some((item) => item.type.startsWith("image/"));
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!token || !id) return;
@@ -239,16 +306,157 @@ export const UserProfilePage: React.FC = () => {
       {/* ── Hero card ─────────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-[#1a212f] rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm overflow-hidden">
 
-        {/* Gradient header strip */}
-        <div className="h-24 bg-gradient-to-br from-primary/10 via-blue-100/40 to-indigo-100/30 dark:from-primary/20 dark:via-blue-900/20 dark:to-indigo-900/10" />
+        <div
+          className={`group relative h-40 md:h-44 transition-colors ${
+            isCoverDragging
+              ? "ring-2 ring-primary ring-inset bg-primary/10"
+              : "bg-gradient-to-br from-primary/10 via-blue-100/40 to-indigo-100/30 dark:from-primary/20 dark:via-blue-900/20 dark:to-indigo-900/10"
+          }`}
+          style={user.coverUrl && !isCoverDragging ? { backgroundImage: `url(${user.coverUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+          onDragOver={(e) => {
+            if (!canEditPhotos) return;
+            if (!isImageDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setIsCoverDragging(true);
+          }}
+          onDragEnter={(e) => {
+            if (!canEditPhotos) return;
+            if (!isImageDrag(e)) return;
+            e.preventDefault();
+            setIsCoverDragging(true);
+          }}
+          onDragLeave={() => canEditPhotos && setIsCoverDragging(false)}
+          onDrop={(e) => {
+            if (!canEditPhotos) return;
+            e.preventDefault();
+            setIsCoverDragging(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void handleImageChange("cover", file);
+          }}
+          onClick={() => canEditPhotos && coverInputRef.current?.click()}
+          role={canEditPhotos ? "button" : undefined}
+          tabIndex={canEditPhotos ? 0 : -1}
+          onKeyDown={(e) => {
+            if (!canEditPhotos) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              coverInputRef.current?.click();
+            }
+          }}
+        >
+          {canEditPhotos && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (user.coverUrl) {
+                    void handleRemoveImage("cover");
+                    return;
+                  }
+                  coverInputRef.current?.click();
+                }}
+                className="size-12 rounded-full bg-white/95 text-red-600 hover:bg-white flex items-center justify-center transition-colors"
+                aria-label={user.coverUrl ? "Eliminar portada" : "Subir portada"}
+              >
+                <span className="material-symbols-outlined">{user.coverUrl ? "delete" : "add_photo_alternate"}</span>
+              </button>
+            </div>
+          )}
+          {uploadingTarget === "cover" && (
+            <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+              <span className="material-symbols-outlined text-white animate-spin">progress_activity</span>
+            </div>
+          )}
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImageChange("cover", file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
 
         <div className="px-6 pb-6">
           {/* Avatar & Header Info */}
           <div className="relative -mt-12 flex flex-col md:flex-row items-center md:items-end justify-between gap-6">
             <div className="flex flex-col items-center md:items-start gap-4">
-              <div className="size-[96px] rounded-3xl border-4 border-white dark:border-[#1a212f] bg-white dark:bg-[#1a212f] shadow-sm overflow-hidden flex-shrink-0">
+              <div
+                className={`group relative size-[96px] rounded-3xl border-4 border-white dark:border-[#1a212f] bg-white dark:bg-[#1a212f] shadow-sm overflow-hidden flex-shrink-0 transition-colors ${isAvatarDragging ? "ring-2 ring-primary" : ""}`}
+                onDragOver={(e) => {
+                  if (!canEditPhotos) return;
+                  if (!isImageDrag(e)) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  setIsAvatarDragging(true);
+                }}
+                onDragEnter={(e) => {
+                  if (!canEditPhotos) return;
+                  if (!isImageDrag(e)) return;
+                  e.preventDefault();
+                  setIsAvatarDragging(true);
+                }}
+                onDragLeave={() => canEditPhotos && setIsAvatarDragging(false)}
+                onDrop={(e) => {
+                  if (!canEditPhotos) return;
+                  e.preventDefault();
+                  setIsAvatarDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) void handleImageChange("avatar", file);
+                }}
+                onClick={() => canEditPhotos && avatarInputRef.current?.click()}
+                role={canEditPhotos ? "button" : undefined}
+                tabIndex={canEditPhotos ? 0 : -1}
+                onKeyDown={(e) => {
+                  if (!canEditPhotos) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    avatarInputRef.current?.click();
+                  }
+                }}
+              >
                 <UserAvatar name={user.name} avatarUrl={user.avatarUrl} className="size-full object-cover" />
+                {canEditPhotos && (
+                  <div className="absolute inset-0 bg-black/35 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (user.avatarUrl) {
+                          void handleRemoveImage("avatar");
+                          return;
+                        }
+                        avatarInputRef.current?.click();
+                      }}
+                      className="size-11 rounded-full bg-white/95 text-red-600 hover:bg-white flex items-center justify-center transition-colors"
+                      aria-label={user.avatarUrl ? "Eliminar foto de perfil" : "Subir foto de perfil"}
+                    >
+                      <span className="material-symbols-outlined">{user.avatarUrl ? "delete" : "add_a_photo"}</span>
+                    </button>
+                  </div>
+                )}
+                {uploadingTarget === "avatar" && (
+                  <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-white animate-spin">progress_activity</span>
+                  </div>
+                )}
               </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImageChange("avatar", file);
+                  e.currentTarget.value = "";
+                }}
+              />
               
               {/* Name & Meta (Mobile Centered) */}
               <div className="text-center md:text-left">
