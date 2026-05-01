@@ -5,6 +5,8 @@ interface UserAvatarProps {
   avatarUrl?: string | null;
   className?: string;
   alt?: string;
+  /** Fallback con iniciales en rectángulo (sin mascar circular). Por defecto círculo. */
+  fallbackSquare?: boolean;
 }
 
 function getInitials(name?: string | null): string {
@@ -17,9 +19,10 @@ function getInitials(name?: string | null): string {
     .join("");
 }
 
-function buildFallbackAvatar(name?: string | null): string {
+function buildFallbackAvatar(name?: string | null, fallbackSquare?: boolean): string {
   const initials = getInitials(name);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#dbeafe"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="700" fill="#1d4ed8">${initials}</text></svg>`;
+  const rx = fallbackSquare ? 0 : 32;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="${rx}" fill="#dbeafe"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="700" fill="#1d4ed8">${initials}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
@@ -28,8 +31,9 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   avatarUrl,
   className = "",
   alt,
+  fallbackSquare = false,
 }) => {
-  const fallbackSrc = useMemo(() => buildFallbackAvatar(name), [name]);
+  const fallbackSrc = useMemo(() => buildFallbackAvatar(name, fallbackSquare), [name, fallbackSquare]);
   const safeAvatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
   const [src, setSrc] = useState<string>(safeAvatarUrl ?? fallbackSrc);
 

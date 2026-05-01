@@ -542,13 +542,13 @@ export const TeamPage: React.FC = () => {
                       {getRoleLabel(u.role)}
                     </div>
 
-                    <div className="relative w-28 self-stretch overflow-hidden rounded-l-xl border-r border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921] flex items-center justify-center">
+                    <div className="relative w-28 shrink-0 self-stretch min-h-[7.5rem] overflow-hidden rounded-l-xl border-r border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921]">
                       <button
                         type="button"
                         onClick={() => navigate(`/equipo/usuario/${u.id}`)}
-                        className="size-16 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:scale-[1.02] transition-transform"
+                        className="absolute inset-0 block h-full w-full overflow-hidden hover:opacity-95 transition-opacity"
                       >
-                        <UserAvatar name={u.name} avatarUrl={u.avatarUrl} className="size-full object-cover" />
+                        <UserAvatar name={u.name} avatarUrl={u.avatarUrl} fallbackSquare className="h-full w-full object-cover object-top" />
                       </button>
                       <div className={`absolute right-2 top-2 z-10 rounded-md border p-1 ${statusIconClass}`} title={u.isActive ? "Activo" : "Inactivo"}>
                         <span className="material-symbols-outlined text-[16px]">
