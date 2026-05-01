@@ -7,8 +7,7 @@ export default defineConfig({
     seed: 'bun prisma/seed.ts',
   },
   datasource: {
-    // Usa DIRECT_URL si existe (conexión directa, por ejemplo Supabase),
-    // y si no, cae a DATABASE_URL.
+    // Usa DIRECT_URL si existe; si no, cae a DATABASE_URL (Postgres local o remoto).
     url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? '',
   },
 });

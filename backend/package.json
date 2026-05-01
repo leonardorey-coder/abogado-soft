@@ -5,8 +5,10 @@
   "type": "module",
   "main": "src/server.ts",
   "scripts": {
+    "postinstall": "prisma generate",
+    "predev": "prisma generate",
     "dev": "bun --watch src/server.ts",
-    "build": "bun build src/server.ts --outdir dist --target bun",
+    "build": "bunx prisma generate && bun build src/server.ts --outdir dist --target bun",
     "start": "bun dist/server.js",
     "prisma:generate": "bunx prisma generate",
     "prisma:push": "bunx prisma db push",
@@ -24,6 +26,7 @@
     "@aws-sdk/s3-request-presigner": "3.1024.0",
     "@prisma/adapter-pg": "7.4.1",
     "@prisma/client": "7.4.0",
+    "prisma": "7.4.0",
     "@tiptap/core": "3.19.0",
     "@tiptap/extension-image": "3.19.0",
     "@tiptap/extension-text-align": "3.19.0",
@@ -65,7 +68,6 @@
     "@types/node-cron": "3.0.11",
     "@types/pdf-parse": "1.1.5",
     "@types/pg": "8.16.0",
-    "prisma": "7.4.0",
     "typescript": "5.8.2"
   }
 }
