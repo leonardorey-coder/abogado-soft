@@ -643,7 +643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onClick={() => void handleNewDocumentFromQuickActions()}
                   className="w-full sm:w-auto justify-center"
                 >
-                  Nuevo Documento
+                  Documento en blanco
                 </Button>
                 {user?.groupMemberships && user.groupMemberships.length > 0 ? (
                   <Link
@@ -1058,7 +1058,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       icon={Plus}
                       onClick={() => onOpenUploadModal?.()}
                     >
-                      Nuevo Documento
+                      Documento en blanco
                     </Button>
                   ) : undefined
                 }
@@ -1215,7 +1215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      Nuevo Documento
+                      Documento en blanco
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500">
                       Subir archivo o crear nuevo
