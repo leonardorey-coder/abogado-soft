@@ -222,6 +222,34 @@ export async function logout(): Promise<void> {
   clearSession();
 }
 
+export async function notifyConnectionStart(reason = 'app_open'): Promise<void> {
+  const session = loadStoredSession();
+  if (!session) return;
+  try {
+    await apiRequest('/auth/connection/start', {
+      method: 'POST',
+      token: session.accessToken,
+      body: JSON.stringify({ refreshToken: session.refreshToken, reason }),
+    });
+  } catch {}
+}
+
+export async function notifyConnectionEnd(reason = 'disconnect'): Promise<void> {
+  const session = loadStoredSession();
+  if (!session) return;
+  try {
+    await fetch(`${API_URL}/auth/connection/end`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      body: JSON.stringify({ refreshToken: session.refreshToken, reason }),
+    });
+  } catch {}
+}
+
 // ─── Obtener perfil actual ────────────────────────────────────────────────────
 
 export async function fetchCurrentUser(accessToken: string): Promise<AppUser | null> {

@@ -20,7 +20,18 @@ const CATEGORY_FILTERS: Record<string, any> = {
     ],
   },
   security: {
-    activity: { in: ['LOGIN', 'LOGOUT', 'PASSWORD_CHANGED', 'ADMIN_ACCESS_GRANTED', 'ADMIN_ACCESS_DENIED', 'BACKUP_CREATED', 'BACKUP_RESTORED', 'SETTINGS_CHANGED'] },
+    activity: {
+      in: [
+        'LOGIN',
+        'LOGOUT',
+        'PASSWORD_CHANGED',
+        'ADMIN_ACCESS_GRANTED',
+        'ADMIN_ACCESS_DENIED',
+        'BACKUP_CREATED',
+        'BACKUP_RESTORED',
+        'SETTINGS_CHANGED',
+      ],
+    },
   },
   assignments: {
     activity: { in: ['DOCUMENT_ASSIGNED', 'DOCUMENT_SHARED', 'COLLABORATION_STARTED', 'COLLABORATION_ENDED', 'DOCUMENT_WORKFLOW_STATUS_CHANGED'] },

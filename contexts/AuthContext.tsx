@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   getSession,
   logout as authLogout,
+  notifyConnectionEnd,
+  notifyConnectionStart,
   fetchCurrentUser,
   getAccessToken,
   loadStoredSession,
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectionOpenRef = useRef(false);
 
   // ─── Programar auto-refresh ────────────────────────────────────────────────
   const scheduleRefresh = useCallback((currentSession: AuthSession) => {
@@ -80,6 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.id) {
       await draftStorage.deleteAll(user.id).catch(() => {});
     }
+    if (connectionOpenRef.current) {
+      await notifyConnectionEnd('logout');
+      connectionOpenRef.current = false;
+    }
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     await authLogout();
     setUser(null);
@@ -100,6 +107,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(newSession);
     scheduleRefresh(newSession);
   }, [scheduleRefresh]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !user?.id || !navigator.onLine) return;
+    if (connectionOpenRef.current) return;
+    connectionOpenRef.current = true;
+    void notifyConnectionStart('app_open');
+  }, [session?.accessToken, user?.id]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (!session?.accessToken || !user?.id) return;
+      if (connectionOpenRef.current) return;
+      connectionOpenRef.current = true;
+      void notifyConnectionStart('reconnect');
+    };
+
+    const handleOffline = () => {
+      if (!session?.accessToken || !user?.id) return;
+      if (!connectionOpenRef.current) return;
+      connectionOpenRef.current = false;
+      void notifyConnectionEnd('offline');
+    };
+
+    const handlePageHide = () => {
+      if (!session?.accessToken || !user?.id) return;
+      if (!connectionOpenRef.current) return;
+      connectionOpenRef.current = false;
+      void notifyConnectionEnd('pagehide');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [session?.accessToken, user?.id]);
 
   return (
     <AuthContext.Provider value={{ user, session, loading, logout, refreshUser, setAuth }}>

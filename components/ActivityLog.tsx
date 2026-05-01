@@ -32,6 +32,8 @@ const CATEGORIES: CategoryDef[] = [
 const ACTIVITY_LABELS: Record<string, string> = {
   LOGIN: "Inició sesión",
   LOGOUT: "Cerró sesión",
+  CONNECTION_STARTED: "Inició conexión",
+  CONNECTION_ENDED: "Cerró conexión",
   DOCUMENT_CREATED: "Creó documento",
   DOCUMENT_UPDATED: "Modificó los datos del documento",
   DOCUMENT_FILE_STATUS_CHANGED: "Cambió el estado",
