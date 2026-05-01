@@ -7,6 +7,9 @@
 FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
+# postinstall ejecuta prisma generate; hace falta el esquema antes de install
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
 RUN bun install --frozen-lockfile
 
 # ─── Build ────────────────────────────────────────────────────────────────────
