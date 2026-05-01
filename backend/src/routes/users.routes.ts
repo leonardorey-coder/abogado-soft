@@ -231,6 +231,11 @@ usersRouter.patch(
       const before = await prisma.user.findFirst({
         where: isSelf ? { id: targetId } : { id: targetId, firmId },
         select: {
+          name: true,
+          officeName: true,
+          department: true,
+          position: true,
+          phone: true,
           avatarUrl: true,
           settings: { select: { storagePath: true } },
         },
@@ -244,6 +249,28 @@ usersRouter.patch(
 
       const oldAvatar = before.avatarUrl?.trim() ? before.avatarUrl.trim() : null;
       const oldCover = before.settings?.storagePath?.trim() ? before.settings.storagePath.trim() : null;
+
+      const fieldLabel: Record<string, string> = {
+        name: 'Nombre',
+        officeName: 'Despacho / Oficina',
+        department: 'Área',
+        position: 'Cargo',
+        phone: 'Teléfono',
+      };
+
+      const toCleanValue = (v: unknown): string | null => {
+        if (v === null || v === undefined) return null;
+        const s = String(v).trim();
+        return s.length ? s : null;
+      };
+
+      const profileChanges: Array<{ key: keyof typeof fieldLabel; value: string | null }> = [];
+      (['name', 'officeName', 'department', 'position', 'phone'] as const).forEach((k) => {
+        if (req.body[k] === undefined) return;
+        const next = toCleanValue(req.body[k]);
+        const prev = toCleanValue((before as any)[k]);
+        if (next !== prev) profileChanges.push({ key: k, value: next });
+      });
 
       const user = await prisma.user.update({
         where: { id: targetId },
@@ -330,9 +357,15 @@ usersRouter.patch(
         description: string;
       }> = [...mediaLogs];
       if (hasProfileFields) {
+        const detail =
+          profileChanges.length > 0
+            ? profileChanges
+              .map((c) => `${fieldLabel[c.key]}: ${c.value ?? '—'}`)
+              .join(', ')
+            : null;
         activityRows.push({
           activity: 'USER_UPDATED',
-          description: 'Perfil de usuario actualizado',
+          description: detail ? `Actualizó perfil - ${detail}` : 'Actualizó perfil',
         });
       }
 

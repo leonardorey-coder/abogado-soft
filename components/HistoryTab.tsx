@@ -5,6 +5,7 @@ import DiffSummaryPreview from './DiffSummaryPreview';
 import { useAuth } from '../contexts/AuthContext';
 import { getViewerInitial, getViewerLabel } from '../lib/viewerIdentity';
 import { BitacoraEntryItem } from './BitacoraEntryItem';
+import { UserAvatar } from './UserAvatar';
 
 export interface GenericVersion {
     id: string;
@@ -67,21 +68,24 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                         <span className="text-[10px] text-gray-400">{formatTime(event.createdAt)}</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                        <div className="size-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-gray-300">
-                                            {event.type === 'version'
-                                                ? getViewerInitial({
+                                        {event.type === 'activity' ? (
+                                            <div className="size-5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0">
+                                                <UserAvatar
+                                                    name={event.activity.user?.name}
+                                                    avatarUrl={event.activity.user?.avatarUrl}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="size-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-gray-300">
+                                                {getViewerInitial({
                                                     subjectId: event.version.creator?.id,
                                                     subjectName: event.version.creator?.name,
                                                     currentUserId: user?.id,
                                                     fallback: "?",
-                                                })
-                                                : getViewerInitial({
-                                                    subjectId: event.activity.userId,
-                                                    subjectName: event.activity.user?.name,
-                                                    currentUserId: user?.id,
-                                                    fallback: "Sistema",
                                                 })}
-                                        </div>
+                                            </div>
+                                        )}
                                         <span className="text-xs font-semibold dark:text-gray-300 truncate">
                                             {event.type === 'version'
                                                 ? getViewerLabel({
