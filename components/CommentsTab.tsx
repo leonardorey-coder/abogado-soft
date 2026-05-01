@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { formatDateTime } from '../lib/formatters';
 import { UserAvatar } from './UserAvatar';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface GenericComment {
     id: string;
     content: string;
     createdAt: string | Date;
     isResolved?: boolean;
-    user: { name: string; avatarUrl?: string | null };
+    user: { id?: string; name: string; avatarUrl?: string | null };
     replies?: {
         id: string;
         content: string;
         createdAt: string | Date;
-        user: { name: string; avatarUrl?: string | null };
+        user: { id?: string; name: string; avatarUrl?: string | null };
     }[];
 }
 
@@ -22,8 +23,18 @@ interface CommentsTabProps {
 }
 
 export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment }) => {
+    const { user: authUser } = useAuth();
     const [newComment, setNewComment] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const avatarByUserId = comments.reduce<Record<string, string>>((acc, comment) => {
+        const mainAvatar = comment.user.avatarUrl?.trim();
+        if (comment.user.id && mainAvatar && !acc[comment.user.id]) acc[comment.user.id] = mainAvatar;
+        (comment.replies ?? []).forEach((reply) => {
+            const replyAvatar = reply.user.avatarUrl?.trim();
+            if (reply.user.id && replyAvatar && !acc[reply.user.id]) acc[reply.user.id] = replyAvatar;
+        });
+        return acc;
+    }, {});
 
     const handleSubmit = async () => {
         if (!newComment.trim()) return;
@@ -87,7 +98,12 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                                     <div className="flex items-center gap-2">
                                         <UserAvatar
                                             name={comment.user.name}
-                                            avatarUrl={comment.user.avatarUrl}
+                                            avatarUrl={
+                                                comment.user.avatarUrl ??
+                                                (comment.user.id ? avatarByUserId[comment.user.id] : undefined) ??
+                                                (!comment.user.id && comment.user.name === authUser?.name ? authUser?.avatarUrl : undefined) ??
+                                                (comment.user.id === authUser?.id ? authUser?.avatarUrl : undefined)
+                                            }
                                             className="size-8 rounded-full object-cover"
                                         />
                                         <div>
@@ -102,6 +118,16 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({ comments, onAddComment
                                 {comment.replies && comment.replies.map(reply => (
                                     <div key={reply.id} className="ml-9 mt-2 pl-2.5 border-l-2 border-gray-100 dark:border-gray-700">
                                         <div className="flex items-center gap-2 mb-0.5">
+                                            <UserAvatar
+                                                name={reply.user.name}
+                                                avatarUrl={
+                                                    reply.user.avatarUrl ??
+                                                    (reply.user.id ? avatarByUserId[reply.user.id] : undefined) ??
+                                                    (!reply.user.id && reply.user.name === authUser?.name ? authUser?.avatarUrl : undefined) ??
+                                                    (reply.user.id === authUser?.id ? authUser?.avatarUrl : undefined)
+                                                }
+                                                className="size-5 rounded-full object-cover"
+                                            />
                                             <span className="font-bold text-xs dark:text-white">{reply.user.name}</span>
                                             <span className="text-[10px] text-gray-400">{formatDateTime(reply.createdAt)}</span>
                                         </div>

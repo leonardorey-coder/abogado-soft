@@ -27,6 +27,12 @@ type HistoryEvent =
 
 export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs = [] }) => {
     const { user } = useAuth();
+    const avatarByUserId = activityLogs.reduce<Record<string, string>>((acc, log) => {
+        if (!log.userId) return acc;
+        const avatar = log.user?.avatarUrl?.trim();
+        if (avatar && !acc[log.userId]) acc[log.userId] = avatar;
+        return acc;
+    }, {});
     const events: HistoryEvent[] = [
         ...versions.map((v) => ({
             id: `version-${v.id}`,
@@ -71,8 +77,13 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ versions, activityLogs =
                                         {event.type === 'activity' ? (
                                             <div className="size-5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0">
                                                 <UserAvatar
-                                                    name={event.activity.user?.name}
-                                                    avatarUrl={event.activity.user?.avatarUrl}
+                                                    name={event.activity.user?.name ?? user?.name}
+                                                    avatarUrl={
+                                                        event.activity.user?.avatarUrl ??
+                                                        (event.activity.userId ? avatarByUserId[event.activity.userId] : undefined) ??
+                                                        (!event.activity.userId && event.activity.user?.name === user?.name ? user?.avatarUrl : undefined) ??
+                                                        (event.activity.userId === user?.id ? user?.avatarUrl : undefined)
+                                                    }
                                                     className="h-full w-full object-cover"
                                                 />
                                             </div>

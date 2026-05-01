@@ -383,6 +383,14 @@ export const BitacoraEntryItem: React.FC<BitacoraEntryItemProps> = ({
       return <span className="italic text-[#616f89] dark:text-[#a0aec0]">- {target ? `${target}: ${level}` : level}</span>;
     }
 
+    if (entry.activity === "USER_UPDATED") {
+      const raw = (entry.description ?? "").trim();
+      if (!raw) return null;
+      const detail = raw.replace(/^actualiz[oó]\s+perfil\s*-\s*/i, "").trim();
+      if (!detail || /^actualiz[oó]\s+perfil$/i.test(raw)) return null;
+      return <span className="italic text-[#616f89] dark:text-[#a0aec0]">- {detail}</span>;
+    }
+
     if (
       entry.activity === "DOCUMENT_WORKFLOW_STATUS_CHANGED" &&
       meta.field === "assignmentStatus" &&

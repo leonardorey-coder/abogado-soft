@@ -264,12 +264,12 @@ usersRouter.patch(
         return s.length ? s : null;
       };
 
-      const profileChanges: Array<{ key: keyof typeof fieldLabel; value: string | null }> = [];
+      const profileChanges: Array<{ key: keyof typeof fieldLabel; from: string | null; to: string | null }> = [];
       (['name', 'officeName', 'department', 'position', 'phone'] as const).forEach((k) => {
         if (req.body[k] === undefined) return;
         const next = toCleanValue(req.body[k]);
         const prev = toCleanValue((before as any)[k]);
-        if (next !== prev) profileChanges.push({ key: k, value: next });
+        if (next !== prev) profileChanges.push({ key: k, from: prev, to: next });
       });
 
       const user = await prisma.user.update({
@@ -355,17 +355,29 @@ usersRouter.patch(
       const activityRows: Array<{
         activity: MediaActivity | 'USER_UPDATED';
         description: string;
+        metadata?: Record<string, unknown>;
       }> = [...mediaLogs];
       if (hasProfileFields) {
         const detail =
           profileChanges.length > 0
             ? profileChanges
-              .map((c) => `${fieldLabel[c.key]}: ${c.value ?? '—'}`)
+              .map((c) => `${fieldLabel[c.key]}: ${c.from ?? '—'} → ${c.to ?? '—'}`)
               .join(', ')
             : null;
         activityRows.push({
           activity: 'USER_UPDATED',
           description: detail ? `Actualizó perfil - ${detail}` : 'Actualizó perfil',
+          metadata: profileChanges.length > 0
+            ? {
+                kind: 'profile_updated',
+                changes: profileChanges.map((c) => ({
+                  field: c.key,
+                  label: fieldLabel[c.key],
+                  from: c.from,
+                  to: c.to,
+                })),
+              }
+            : { kind: 'profile_updated' },
         });
       }
 
@@ -381,6 +393,7 @@ usersRouter.patch(
                 entityId: user.id,
                 entityName: user.name,
                 description: row.description,
+                metadata: row.metadata,
               },
             }),
           ),
