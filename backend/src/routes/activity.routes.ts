@@ -16,7 +16,7 @@ const CATEGORY_FILTERS: Record<string, any> = {
   team: {
     OR: [
       { entityType: { in: ['user', 'group'] } },
-      { activity: { in: ['USER_REGISTERED', 'USER_UPDATED', 'GROUP_CREATED', 'GROUP_UPDATED', 'GROUP_DELETED', 'GROUP_MEMBER_ADDED', 'GROUP_MEMBER_REMOVED'] } },
+      { activity: { in: ['USER_REGISTERED', 'USER_UPDATED', 'USER_AVATAR_UPLOADED', 'USER_AVATAR_UPDATED', 'USER_AVATAR_REMOVED', 'USER_COVER_UPLOADED', 'USER_COVER_UPDATED', 'USER_COVER_REMOVED', 'GROUP_CREATED', 'GROUP_UPDATED', 'GROUP_DELETED', 'GROUP_MEMBER_ADDED', 'GROUP_MEMBER_REMOVED'] } },
     ],
   },
   security: {
@@ -85,8 +85,8 @@ function buildWhereClause(query: any, user: any): any {
 
   // ── 3. Filtro de categoría o entidad/actividad específica ─────────────────
   if (category && CATEGORY_FILTERS[category]) {
-    // Añadir como condición AND separada — no sobreescribe el OR de firma
     conditions.push(CATEGORY_FILTERS[category]);
+    if (activity) conditions.push({ activity });
   } else {
     if (activity) conditions.push({ activity });
     if (entityType) conditions.push({ entityType });

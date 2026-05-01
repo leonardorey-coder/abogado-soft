@@ -221,7 +221,6 @@ usersRouter.patch(
           res.status(403).json({ error: 'Sin permiso para editar este usuario.' });
           return;
         }
-        // Verificar que el target pertenece al mismo despacho
         const target = await prisma.user.findFirst({ where: { id: targetId, firmId } });
         if (!target) {
           res.status(403).json({ error: 'El usuario no pertenece a tu despacho.' });
@@ -229,7 +228,22 @@ usersRouter.patch(
         }
       }
 
+      const before = await prisma.user.findFirst({
+        where: isSelf ? { id: targetId } : { id: targetId, firmId },
+        select: {
+          avatarUrl: true,
+          settings: { select: { storagePath: true } },
+        },
+      });
+      if (!before) {
+        res.status(404).json({ error: 'Usuario no encontrado.' });
+        return;
+      }
+
       const { name, officeName, department, position, phone, avatarUrl, coverUrl } = req.body;
+
+      const oldAvatar = before.avatarUrl?.trim() ? before.avatarUrl.trim() : null;
+      const oldCover = before.settings?.storagePath?.trim() ? before.settings.storagePath.trim() : null;
 
       const user = await prisma.user.update({
         where: { id: targetId },
@@ -256,21 +270,93 @@ usersRouter.patch(
         });
       }
 
-      await prisma.activityLog.create({
-        data: {
-          firmId,
-          userId: req.user!.id,
-          activity: 'USER_UPDATED',
-          entityType: 'user',
-          entityId: user.id,
-          entityName: user.name,
-          description: `Perfil de usuario actualizado`,
-        },
+      const settingsAfter = await prisma.userSettings.findUnique({
+        where: { userId: targetId },
+        select: { storagePath: true },
       });
+      const resolvedCoverUrl = settingsAfter?.storagePath?.trim() ? settingsAfter.storagePath.trim() : null;
+
+      type MediaActivity =
+        | 'USER_AVATAR_UPLOADED'
+        | 'USER_AVATAR_UPDATED'
+        | 'USER_AVATAR_REMOVED'
+        | 'USER_COVER_UPLOADED'
+        | 'USER_COVER_UPDATED'
+        | 'USER_COVER_REMOVED';
+
+      const mediaLogs: Array<{ activity: MediaActivity; description: string }> = [];
+
+      if (avatarUrl !== undefined) {
+        const nextAvatar =
+          avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.trim() === '')
+            ? null
+            : String(avatarUrl).trim();
+        if (nextAvatar !== oldAvatar) {
+          if (nextAvatar === null) {
+            mediaLogs.push({ activity: 'USER_AVATAR_REMOVED', description: 'Eliminó foto de perfil' });
+          } else if (!oldAvatar) {
+            mediaLogs.push({ activity: 'USER_AVATAR_UPLOADED', description: 'Subió foto de perfil' });
+          } else {
+            mediaLogs.push({ activity: 'USER_AVATAR_UPDATED', description: 'Cambió foto de perfil' });
+          }
+        }
+      }
+
+      if (coverUrl !== undefined) {
+        const nextCover =
+          coverUrl === null || (typeof coverUrl === 'string' && coverUrl.trim() === '')
+            ? null
+            : String(coverUrl).trim();
+        if (nextCover !== oldCover) {
+          if (nextCover === null) {
+            mediaLogs.push({ activity: 'USER_COVER_REMOVED', description: 'Eliminó foto de portada' });
+          } else if (!oldCover) {
+            mediaLogs.push({ activity: 'USER_COVER_UPLOADED', description: 'Subió foto de portada' });
+          } else {
+            mediaLogs.push({ activity: 'USER_COVER_UPDATED', description: 'Cambió foto de portada' });
+          }
+        }
+      }
+
+      const hasProfileFields =
+        name !== undefined ||
+        officeName !== undefined ||
+        department !== undefined ||
+        position !== undefined ||
+        phone !== undefined;
+
+      const activityRows: Array<{
+        activity: MediaActivity | 'USER_UPDATED';
+        description: string;
+      }> = [...mediaLogs];
+      if (hasProfileFields) {
+        activityRows.push({
+          activity: 'USER_UPDATED',
+          description: 'Perfil de usuario actualizado',
+        });
+      }
+
+      if (activityRows.length > 0) {
+        await prisma.$transaction(
+          activityRows.map((row) =>
+            prisma.activityLog.create({
+              data: {
+                firmId,
+                userId: req.user!.id,
+                activity: row.activity,
+                entityType: 'user',
+                entityId: user.id,
+                entityName: user.name,
+                description: row.description,
+              },
+            }),
+          ),
+        );
+      }
 
       res.json({
         ...user,
-        coverUrl: coverUrl !== undefined ? coverUrl : null,
+        coverUrl: resolvedCoverUrl,
       });
     } catch (error) {
       next(error);

@@ -39,6 +39,12 @@ const ACTIVITY_LABELS: Record<string, string> = {
   BACKUP_RESTORED: "Restaur\u00f3 respaldo",
   USER_REGISTERED: "Se registr\u00f3",
   USER_UPDATED: "Actualiz\u00f3 perfil",
+  USER_AVATAR_UPLOADED: "Subi\u00f3 foto de perfil",
+  USER_AVATAR_UPDATED: "Cambi\u00f3 foto de perfil",
+  USER_AVATAR_REMOVED: "Elimin\u00f3 foto de perfil",
+  USER_COVER_UPLOADED: "Subi\u00f3 foto de portada",
+  USER_COVER_UPDATED: "Cambi\u00f3 foto de portada",
+  USER_COVER_REMOVED: "Elimin\u00f3 foto de portada",
   PASSWORD_CHANGED: "Cambi\u00f3 contrase\u00f1a",
   SETTINGS_CHANGED: "Cambi\u00f3 configuraci\u00f3n",
   COLLABORATION_STARTED: "Actualiz\u00f3 asignaci\u00f3n",
@@ -120,7 +126,13 @@ function resolveCategory(activity: string): CategoryInfo {
   if (activity.startsWith("DOCUMENT_")) return CATEGORY_BY_PAGE.documents;
   if (activity.startsWith("CALENDAR_NOTE_")) return CATEGORY_BY_PAGE.calendar;
   if (activity.startsWith("CONVENIO_")) return CATEGORY_BY_PAGE.convenios;
-  if (activity.startsWith("GROUP_") || activity === "USER_REGISTERED" || activity === "USER_UPDATED") {
+  if (
+    activity.startsWith("GROUP_") ||
+    activity === "USER_REGISTERED" ||
+    activity === "USER_UPDATED" ||
+    activity.startsWith("USER_AVATAR_") ||
+    activity.startsWith("USER_COVER_")
+  ) {
     return CATEGORY_BY_PAGE.team;
   }
   if (["LOGIN", "LOGOUT", "CONNECTION_STARTED", "CONNECTION_ENDED", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(activity)) {
@@ -170,6 +182,7 @@ function getEntityLink(entry: ApiActivityLog): string | null {
   const entityType = (entry.entityType || "").toLowerCase();
   if (entityType === "document") return `/documento/${entry.entityId}`;
   if (entityType === "convenio") return `/convenio/${entry.entityId}`;
+  if (entityType === "user") return `/equipo/usuario/${entry.entityId}`;
   return null;
 }
 
