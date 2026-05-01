@@ -66,6 +66,7 @@ export const TeamPage: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentFilter, setAssignmentFilter] = useState<"todos" | "pendientes" | "aceptados" | "completados" | "rechazados" | "compartidos">("todos");
 
   // CRUD state
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<TeamUser | null>(null);
@@ -348,7 +349,68 @@ export const TeamPage: React.FC = () => {
   };
 
   const activeUsers = users.filter((u) => u.isActive);
-  const inactiveUsers = users.filter((u) => !u.isActive);
+  const pendingAssignments = assignments.filter((a) => a.status === "pendiente");
+  const acceptedAssignments = assignments.filter((a) => ["visto", "editado", "revisado"].includes(a.status));
+  const completedAssignments = assignments.filter((a) => a.status === "completado");
+  const rejectedAssignments = assignments.filter((a) => a.status === "rechazado");
+  const sharedAssignments: any[] = [];
+
+  const visibleAssignments = assignmentFilter === "todos"
+    ? assignments
+    : assignmentFilter === "pendientes"
+      ? pendingAssignments
+      : assignmentFilter === "aceptados"
+        ? acceptedAssignments
+        : assignmentFilter === "completados"
+          ? completedAssignments
+          : assignmentFilter === "rechazados"
+            ? rejectedAssignments
+            : sharedAssignments;
+
+  const assignmentPills = [
+    {
+      key: "todos" as const,
+      label: "Todos",
+      count: assignments.length,
+      icon: "check_circle",
+      colorClass: "bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+    },
+    {
+      key: "pendientes" as const,
+      label: "Pendientes",
+      count: pendingAssignments.length,
+      icon: "pending",
+      colorClass: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50",
+    },
+    {
+      key: "aceptados" as const,
+      label: "Aceptados",
+      count: acceptedAssignments.length,
+      icon: "visibility",
+      colorClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50",
+    },
+    {
+      key: "completados" as const,
+      label: "Completados",
+      count: completedAssignments.length,
+      icon: "verified",
+      colorClass: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50",
+    },
+    {
+      key: "rechazados" as const,
+      label: "Rechazados",
+      count: rejectedAssignments.length,
+      icon: "cancel",
+      colorClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50",
+    },
+    {
+      key: "compartidos" as const,
+      label: "Compartidos",
+      count: sharedAssignments.length,
+      icon: "share",
+      colorClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-900/50",
+    },
+  ];
 
   if (loading && users.length === 0) {
     return (
@@ -451,263 +513,125 @@ export const TeamPage: React.FC = () => {
           </select>
         </div>
 
-        {/* Users Table */}
-        <div className="bg-white dark:bg-[#1a212f] rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm">
+        {/* Users Cards */}
+        <div>
           {users.length === 0 ? (
-            <div className="px-5 py-16 text-center text-[#616f89] dark:text-[#64748b] flex flex-col items-center justify-center">
+            <div className="px-5 py-16 text-center text-[#616f89] dark:text-[#64748b] flex flex-col items-center justify-center rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f]">
               <span className="material-symbols-outlined text-5xl mb-3 opacity-50">group_off</span>
               <p className="text-lg font-medium">No se encontraron usuarios.</p>
             </div>
           ) : (
-            <>
-              <div className="hidden md:block overflow-x-auto no-scrollbar">
-                <table className="w-full text-sm min-w-[800px]">
-                  <thead>
-                    <tr className="border-b border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921]">
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Usuario</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden md:table-cell">Cargo</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Último acceso</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</th>
-                      <th className="px-5 py-3 text-right text-xs font-semibold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <tr
-                        key={u.id}
-                        className={`border-b border-[#dbdfe6] dark:border-[#2d3748] transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {users.map((u) => {
+                const roleTagClass =
+                  u.role === "admin"
+                    ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-900/30 dark:text-indigo-300"
+                    : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+                const statusIconClass = u.isActive
+                  ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-900/30 dark:text-green-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-900/30 dark:text-red-300";
+
+                return (
+                  <article
+                    key={u.id}
+                    className={`group relative mt-2 rounded-xl border border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] shadow-sm transition-colors hover:border-primary/40 hover:bg-[#f8fafb]/60 dark:hover:bg-[#141921] flex flex-row ${
+                      !u.isActive ? "opacity-80" : ""
+                    }`}
+                  >
+                    <div className={`absolute left-4 top-0 z-10 -translate-y-full rounded-t-lg border border-b-0 px-2.5 py-0.5 text-[11px] font-semibold ${roleTagClass}`}>
+                      {getRoleLabel(u.role)}
+                    </div>
+
+                    <div className="relative w-28 self-stretch overflow-hidden rounded-l-xl border-r border-[#dbdfe6] dark:border-[#2d3748] bg-[#f8fafb] dark:bg-[#141921] flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/equipo/usuario/${u.id}`)}
+                        className="size-16 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:scale-[1.02] transition-transform"
                       >
-                        {/* Avatar + name */}
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="size-9 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
-                              <UserAvatar
-                                name={u.name}
-                                avatarUrl={u.avatarUrl}
-                                className="size-full object-cover"
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/equipo/usuario/${u.id}`)}
-                                className="font-semibold text-[#111318] dark:text-white hover:text-primary dark:hover:text-primary transition-colors text-left truncate block"
-                              >
-                                {u.name}
-                              </button>
-                              <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
-                            </div>
-                          </div>
-                        </td>
+                        <UserAvatar name={u.name} avatarUrl={u.avatarUrl} className="size-full object-cover" />
+                      </button>
+                      <div className={`absolute right-2 top-2 z-10 rounded-md border p-1 ${statusIconClass}`} title={u.isActive ? "Activo" : "Inactivo"}>
+                        <span className="material-symbols-outlined text-[16px]">
+                          {u.isActive ? "check_circle" : "cancel"}
+                        </span>
+                      </div>
+                    </div>
 
-                        {/* Cargo */}
-                        <td className="px-5 py-4 hidden md:table-cell">
-                          <div className="min-w-0">
-                            <p className="text-[#111318] dark:text-white truncate">{u.position || "—"}</p>
-                            {u.department && <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.department}</p>}
-                          </div>
-                        </td>
+                    <div className="flex flex-col gap-1.5 p-3 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/equipo/usuario/${u.id}`)}
+                        className="text-sm font-bold text-[#111318] dark:text-white leading-tight text-left hover:text-primary dark:hover:text-primary transition-colors line-clamp-2"
+                        title={u.name}
+                      >
+                        {u.name}
+                      </button>
+                      <p className="text-[11px] text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
 
-                        {/* Rol */}
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${u.role === "admin" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
-                            {getRoleLabel(u.role)}
-                          </span>
-                        </td>
-
-                        {/* Último login */}
-                        <td className="px-5 py-4 hidden lg:table-cell text-[#616f89] dark:text-[#64748b] text-xs">
+                      <div className="space-y-0.5 text-[11px] text-[#616f89] dark:text-[#64748b]">
+                        <p className="truncate">
+                          <span className="font-semibold text-[#111318] dark:text-white">Cargo:</span>{" "}
+                          {u.position || "—"}
+                        </p>
+                        {u.department && (
+                          <p className="truncate">
+                            <span className="font-semibold text-[#111318] dark:text-white">Área:</span>{" "}
+                            {u.department}
+                          </p>
+                        )}
+                        <p>
+                          <span className="font-semibold text-[#111318] dark:text-white">Último acceso:</span>{" "}
                           {u.lastLogin ? formatTimeAgo(u.lastLogin) : "Nunca"}
-                        </td>
-
-                        {/* Estado */}
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${u.isActive ? "text-green-600 dark:text-green-400" : "text-[#616f89] dark:text-[#64748b]"}`}>
-                            <span className={`size-1.5 rounded-full ${u.isActive ? "bg-green-500" : "bg-gray-400"}`} />
-                            {u.isActive ? "Activo" : "Inactivo"}
-                          </span>
-                        </td>
-
-                        {/* Acciones */}
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* Editar */}
-                            <button
-                              title="Editar"
-                              onClick={() => setEditingUser(u)}
-                              disabled={actionLoading === `edit-${u.id}`}
-                              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[#616f89] dark:text-[#64748b] hover:text-blue-600 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">edit</span>
-                            </button>
-
-                            {/* Cambiar rol */}
-                            <button
-                              title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
-                              disabled={actionLoading === `role-${u.id}`}
-                              onClick={() => handleChangeRole(u)}
-                              className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[#616f89] dark:text-[#64748b] hover:text-indigo-600 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">swap_horiz</span>
-                            </button>
-
-                            {/* Activar/Desactivar */}
-                            <button
-                              title={u.isActive ? "Desactivar" : "Activar"}
-                              disabled={actionLoading === `status-${u.id}`}
-                              onClick={() => handleToggleStatus(u)}
-                              className={`p-1.5 rounded-lg transition-colors ${u.isActive ? "hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600" : "hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"} text-[#616f89] dark:text-[#64748b]`}
-                            >
-                              <span className="material-symbols-outlined text-base">{u.isActive ? "person_off" : "person_check"}</span>
-                            </button>
-
-                            {/* Eliminar */}
-                            <button
-                              title="Eliminar"
-                              disabled={actionLoading === `delete-${u.id}`}
-                              onClick={() => setConfirmDeleteUser(u)}
-                              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[#616f89] dark:text-[#64748b] hover:text-red-600 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">person_remove</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile card view */}
-              <div className="md:hidden flex flex-col divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-                {users.map((u) => (
-                  <div key={u.id} className={`p-4 flex flex-col gap-3 transition-colors hover:bg-[#f8fafb] dark:hover:bg-[#141921] ${!u.isActive ? "opacity-50" : ""}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="size-10 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20 overflow-hidden">
-                        <UserAvatar
-                          name={u.name}
-                          avatarUrl={u.avatarUrl}
-                          className="size-full object-cover"
-                        />
+                        </p>
                       </div>
-                      <div className="flex-1 min-w-0">
+
+                      <div className="mt-auto pt-2.5 border-t border-[#dbdfe6] dark:border-[#2d3748] flex items-center gap-1">
                         <button
-                          type="button"
-                          onClick={() => navigate(`/equipo/usuario/${u.id}`)}
-                          className="font-bold text-[#111318] dark:text-white text-base hover:text-primary dark:hover:text-primary transition-colors text-left truncate block w-full"
+                          title="Editar"
+                          onClick={() => setEditingUser(u)}
+                          disabled={actionLoading === `edit-${u.id}`}
+                          className="flex-1 min-h-[30px] inline-flex items-center justify-center gap-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold transition-colors hover:bg-blue-100 dark:hover:bg-blue-900/30"
                         >
-                          {u.name}
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                          Editar
                         </button>
-                        <p className="text-xs text-[#616f89] dark:text-[#64748b] truncate">{u.email}</p>
+                        <button
+                          title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
+                          disabled={actionLoading === `role-${u.id}`}
+                          onClick={() => handleChangeRole(u)}
+                          className="min-h-[30px] px-2 inline-flex items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/30"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
+                        </button>
+                        <button
+                          title={u.isActive ? "Desactivar" : "Activar"}
+                          disabled={actionLoading === `status-${u.id}`}
+                          onClick={() => handleToggleStatus(u)}
+                          className={`min-h-[30px] px-2 inline-flex items-center justify-center rounded-lg transition-colors ${
+                            u.isActive
+                              ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                              : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">
+                            {u.isActive ? "person_off" : "person_check"}
+                          </span>
+                        </button>
+                        <button
+                          title="Eliminar"
+                          disabled={actionLoading === `delete-${u.id}`}
+                          onClick={() => setConfirmDeleteUser(u)}
+                          className="min-h-[30px] px-2 inline-flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/30"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">person_remove</span>
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex flex-col gap-2 bg-[#f8fafb] dark:bg-[#101622] p-3 rounded-lg mt-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Cargo</span>
-                        <div className="text-right">
-                          <span className="text-sm font-medium text-[#111318] dark:text-white block">{u.position || "—"}</span>
-                          {u.department && <span className="text-[10px] text-[#616f89] dark:text-[#64748b] block">{u.department}</span>}
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Rol</span>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${u.role === "admin" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
-                          {getRoleLabel(u.role)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Estado</span>
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${u.isActive ? "text-green-600 dark:text-green-400" : "text-[#616f89] dark:text-[#64748b]"}`}>
-                          <span className={`size-1.5 rounded-full ${u.isActive ? "bg-green-500" : "bg-gray-400"}`} />
-                          {u.isActive ? "Activo" : "Inactivo"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#64748b] uppercase tracking-wider">Último acceso</span>
-                        <span className="text-xs text-[#111318] dark:text-white font-medium">{u.lastLogin ? formatTimeAgo(u.lastLogin) : "Nunca"}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 mt-1">
-                      <button
-                        title="Editar"
-                        onClick={() => setEditingUser(u)}
-                        disabled={actionLoading === `edit-${u.id}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold text-xs transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">edit</span> Editar
-                      </button>
-
-                      <button
-                        title={`Cambiar a ${u.role === "admin" ? "Asistente" : "Administrador"}`}
-                        disabled={actionLoading === `role-${u.id}`}
-                        onClick={() => handleChangeRole(u)}
-                        className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">swap_horiz</span>
-                      </button>
-
-                      <button
-                        title={u.isActive ? "Desactivar" : "Activar"}
-                        disabled={actionLoading === `status-${u.id}`}
-                        onClick={() => handleToggleStatus(u)}
-                        className={`p-2 rounded-lg transition-colors ${u.isActive ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"}`}
-                      >
-                        <span className="material-symbols-outlined text-[18px]">{u.isActive ? "person_off" : "person_check"}</span>
-                      </button>
-
-                      <button
-                        title="Eliminar"
-                        disabled={actionLoading === `delete-${u.id}`}
-                        onClick={() => setConfirmDeleteUser(u)}
-                        className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">person_remove</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
+                  </article>
+                );
+              })}
+            </div>
           )}
-        </div>
-
-        {/* Stats summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Total usuarios", value: users.length, icon: "group", iconColor: "text-primary", iconBg: "bg-blue-50 dark:bg-blue-900/30", action: () => { setRoleFilter(""); setStatusFilter(""); } },
-            { label: "Activos", value: activeUsers.length, icon: "check_circle", iconColor: "text-green-600", iconBg: "bg-green-50 dark:bg-green-900/30", action: () => { setRoleFilter(""); setStatusFilter("true"); } },
-            { label: "Administradores", value: users.filter((u) => u.role === "admin").length, icon: "shield_person", iconColor: "text-indigo-600", iconBg: "bg-indigo-50 dark:bg-indigo-900/30", action: () => { setRoleFilter("admin"); setStatusFilter(""); } },
-            { label: "Inactivos", value: inactiveUsers.length, icon: "cancel", iconColor: "text-red-500", iconBg: "bg-red-50 dark:bg-red-900/30", action: () => { setRoleFilter(""); setStatusFilter("false"); } },
-          ].map((s) => {
-            const isActive =
-              (s.label === "Total usuarios" && !roleFilter && !statusFilter) ||
-              (s.label === "Activos" && statusFilter === "true" && !roleFilter) ||
-              (s.label === "Administradores" && roleFilter === "admin" && !statusFilter) ||
-              (s.label === "Inactivos" && statusFilter === "false" && !roleFilter);
-            return (
-              <button
-                key={s.label}
-                type="button"
-                onClick={s.action}
-                className={`bg-white dark:bg-[#1a212f] rounded-xl border p-4 flex items-center gap-3 text-left w-full transition-all hover:shadow-md ${
-                  isActive
-                    ? "border-primary ring-1 ring-primary/30 shadow-sm"
-                    : "border-[#dbdfe6] dark:border-[#2d3748] hover:border-primary/40"
-                }`}
-              >
-                <div className={`size-10 rounded-lg ${s.iconBg} flex items-center justify-center`}>
-                  <span className={`material-symbols-outlined ${s.iconColor} text-xl`}>{s.icon}</span>
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-[#111318] dark:text-white">{s.value}</p>
-                  <p className="text-xs text-[#616f89] dark:text-[#64748b]">{s.label}</p>
-                </div>
-              </button>
-            );
-          })}
         </div>
 
         {/* Asignados Summary Section */}
@@ -724,36 +648,37 @@ export const TeamPage: React.FC = () => {
           </div>
 
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-            {[
-              { label: 'Todos', count: assignments.length, icon: 'check_circle', colorClass: 'bg-white text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' },
-              { label: 'Pendientes', count: assignments.filter(a => a.status === 'pendiente').length, icon: 'pending', colorClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-900/50' },
-              { label: 'Aceptados', count: assignments.filter(a => ['visto', 'editado', 'revisado'].includes(a.status)).length, icon: 'visibility', colorClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/50' },
-              { label: 'Completados', count: assignments.filter(a => a.status === 'completado').length, icon: 'verified', colorClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/50' },
-              { label: 'Rechazados', count: assignments.filter(a => a.status === 'rechazado').length, icon: 'cancel', colorClass: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50' },
-              { label: 'Compartidos', count: 0, icon: 'share', colorClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-900/50' }
-            ].map((st) => (
-              <div
-                key={st.label}
-                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm whitespace-nowrap border-2 ${st.colorClass}`}
+            {assignmentPills.map((st) => (
+              <button
+                key={st.key}
+                type="button"
+                onClick={() => setAssignmentFilter(st.key)}
+                className={`flex items-center gap-2 rounded-full px-5 py-2 font-bold shadow-sm whitespace-nowrap border-2 transition-all ${
+                  assignmentFilter === st.key
+                    ? "bg-primary text-white border-primary"
+                    : st.colorClass
+                }`}
               >
-                <span className="material-symbols-outlined text-[20px]">{st.icon}</span>
+                <span className={`material-symbols-outlined text-[20px] ${assignmentFilter === st.key ? "text-white" : ""}`}>{st.icon}</span>
                 {st.label} ({st.count})
-              </div>
+              </button>
             ))}
           </div>
 
-          {assignments.length === 0 ? (
+          {visibleAssignments.length === 0 ? (
             <div className="mt-6 bg-[#f8fafb] dark:bg-[#141921] rounded-2xl p-8 text-center border-2 border-dashed border-[#dbdfe6] dark:border-[#2d3748]">
               <div className="w-16 h-16 bg-white dark:bg-[#1a212f] rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 dark:border-slate-800">
                 <span className="material-symbols-outlined text-[32px] text-slate-300 dark:text-slate-600">inbox</span>
               </div>
               <p className="text-[#616f89] dark:text-[#64748b] text-base font-medium max-w-sm mx-auto">
-                No hay documentos asignados o compartidos que requieran tu atención en este momento.
+                {assignmentFilter === "todos"
+                  ? "No hay documentos asignados o compartidos que requieran tu atención en este momento."
+                  : "No hay documentos en este filtro por ahora."}
               </p>
             </div>
           ) : (
             <div className="mt-6 space-y-3">
-              {assignments.map(assign => (
+              {visibleAssignments.map(assign => (
                 <div
                   key={assign.id}
                   onClick={() => navigate(`/documento/${assign.documentId}`)}
@@ -776,7 +701,12 @@ export const TeamPage: React.FC = () => {
                         {assign.document?.name || 'Documento sin nombre'}
                       </p>
                       <p className="text-sm text-[#616f89] dark:text-[#a0aec0]">
-                        Asignado por: {getViewerLabel({
+                        Asignado a {getViewerLabel({
+                          subjectId: assign.assignee?.id,
+                          subjectName: assign.assignee?.name,
+                          currentUserId: currentUser?.id,
+                          fallback: "Usuario",
+                        })} por: {getViewerLabel({
                           subjectId: assign.assigner?.id,
                           subjectName: assign.assigner?.name,
                           currentUserId: currentUser?.id,

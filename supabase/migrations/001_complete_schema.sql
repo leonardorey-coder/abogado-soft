@@ -77,6 +77,8 @@ CREATE TYPE backup_status AS ENUM ('pending', 'in_progress', 'completed', 'faile
 CREATE TYPE activity_type AS ENUM (
   'LOGIN',
   'LOGOUT',
+  'CONNECTION_STARTED',
+  'CONNECTION_ENDED',
   'DOCUMENT_CREATED',
   'DOCUMENT_UPDATED',
   'DOCUMENT_DELETED',

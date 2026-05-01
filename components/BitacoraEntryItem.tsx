@@ -6,6 +6,8 @@ import { formatTimeAgo } from "../lib/formatters";
 const ACTIVITY_LABELS: Record<string, string> = {
   LOGIN: "Inici\u00f3 sesi\u00f3n",
   LOGOUT: "Cerr\u00f3 sesi\u00f3n",
+  CONNECTION_STARTED: "Inici\u00f3 conexi\u00f3n",
+  CONNECTION_ENDED: "Cerr\u00f3 conexi\u00f3n",
   DOCUMENT_CREATED: "Cre\u00f3 documento",
   DOCUMENT_UPDATED: "Modific\u00f3 los datos del documento",
   DOCUMENT_FILE_STATUS_CHANGED: "",
@@ -121,7 +123,7 @@ function resolveCategory(activity: string): CategoryInfo {
   if (activity.startsWith("GROUP_") || activity === "USER_REGISTERED" || activity === "USER_UPDATED") {
     return CATEGORY_BY_PAGE.team;
   }
-  if (["LOGIN", "LOGOUT", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(activity)) {
+  if (["LOGIN", "LOGOUT", "CONNECTION_STARTED", "CONNECTION_ENDED", "PASSWORD_CHANGED", "ADMIN_ACCESS_GRANTED", "ADMIN_ACCESS_DENIED", "BACKUP_CREATED", "BACKUP_RESTORED", "SETTINGS_CHANGED"].includes(activity)) {
     return CATEGORY_BY_PAGE.security;
   }
   return CATEGORY_BY_PAGE.general;
@@ -391,6 +393,12 @@ export const BitacoraEntryItem: React.FC<BitacoraEntryItemProps> = ({
   };
 
   const renderMainLine = () => {
+    if (meta.kind === "connection_started") {
+      return <>Inició conexión</>;
+    }
+    if (meta.kind === "connection_ended") {
+      return <>Cerró conexión</>;
+    }
     if (isCalendarNoteActivity) {
       const noteContent = (meta.noteContent ?? "").trim();
       if (noteContent) {

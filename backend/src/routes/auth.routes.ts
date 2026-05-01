@@ -65,6 +65,40 @@ async function issueTokens(userId: string, email: string, req: Request) {
   return { accessToken, refreshToken };
 }
 
+async function resolveSessionId(userId: string, refreshToken?: string): Promise<string | null> {
+  if (refreshToken) {
+    const session = await prisma.userSession.findFirst({
+      where: { userId, sessionToken: refreshToken, isActive: true },
+      select: { id: true },
+    });
+    if (session) return session.id;
+  }
+  const latest = await prisma.userSession.findFirst({
+    where: { userId, isActive: true },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  return latest?.id ?? null;
+}
+
+let _supportsConnectionActivityType: boolean | null = null;
+async function supportsConnectionActivityType(): Promise<boolean> {
+  if (_supportsConnectionActivityType !== null) return _supportsConnectionActivityType;
+  try {
+    const rows = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
+      SELECT e.enumlabel
+      FROM pg_enum e
+      JOIN pg_type t ON t.oid = e.enumtypid
+      WHERE t.typname = 'activity_type'
+        AND e.enumlabel IN ('CONNECTION_STARTED', 'CONNECTION_ENDED')
+    `;
+    _supportsConnectionActivityType = rows.length === 2;
+  } catch {
+    _supportsConnectionActivityType = false;
+  }
+  return _supportsConnectionActivityType;
+}
+
 // ─── POST /api/auth/register ─────────────────────────────────────────────────
 
 authRouter.post(
@@ -159,7 +193,7 @@ authRouter.post(
         where: { email },
         select: {
           id: true, email: true, name: true, role: true, avatarUrl: true,
-          officeName: true, isActive: true, passwordHash: true,
+          officeName: true, firmId: true, isActive: true, passwordHash: true,
           _count: { select: { groupMemberships: true } },
         },
       });
@@ -181,6 +215,23 @@ authRouter.post(
       }
 
       const { accessToken, refreshToken } = await issueTokens(user.id, user.email, req);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLogin: new Date() },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          firmId: user.firmId ?? null,
+          userId: user.id,
+          activity: 'LOGIN',
+          entityType: 'user',
+          entityId: user.id,
+          entityName: user.name,
+          description: `${user.name} inició sesión`,
+          ipAddress: req.ip ?? undefined,
+        },
+      });
 
       const { passwordHash: _ph, _count, ...safeUser } = user;
 
@@ -337,6 +388,90 @@ authRouter.post(
       });
 
       res.json({ message: 'Sesión cerrada' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+authRouter.post(
+  '/connection/start',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { refreshToken, reason } = req.body as { refreshToken?: string; reason?: string };
+      const sessionId = await resolveSessionId(req.user!.id, refreshToken);
+      const useConnectionType = await supportsConnectionActivityType();
+
+      if (sessionId) {
+        await prisma.userSession.update({
+          where: { id: sessionId },
+          data: { lastActivity: new Date(), isActive: true },
+        });
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          firmId: req.user!.firmId ?? null,
+          userId: req.user!.id,
+          activity: (useConnectionType ? 'CONNECTION_STARTED' : 'LOGIN') as any,
+          entityType: 'user',
+          entityId: req.user!.id,
+          entityName: req.user!.name,
+          description: `${req.user!.name} inició conexión`,
+          ipAddress: req.ip ?? undefined,
+          metadata: {
+            kind: 'connection_started',
+            reason: reason ?? 'app_open',
+            sessionId,
+            userAgent: req.headers['user-agent'] ?? null,
+          },
+        },
+      });
+
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+authRouter.post(
+  '/connection/end',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { refreshToken, reason } = req.body as { refreshToken?: string; reason?: string };
+      const sessionId = await resolveSessionId(req.user!.id, refreshToken);
+      const useConnectionType = await supportsConnectionActivityType();
+
+      if (sessionId) {
+        await prisma.userSession.update({
+          where: { id: sessionId },
+          data: { lastActivity: new Date() },
+        });
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          firmId: req.user!.firmId ?? null,
+          userId: req.user!.id,
+          activity: (useConnectionType ? 'CONNECTION_ENDED' : 'LOGOUT') as any,
+          entityType: 'user',
+          entityId: req.user!.id,
+          entityName: req.user!.name,
+          description: `${req.user!.name} cerró conexión`,
+          ipAddress: req.ip ?? undefined,
+          metadata: {
+            kind: 'connection_ended',
+            reason: reason ?? 'disconnect',
+            sessionId,
+            userAgent: req.headers['user-agent'] ?? null,
+          },
+        },
+      });
+
+      res.json({ ok: true });
     } catch (error) {
       next(error);
     }
