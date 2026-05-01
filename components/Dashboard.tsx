@@ -299,6 +299,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     refreshAssignments();
   }, [refreshAssignments, documents.length]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void onRefresh();
+      refreshAssignments();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [onRefresh, refreshAssignments]);
+
   // ── Compartidos recientemente ────────────────────────────────────────────
   const refreshRecentlyShared = useCallback(() => {
     setRecentlySharedLoading(true);

@@ -286,6 +286,17 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
   }, [documentsInvalidateSeq, refresh]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refresh();
+      void fetchCounts();
+      refreshRecentlyOpened();
+      refreshPendingAssignments();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [refresh, fetchCounts, refreshRecentlyOpened, refreshPendingAssignments]);
+
+  useEffect(() => {
     setPage(1);
   }, [searchQuery, filter, typeFilter, setPage]);
 

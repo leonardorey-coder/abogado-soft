@@ -196,7 +196,6 @@ export const ActivityLog: React.FC = () => {
   }, []);
 
   // ── Real-time polling (30s) ─────────────────────────────────────────
-  const [pendingNewEntries, setPendingNewEntries] = useState<ApiActivityLog[]>([]);
   const lastPollTimestampRef = useRef<Date>(new Date());
 
   // Derive active filters for polling (mirrors fetchLogs params)
@@ -214,40 +213,29 @@ export const ActivityLog: React.FC = () => {
       const fresh: ApiActivityLog[] = result.data ?? [];
       lastPollTimestampRef.current = new Date();
       if (fresh.length > 0) {
-        // Only show banner for entries that match active filters
-        setPendingNewEntries(prev => {
-          const existingIds = new Set([...prev.map(e => e.id), ...logs.map(e => e.id)]);
+        let addedCount = 0;
+        setLogs(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
           const reallyNew = fresh.filter(e => !existingIds.has(e.id));
+          addedCount = reallyNew.length;
           return reallyNew.length > 0 ? [...reallyNew, ...prev] : prev;
         });
+        if (addedCount > 0) setTotal(prev => prev + addedCount);
       }
     } catch {
       // silently ignore
     }
-  }, [activeTab, filterUserId, filterAction, logs]);
+  }, [activeTab, filterUserId, filterAction]);
 
   useEffect(() => {
     // Reset poll timestamp when filters change so we don't get stale diffs
     lastPollTimestampRef.current = new Date();
-    setPendingNewEntries([]);
   }, [activeTab, filterUserId, filterAction, period, customFrom, customTo]);
 
   useEffect(() => {
     const interval = setInterval(pollForNew, 30_000);
     return () => clearInterval(interval);
   }, [pollForNew]);
-
-  // Merge pending entries into the main list
-  const flushPending = useCallback(() => {
-    if (pendingNewEntries.length === 0) return;
-    setLogs(prev => {
-      const existingIds = new Set(prev.map(e => e.id));
-      const toAdd = pendingNewEntries.filter(e => !existingIds.has(e.id));
-      return [...toAdd, ...prev];
-    });
-    setTotal(prev => prev + pendingNewEntries.length);
-    setPendingNewEntries([]);
-  }, [pendingNewEntries]);
 
   const handleLoadMore = () => {
     const next = page + 1;
@@ -338,21 +326,6 @@ export const ActivityLog: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {/* ── New-entries banner (real-time) ── */}
-          {pendingNewEntries.length > 0 && (
-            <button
-              onClick={flushPending}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary/20 transition-colors"
-            >
-              <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
-              {pendingNewEntries.length} nueva{pendingNewEntries.length > 1 ? 's entradas' : ' entrada'} — clic para mostrar
-              <span className="relative flex h-2 w-2 ml-1">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-              </span>
-            </button>
-          )}
 
           {/* ── Category Tabs ── */}
           <div className="flex gap-2 overflow-x-auto border-b border-slate-200 dark:border-slate-700 pb-1 no-scrollbar">
