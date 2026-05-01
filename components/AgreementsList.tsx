@@ -173,6 +173,15 @@ export const AgreementsList: React.FC = () => {
   }, [fetchCounts]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void fetchConvenios();
+      void fetchCounts();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [fetchConvenios, fetchCounts]);
+
+  useEffect(() => {
     setPage(1);
   }, [filter, typeFilter, searchQuery]);
 

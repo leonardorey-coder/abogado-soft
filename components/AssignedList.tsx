@@ -194,6 +194,14 @@ export const AssignedList: React.FC = () => {
     fetchAssignments();
   }, [fetchAssignments]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void fetchAssignments();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [fetchAssignments]);
+
   const assignmentsForStatusCounts = typeFilter === "TODOS"
     ? allAssignments
     : allAssignments.filter((a) => getAssignmentDocumentType(a) === typeFilter);
