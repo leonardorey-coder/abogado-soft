@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { uploadFileStream, downloadFileStream, deleteFile } from '../lib/googleDrive';
+import { getStorageProvider } from '../lib/storage/index.js';
 import {
   generateSystemBackup,
   activeBackupsProgress
@@ -75,7 +76,11 @@ backupsRouter.get(
         where: {
           name: 'Respaldo Diario Automático',
           status: 'completed',
-          cloudUrl: { not: null },
+          OR: [
+            { storageKey: { not: null } },
+            { cloudUrl: { not: null } },
+            { filePath: { not: null } },
+          ],
           createdAt: { gte: today },
         },
         orderBy: { createdAt: 'desc' },
@@ -132,12 +137,22 @@ backupsRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const backup = await prisma.backup.findUniqueOrThrow({
-        where: { id: req.params.id as string },
+      const firmId = req.user!.firmId!;
+      const backup = await prisma.backup.findFirstOrThrow({
+        where: { id: req.params.id as string, firmId },
       });
 
-      if (backup.status !== 'completed' || (!backup.filePath && !backup.cloudUrl)) {
+      if (backup.status !== 'completed' || (!backup.storageKey && !backup.filePath && !backup.cloudUrl)) {
         return res.status(400).json({ error: 'El respaldo no está completado o no tiene archivo' });
+      }
+
+      // Priorizar R2 (storageKey) para respaldos nuevos
+      if (backup.storageKey) {
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="backup_${backup.name}.zip"`);
+        const stream = await getStorageProvider().downloadStream(backup.storageKey);
+        stream.pipe(res);
+        return;
       }
 
       // Si tiene archivo en Drive, lo streameamos directo

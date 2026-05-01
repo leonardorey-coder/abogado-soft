@@ -67,7 +67,7 @@ export const SecurityPage: React.FC = () => {
 
   const handleDownloadLatest = async () => {
     const latestCompleted = backups.find(
-      (b) => b.status === "completed" && b.filePath
+      (b) => b.status === "completed"
     );
     if (!latestCompleted) {
       showToast("No hay respaldos completados para descargar.", "error");
@@ -323,15 +323,16 @@ export const SecurityPage: React.FC = () => {
                               : "—"}
                           </td>
                           <td className="py-3 px-2 text-right">
-                            {b.status === "completed" && b.filePath ? (
+                            {b.status === "completed" ? (
                               <button
                                 onClick={() => handleDownloadById(b)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+                                className="inline-flex items-center justify-center size-9 text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+                                title={`Descargar ${b.name}`}
+                                aria-label={`Descargar ${b.name}`}
                               >
                                 <span className="material-symbols-outlined text-sm">
                                   download
                                 </span>
-                                Descargar
                               </button>
                             ) : b.status === "in_progress" ? (
                               <div className="flex flex-col gap-1 items-end w-full max-w-[120px] ml-auto">
