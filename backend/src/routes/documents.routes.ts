@@ -423,6 +423,106 @@ documentsRouter.get(
   },
 );
 
+const setDocumentPinBodySchema = z.object({
+  pinned: z.boolean(),
+});
+
+// ─── GET /api/documents/pinned ──────────────────────────────────────────────
+// Pins por usuario (solo req.user.id; no incluir actividad de otros del grupo)
+documentsRouter.get(
+  '/pinned',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const firmId = req.user!.firmId;
+      if (!firmId) {
+        res.json({ data: [] });
+        return;
+      }
+
+      const pins = await prisma.userDocumentPin.findMany({
+        where: {
+          userId: req.user!.id,
+          document: {
+            firmId,
+            isDeleted: false,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          documentId: true,
+          createdAt: true,
+        },
+      });
+
+      const filtered: { documentId: string; pinnedAt: string }[] = [];
+      for (const row of pins) {
+        const level = await getEffectivePermission(req.user!.id, row.documentId);
+        if (level === 'none') continue;
+        filtered.push({
+          documentId: row.documentId,
+          pinnedAt: row.createdAt.toISOString(),
+        });
+      }
+
+      res.json({ data: filtered });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── PUT /api/documents/:id/pin ──────────────────────────────────────────────
+documentsRouter.put(
+  '/:id/pin',
+  validateParams(uuidParam),
+  validate(setDocumentPinBodySchema),
+  requirePermission('read'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const docId = paramId(req);
+      const { pinned } = req.body as z.infer<typeof setDocumentPinBodySchema>;
+      const firmId = req.user!.firmId;
+      if (!firmId) {
+        res.status(403).json({ error: 'Sin despacho asignado' });
+        return;
+      }
+
+      const doc = await prisma.document.findFirst({
+        where: { id: docId, firmId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!doc) {
+        res.status(404).json({ error: 'Documento no encontrado' });
+        return;
+      }
+
+      if (pinned) {
+        await prisma.userDocumentPin.upsert({
+          where: {
+            userId_documentId: {
+              userId: req.user!.id,
+              documentId: docId,
+            },
+          },
+          create: {
+            userId: req.user!.id,
+            documentId: docId,
+          },
+          update: {},
+        });
+      } else {
+        await prisma.userDocumentPin.deleteMany({
+          where: { userId: req.user!.id, documentId: docId },
+        });
+      }
+
+      res.json({ ok: true, documentId: docId, pinned });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ─── GET /api/documents/trash ───────────────────────────────────────────────
 // MUST be defined before /:id so Express doesn't match "trash" as a UUID
 documentsRouter.get(

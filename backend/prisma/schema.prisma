@@ -265,6 +265,7 @@ model User {
   accessPinsRedeemed     DocumentAccessPin[]  @relation("PinRedeemer")
   documentPdfs           DocumentPdf[]
   calendarNotes          CalendarNote[]
+  documentPins           UserDocumentPin[]
 
   @@index([email])
   @@index([role])
@@ -384,6 +385,7 @@ model Document {
   documentSyncLogs  DocumentSyncLog[]
   accessPins        DocumentAccessPin[]
   pdfs              DocumentPdf[]
+  userPins          UserDocumentPin[]
 
   @@index([firmId])
   @@index([ownerId])
@@ -396,6 +398,21 @@ model Document {
   @@index([updatedAt(sort: Desc)])
   @@index([caseId])
   @@map("documents")
+}
+
+model UserDocumentPin {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentId])
+  @@index([userId])
+  @@index([documentId])
+  @@map("user_document_pins")
 }
 
 // ─────────────────────────────────────────────
