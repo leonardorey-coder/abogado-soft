@@ -6,6 +6,8 @@ node_modules/
 # Vite / build output
 dist/
 dist-ssr/
+release/
+build/icon.png
 .vite/
 
 # Logs

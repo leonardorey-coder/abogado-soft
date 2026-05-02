@@ -23,12 +23,14 @@ function safeFileName(fileName) {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '..', isDev ? 'public' : 'dist', 'sidoc_isologo.png');
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 640,
     title: 'SIDOC',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     frame: false,
     webPreferences: {
       contextIsolation: true,

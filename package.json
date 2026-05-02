@@ -14,6 +14,9 @@
     "build:api": "cd backend && bun run build",
     "preview": "vite preview",
     "electron": "electron .",
+    "electron:dist": "vite build && mkdir -p build && cp public/sidoc_isologo.png build/icon.png && electron-builder",
+    "electron:dist:mac": "vite build && mkdir -p build && cp public/sidoc_isologo.png build/icon.png && electron-builder --mac",
+    "electron:dist:win": "vite build && mkdir -p build && cp public/sidoc_isologo.png build/icon.png && electron-builder --win",
     "setup": "npm install && cd backend && bun install && bunx prisma generate",
     "db:push": "cd backend && bunx prisma db push",
     "db:seed": "cd backend && bun run prisma:seed",
@@ -48,8 +51,41 @@
     "@vitejs/plugin-react": "5.0.0",
     "concurrently": "9.1.0",
     "electron": "40.2.1",
+    "electron-builder": "^26.0.12",
     "typescript": "5.8.2",
     "vite": "6.2.0",
     "wait-on": "8.0.0"
+  },
+  "build": {
+    "appId": "com.sidoc.desktop",
+    "productName": "SIDOC",
+    "copyright": "Copyright © SIDOC",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
