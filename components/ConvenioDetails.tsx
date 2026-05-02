@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { conveniosApi, activityApi, ApiConvenio, ApiActivityLog, documentsApi, ApiDocument } from "../lib/api";
 import { HistoryTab } from "./HistoryTab";
 import { CommentsTab } from "./CommentsTab";
 import { getDocumentRoute } from "../lib/routes";
+import { useDocumentPins } from "../lib/useDocumentPins";
+import { useToast } from "../contexts/ToastContext";
+import { Pin } from "lucide-react";
 
 type ConvenioTab = 'DETAILS' | 'HISTORY' | 'COMMENTS';
 
@@ -42,6 +45,21 @@ export const ConvenioDetails: React.FC = () => {
     // Tab state
     const [activeTab, setActiveTab] = useState<ConvenioTab>('DETAILS');
     const [activityLogs, setActivityLogs] = useState<ApiActivityLog[]>([]);
+
+    const { pinnedIds, toggle: togglePin } = useDocumentPins();
+    const { addToast } = useToast();
+
+    const sortedConvenioDocuments = useMemo(() => {
+        if (!convenio?.documents?.length) return [];
+        return [...convenio.documents].sort((a: { document?: { id?: string; name?: string } }, b: { document?: { id?: string; name?: string } }) => {
+            const da = a.document?.id;
+            const db = b.document?.id;
+            const ap = da && pinnedIds.has(da) ? 1 : 0;
+            const bp = db && pinnedIds.has(db) ? 1 : 0;
+            if (ap !== bp) return bp - ap;
+            return (a.document?.name || "").localeCompare(b.document?.name || "", "es", { sensitivity: "base" });
+        });
+    }, [convenio?.documents, pinnedIds]);
 
     const fetchConvenio = async () => {
         if (!id) return;
@@ -293,7 +311,7 @@ export const ConvenioDetails: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-                                            {!convenio.documents || convenio.documents.length === 0 ? (
+                                            {sortedConvenioDocuments.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={3} className="px-6 py-10 text-center text-[#616f89] dark:text-[#a0aec0]">
                                                         <span className="material-symbols-outlined text-3xl mb-2 block opacity-50">description</span>
@@ -301,10 +319,11 @@ export const ConvenioDetails: React.FC = () => {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                convenio.documents.map((cd: any) => {
+                                                sortedConvenioDocuments.map((cd: any) => {
                                                     const doc = cd.document;
+                                                    const docPinned = pinnedIds.has(doc.id);
                                                     return (
-                                                        <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
+                                                        <tr key={doc.id} className="group hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
                                                             <td className="px-4 py-3">
                                                                 <div className="flex items-center gap-3">
                                                                     <span className="material-symbols-outlined text-[#616f89]">{getTypeIcon(doc.type)}</span>
@@ -319,6 +338,26 @@ export const ConvenioDetails: React.FC = () => {
                                                             <td className="px-4 py-3 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <button
+                                                                        type="button"
+                                                                        aria-pressed={docPinned}
+                                                                        title={docPinned ? "Quitar fijación" : "Fijar"}
+                                                                        className={`p-1.5 rounded transition-colors ${
+                                                                            docPinned
+                                                                                ? "opacity-100 text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-900/30"
+                                                                                : "opacity-0 group-hover:opacity-100 text-[#616f89] hover:bg-gray-100 dark:hover:bg-[#2d3748]"
+                                                                        }`}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            void (async () => {
+                                                                                const ok = await togglePin(doc.id);
+                                                                                if (!ok) addToast({ message: "No se pudo actualizar la fijación", type: "error" });
+                                                                            })();
+                                                                        }}
+                                                                    >
+                                                                        <Pin className={`w-[18px] h-[18px] ${docPinned ? "fill-current" : ""}`} strokeWidth={docPinned ? 2.5 : 2} />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
                                                                         onClick={() => navigate(getDocumentRoute(doc.id, doc.type))}
                                                                         title="Ver Documento"
                                                                         className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
@@ -326,6 +365,7 @@ export const ConvenioDetails: React.FC = () => {
                                                                         <span className="material-symbols-outlined text-[20px]">visibility</span>
                                                                     </button>
                                                                     <button
+                                                                        type="button"
                                                                         onClick={() => handleUnlinkDoc(doc.id)}
                                                                         title="Desvincular Documento"
                                                                         className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
@@ -344,17 +384,37 @@ export const ConvenioDetails: React.FC = () => {
                                 
                                 {/* Mobile card view */}
                                 <div className="md:hidden flex flex-col divide-y divide-[#dbdfe6] dark:divide-[#2d3748]">
-                                    {!convenio.documents || convenio.documents.length === 0 ? (
+                                    {sortedConvenioDocuments.length === 0 ? (
                                         <div className="px-6 py-10 text-center text-[#616f89] dark:text-[#a0aec0]">
                                             <span className="material-symbols-outlined text-3xl mb-2 block opacity-50">description</span>
                                             No hay documentos vinculados a este convenio.
                                         </div>
                                     ) : (
-                                        convenio.documents.map((cd: any) => {
+                                        sortedConvenioDocuments.map((cd: any) => {
                                             const doc = cd.document;
+                                            const docPinned = pinnedIds.has(doc.id);
                                             return (
-                                                <div key={doc.id} className="p-4 flex flex-col gap-3 hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
-                                                    <div className="flex items-start gap-3">
+                                                <div key={doc.id} className="group relative p-4 flex flex-col gap-3 hover:bg-gray-50 dark:hover:bg-[#1a212f]/50 transition-colors">
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={docPinned}
+                                                        title={docPinned ? "Quitar fijación" : "Fijar"}
+                                                        className={`absolute right-3 top-3 z-10 rounded-md border p-1.5 transition-opacity focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                                                            docPinned
+                                                                ? "opacity-100 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                                                                : "opacity-0 group-hover:opacity-100 border-[#dbdfe6] dark:border-[#2d3748] bg-white dark:bg-[#1a212f] text-[#616f89]"
+                                                        }`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void (async () => {
+                                                                const ok = await togglePin(doc.id);
+                                                                if (!ok) addToast({ message: "No se pudo actualizar la fijación", type: "error" });
+                                                            })();
+                                                        }}
+                                                    >
+                                                        <Pin className={`w-3.5 h-3.5 ${docPinned ? "fill-current" : ""}`} strokeWidth={docPinned ? 2.5 : 2} />
+                                                    </button>
+                                                    <div className="flex items-start gap-3 pr-10">
                                                         <span className="material-symbols-outlined text-[#616f89] text-2xl shrink-0">{getTypeIcon(doc.type)}</span>
                                                         <div className="flex-1 min-w-0">
                                                             <span className="text-[10px] font-extrabold text-[#616f89] dark:text-[#a0aec0] uppercase tracking-wider block mb-0.5">Documento</span>
@@ -371,12 +431,14 @@ export const ConvenioDetails: React.FC = () => {
                                                     
                                                     <div className="flex items-center justify-end gap-2 mt-1">
                                                         <button
+                                                            type="button"
                                                             onClick={() => navigate(getDocumentRoute(doc.id, doc.type))}
                                                             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg font-bold text-xs transition-colors"
                                                         >
                                                             <span className="material-symbols-outlined text-[18px]">visibility</span> Ver
                                                         </button>
                                                         <button
+                                                            type="button"
                                                             onClick={() => handleUnlinkDoc(doc.id)}
                                                             className="p-2 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"
                                                         >

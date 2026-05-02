@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Document, FileStatus, ShareMethod, DocumentPermissionLevel } from "../types";
 import { useNavigate, Link, useOutletContext } from "react-router-dom";
 import { useDocuments } from "../lib/useDocuments";
@@ -10,6 +10,7 @@ import {
   type RecentlyOpenedItem,
 } from "../lib/api";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
+import { useDocumentPins } from "../lib/useDocumentPins";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import { getDocumentRoute } from "../lib/routes";
 import { buildDocumentActionMenuItems } from "../lib/documentActionMenu";
@@ -40,6 +41,7 @@ import {
   Download,
   Edit2,
   Shield,
+  Pin,
 } from "lucide-react";
 import { DateRangeFilter } from "./DateRangeFilter";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
@@ -161,6 +163,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
   const { addToast } = useToast();
   const { user } = useAuth();
+  const { pinnedIds, toggle: togglePin } = useDocumentPins();
 
   const {
     documents,
@@ -476,8 +479,15 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
     );
   };
 
-  const sortedDocuments = [...documentsForList].sort((a, b) =>
-    a.name.localeCompare(b.name, "es", { sensitivity: "base" }),
+  const sortedDocuments = useMemo(
+    () =>
+      [...documentsForList].sort((a, b) => {
+        const ap = pinnedIds.has(a.id) ? 1 : 0;
+        const bp = pinnedIds.has(b.id) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+      }),
+    [documentsForList, pinnedIds],
   );
 
   const tabConfig: Record<string, { label: string; cls: string }> = {
@@ -612,6 +622,7 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
               const { Icon: TypeIcon, color: typeColor, bg: typeBg } = getFileTypeIcon(doc.type);
               const tab = tabConfig[doc.fileStatus ?? "ACTIVO"] ?? tabConfig.ACTIVO;
               const canEdit = canChangeDocumentFileStatus(doc, user?.id);
+              const pinned = pinnedIds.has(doc.id);
 
               return (
                 <article
@@ -635,6 +646,31 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
                   {/* Miniatura real del documento */}
                   <div className="relative">
                     <CloudDocThumbnail doc={doc} />
+                    <button
+                      type="button"
+                      aria-pressed={pinned}
+                      title={pinned ? "Quitar fijación" : "Fijar"}
+                      className={`absolute left-2 top-2 z-20 rounded-md border p-1.5 transition-opacity focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        pinned
+                          ? "opacity-100 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                          : "opacity-0 group-hover:opacity-100 border-slate-200 bg-white/95 text-slate-600 shadow-sm dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-200"
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        void (async () => {
+                          const ok = await togglePin(doc.id);
+                          if (!ok) {
+                            addToast({ message: "No se pudo actualizar la fijación", type: "error" });
+                          }
+                        })();
+                      }}
+                    >
+                      <Pin
+                        className={`w-3.5 h-3.5 ${pinned ? "fill-current" : ""}`}
+                        strokeWidth={pinned ? 2.5 : 2}
+                      />
+                    </button>
                     <div className="absolute right-2 top-2 z-10 rounded-md border border-blue-200 bg-blue-50 p-1 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
                     </div>

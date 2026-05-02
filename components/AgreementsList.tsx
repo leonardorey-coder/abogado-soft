@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { conveniosApi, documentsApi, type ApiConvenio } from "../lib/api";
 import type { FileStatus } from "../types";
 import { useToast } from "../contexts/ToastContext";
 import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import { useFileDragDrop } from "../lib/useFileDragDrop";
+import { useDocumentPins } from "../lib/useDocumentPins";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import {
   Building2,
@@ -17,6 +18,7 @@ import {
   Upload,
   XCircle,
   Clock,
+  Pin,
 } from "lucide-react";
 import { Button, Skeleton } from "./ui";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
@@ -94,6 +96,7 @@ function patchConvenioAttachedFileStatus(list: ApiConvenio[], docId: string, sta
 export const AgreementsList: React.FC = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { pinnedIds, toggle: togglePin } = useDocumentPins();
   const layout = useOutletContext<AppLayoutOutletContext>();
   const openUploadModal = layout?.openUploadModal ?? (() => {});
   const searchQuery = layout?.searchQuery ?? "";
@@ -212,8 +215,17 @@ export const AgreementsList: React.FC = () => {
     }, 250);
   };
 
-  const sortedConvenios = [...convenios].sort((a, b) =>
-    a.institucion.localeCompare(b.institucion, "es", { sensitivity: "base" }),
+  const sortedConvenios = useMemo(
+    () =>
+      [...convenios].sort((a, b) => {
+        const ad = a.documents?.[0]?.document;
+        const bd = b.documents?.[0]?.document;
+        const ap = ad && pinnedIds.has(ad.id) ? 1 : 0;
+        const bp = bd && pinnedIds.has(bd.id) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return a.institucion.localeCompare(b.institucion, "es", { sensitivity: "base" });
+      }),
+    [convenios, pinnedIds],
   );
 
   return (
@@ -348,6 +360,7 @@ export const AgreementsList: React.FC = () => {
               const estado = normalizeConvenioEstado(c.estado);
               const tab = tabConfig[estado] ?? tabConfig.PENDIENTE;
               const attached = c.documents?.[0]?.document;
+              const docPinned = attached ? pinnedIds.has(attached.id) : false;
               const monto = formatMonto(c.monto);
               const isOpening = openingId === c.id;
 
@@ -385,7 +398,34 @@ export const AgreementsList: React.FC = () => {
                   {/* Miniatura */}
                   <div className="relative">
                     {attached ? (
-                      <CloudDocThumbnail doc={attached} />
+                      <>
+                        <CloudDocThumbnail doc={attached} />
+                        <button
+                          type="button"
+                          aria-pressed={docPinned}
+                          title={docPinned ? "Quitar fijación del archivo" : "Fijar archivo"}
+                          className={`absolute left-2 top-2 z-20 rounded-md border p-1.5 transition-opacity focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                            docPinned
+                              ? "opacity-100 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                              : "opacity-0 group-hover:opacity-100 border-slate-200 bg-white/95 text-slate-600 shadow-sm dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-200"
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            void (async () => {
+                              const ok = await togglePin(attached.id);
+                              if (!ok) {
+                                addToast({ message: "No se pudo actualizar la fijación", type: "error" });
+                              }
+                            })();
+                          }}
+                        >
+                          <Pin
+                            className={`w-3.5 h-3.5 ${docPinned ? "fill-current" : ""}`}
+                            strokeWidth={docPinned ? 2.5 : 2}
+                          />
+                        </button>
+                      </>
                     ) : (
                       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-2xl border-b border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 flex flex-col p-4 gap-2">
                         <div className="flex items-center gap-2">

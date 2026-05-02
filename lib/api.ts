@@ -1162,6 +1162,20 @@ export const recentlyOpenedApi = {
     apiFetch<{ data: RecentlyOpenedItem[] }>(`/documents/recently-opened?limit=${limit}`),
 };
 
+export interface DocumentPinEntry {
+  documentId: string;
+  pinnedAt: string;
+}
+
+export const documentPinsApi = {
+  list: () => apiFetch<{ data: DocumentPinEntry[] }>('/documents/pinned'),
+  set: (documentId: string, pinned: boolean) =>
+    apiFetch<{ ok: boolean; documentId: string; pinned: boolean }>(
+      `/documents/${documentId}/pin`,
+      { method: 'PUT', body: JSON.stringify({ pinned }) },
+    ),
+};
+
 // ─── GOOGLE DRIVE ───────────────────────────────────────────────────────
 
 export const driveApi = {
