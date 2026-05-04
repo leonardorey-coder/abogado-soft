@@ -4,8 +4,7 @@ node_modules/
 # Build
 dist/
 
-# Prisma
-prisma/migrations/
+# Prisma (las migraciones versionadas SÍ van al repo — no ignorar prisma/migrations/)
 
 # Environment
 .env

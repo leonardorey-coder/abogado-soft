@@ -551,7 +551,33 @@ run_migrations() {
   migrate_url="$(migrate_db_host_url)"
 
   if [ -d "$APP_DIR/backend/prisma/migrations" ] && [ "$(find "$APP_DIR/backend/prisma/migrations" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -gt 0 ]; then
-    DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma migrate deploy
+    local mig_log
+    mig_log="$(mktemp)"
+    set +e
+    DATABASE_URL="$migrate_url" DIRECT_URL="$migrate_url" bunx prisma migrate deploy >"$mig_log" 2>&1
+    local mig_ec=$?
+    set -euo pipefail
+    if [ "$mig_ec" -ne 0 ]; then
+      if grep -q 'P3005' "$mig_log"; then
+        cat "$mig_log" >&2
+        rm -f "$mig_log"
+        die "Prisma P3005: la base ya tiene tablas (p. ej. creada con db push) pero no el historial en _prisma_migrations.
+Baselining (una sola vez), en orden, desde el host con Postgres levantado:
+
+  cd $APP_DIR/backend
+  u=\"postgresql://postgres:\${POSTGRES_PASSWORD}@127.0.0.1:5432/abogadosoft?schema=public\"
+  for m in 20250427110000_baseline 20250430204500_sync_schema_prisma 20260501120000_user_document_pins; do
+    DATABASE_URL=\"\$u\" DIRECT_URL=\"\$u\" bunx prisma migrate resolve --applied \"\$m\"
+  done
+  DATABASE_URL=\"\$u\" DIRECT_URL=\"\$u\" bunx prisma migrate deploy
+
+Comprueba antes que el schema actual coincida con lo que implican esas migraciones (si falta alguna tabla/columna, usa db push o aplica el SQL a mano antes del resolve). Documentación: https://pris.ly/d/migrate-baseline"
+      fi
+      cat "$mig_log" >&2
+      rm -f "$mig_log"
+      die "prisma migrate deploy falló (código $mig_ec). Revisa el log arriba."
+    fi
+    rm -f "$mig_log"
     ok "Migraciones aplicadas (migrate deploy)"
   else
     warn "No hay carpeta prisma/migrations versionada — aplicando schema con db push"
