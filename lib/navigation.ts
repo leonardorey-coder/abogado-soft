@@ -9,6 +9,8 @@ import {
   Activity,
   Shield,
   Trash2,
+  Scale,
+  Fingerprint,
 } from "lucide-react";
 
 export type NavGroup = "work" | "management" | "system";
@@ -36,6 +38,8 @@ export const navigationConfig: NavItem[] = [
   { label: "Actividad",   path: "/actividad",  icon: Activity,        group: "system",     mobileVisible: false },
   { label: "Seguridad",   path: "/seguridad",  icon: Shield,          group: "system",     mobileVisible: false },
   { label: "Papelera",    path: "/papelera",   icon: Trash2,          group: "system",     mobileVisible: false },
+  { label: "Términos",    path: "/terminos",   icon: Scale,           group: "system",     mobileVisible: false },
+  { label: "Privacidad",  path: "/privacidad", icon: Fingerprint,     group: "system",     mobileVisible: false },
 ];
 
 export const NAV_GROUP_LABELS: Record<NavGroup, string> = {

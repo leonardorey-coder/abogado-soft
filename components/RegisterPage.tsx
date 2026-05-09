@@ -4,11 +4,8 @@ import { register } from "../lib/auth";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
 import { AppBrand } from "./AppBrand";
+import { LegalConsentCheckboxes } from "./LegalConsentCheckboxes";
 
-
-
-const inputClass =
-  "flex w-full rounded-lg text-gray-900 dark:text-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 h-16 pl-12 pr-4 text-xl placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all";
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,12 +18,18 @@ export const RegisterPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!fullName.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
       setError("Complete todos los campos.");
+      return;
+    }
+    if (!acceptedTerms || !acceptedPrivacy) {
+      setError("Debe aceptar los Términos y condiciones y la Política de privacidad para registrarse.");
       return;
     }
     if (password.length < 8) {
@@ -212,6 +215,15 @@ export const RegisterPage: React.FC = () => {
                   )}
                 </div>
 
+                <LegalConsentCheckboxes
+                  from="registro"
+                  acceptedTerms={acceptedTerms}
+                  acceptedPrivacy={acceptedPrivacy}
+                  onChangeTerms={setAcceptedTerms}
+                  onChangePrivacy={setAcceptedPrivacy}
+                  disabled={loading}
+                />
+
                 <div className="pt-2">
                   <button
                     type="submit"
@@ -242,17 +254,6 @@ export const RegisterPage: React.FC = () => {
             </div>
 
             <div className="mt-4 text-center space-y-3">
-              <p className="text-slate-500 dark:text-slate-400 text-xs px-4">
-                Al registrarse, acepta nuestros{" "}
-                <button type="button" className="text-primary hover:underline font-semibold transition-all">
-                  Términos de Servicio
-                </button>{" "}
-                y{" "}
-                <button type="button" className="text-primary hover:underline font-semibold transition-all">
-                  Política de Privacidad
-                </button>
-                .
-              </p>
               <div className="flex justify-center gap-6 pt-2">
                 <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                   <span className="material-symbols-outlined text-[18px]">support_agent</span>

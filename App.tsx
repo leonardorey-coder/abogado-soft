@@ -7,6 +7,7 @@ import { GuestRoute } from "./components/GuestRoute";
 import { AppLayout } from "./components/AppLayout";
 import { DocumentEditor } from "./components/DocumentEditor";
 import { AppBrand } from "./components/AppBrand";
+import { LegalPublicLayout } from "./components/LegalPublicLayout";
 
 // Pages (lazy-loaded for code splitting)
 const LoginPage = lazy(() => import("./components/LoginPage").then(m => ({ default: m.LoginPage })));
@@ -44,6 +45,11 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>
+            <Route element={<LegalPublicLayout />}>
+              <Route path="/legal/terminos" element={<TermsPage />} />
+              <Route path="/legal/privacidad" element={<PrivacyPage />} />
+            </Route>
+
             {/* Rutas públicas (solo para usuarios no autenticados) */}
             <Route element={<GuestRoute />}>
               <Route path="/login" element={<LoginPage />} />

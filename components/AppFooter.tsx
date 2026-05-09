@@ -14,12 +14,6 @@ export const AppFooter: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-6 text-sm text-[#616f89] dark:text-[#a0aec0]">
-          <Link to="/terminos" className="hover:text-primary transition-colors">
-            Términos de Servicio
-          </Link>
-          <Link to="/privacidad" className="hover:text-primary transition-colors">
-            Política de Privacidad
-          </Link>
           <Link to="/informacion-seguridad" className="hover:text-primary transition-colors">
             Seguridad
           </Link>

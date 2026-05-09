@@ -4,11 +4,8 @@ import { login } from "../lib/auth";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthHeader } from "./AuthHeader";
 import { AppBrand } from "./AppBrand";
+import { LegalConsentCheckboxes } from "./LegalConsentCheckboxes";
 
-
-
-const inputClass =
-  "block w-full h-16 pl-12 pr-4 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-lg focus:ring-0 focus:border-primary transition-all placeholder:text-slate-400";
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,12 +14,18 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!email.trim() || !password.trim()) {
       setError("Ingrese su correo y contraseña.");
+      return;
+    }
+    if (!acceptedTerms || !acceptedPrivacy) {
+      setError("Debe aceptar los Términos y condiciones y la Política de privacidad para continuar.");
       return;
     }
     setLoading(true);
@@ -161,6 +164,15 @@ export const LoginPage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                <LegalConsentCheckboxes
+                  from="login"
+                  acceptedTerms={acceptedTerms}
+                  acceptedPrivacy={acceptedPrivacy}
+                  onChangeTerms={setAcceptedTerms}
+                  onChangePrivacy={setAcceptedPrivacy}
+                  disabled={loading}
+                />
 
                 <div className="pt-2">
                   <button
