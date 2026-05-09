@@ -1,4 +1,11 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadEnv } from 'dotenv';
 import { defineConfig } from 'prisma/config';
+
+const backendRoot = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(backendRoot, '.env') });
+loadEnv({ path: resolve(backendRoot, '.env.local'), override: true });
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',

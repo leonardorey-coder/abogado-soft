@@ -233,6 +233,10 @@ model User {
   adminPinHash String?   @map("admin_pin_hash") @db.VarChar(255)
   isActive     Boolean   @default(true) @map("is_active")
   lastLogin    DateTime? @map("last_login") @db.Timestamptz()
+  termsAcceptedAt        DateTime? @map("terms_accepted_at") @db.Timestamptz()
+  privacyAcceptedAt      DateTime? @map("privacy_accepted_at") @db.Timestamptz()
+  termsReconfirmedAt     DateTime? @map("terms_reconfirmed_at") @db.Timestamptz()
+  privacyReconfirmedAt   DateTime? @map("privacy_reconfirmed_at") @db.Timestamptz()
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 

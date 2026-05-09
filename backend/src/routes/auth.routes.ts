@@ -124,6 +124,7 @@ authRouter.post(
         });
       }
 
+      const consentAt = new Date();
       const user = await prisma.user.create({
         data: {
           email: data.email,
@@ -133,6 +134,8 @@ authRouter.post(
           phone: data.phone,
           role: 'admin',
           firmId: firm?.id ?? null,
+          termsAcceptedAt: consentAt,
+          privacyAcceptedAt: consentAt,
         },
         select: {
           id: true,
@@ -215,9 +218,14 @@ authRouter.post(
       }
 
       const { accessToken, refreshToken } = await issueTokens(user.id, user.email, req);
+      const now = new Date();
       await prisma.user.update({
         where: { id: user.id },
-        data: { lastLogin: new Date() },
+        data: {
+          lastLogin: now,
+          termsReconfirmedAt: now,
+          privacyReconfirmedAt: now,
+        },
       });
 
       await prisma.activityLog.create({
