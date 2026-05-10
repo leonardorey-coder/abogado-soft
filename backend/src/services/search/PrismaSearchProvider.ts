@@ -34,7 +34,7 @@ export class PrismaSearchProvider implements ISearchProvider {
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResults> {
-    const { limit = 15, types } = options;
+    const { limit = 15, types, firmId } = options;
     const startTime = Date.now();
 
     if (!query.trim()) {
@@ -50,6 +50,7 @@ export class PrismaSearchProvider implements ISearchProvider {
       try {
         const docs = await prisma.document.findMany({
           where: {
+            ...(firmId ? { firmId } : {}),
             isDeleted: false,
             OR: [
               { name: { contains: query, mode: 'insensitive' } },
@@ -91,6 +92,7 @@ export class PrismaSearchProvider implements ISearchProvider {
       try {
         const convenios = await prisma.convenio.findMany({
           where: {
+            ...(firmId ? { firmId } : {}),
             OR: [
               { numero: { contains: query, mode: 'insensitive' } },
               { institucion: { contains: query, mode: 'insensitive' } },
@@ -131,6 +133,7 @@ export class PrismaSearchProvider implements ISearchProvider {
       try {
         const cases = await prisma.case.findMany({
           where: {
+            ...(firmId ? { firmId } : {}),
             OR: [
               { caseNumber: { contains: query, mode: 'insensitive' } },
               { title: { contains: query, mode: 'insensitive' } },

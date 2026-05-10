@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { MeiliSearch, Index } from 'meilisearch';
+import prisma from '../../lib/prisma.js';
 import type {
   ISearchProvider,
   SearchableDocument,
@@ -119,7 +120,7 @@ export class MeiliSearchProvider implements ISearchProvider {
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResults> {
-    const { limit = 15, types } = options;
+    const { limit = 15, types, firmId } = options;
     const startTime = Date.now();
 
     if (!query.trim()) {
@@ -179,12 +180,12 @@ export class MeiliSearchProvider implements ISearchProvider {
         }
       }
 
-      // Ordenar por relevancia (Meilisearch ya los ordena, pero mezclamos múltiples índices)
-      hits.splice(limit); // respetar el límite total
+      const filteredHits = firmId ? await this.filterHitsByFirm(hits, firmId) : hits;
+      filteredHits.splice(limit);
 
       return {
-        hits,
-        totalHits,
+        hits: filteredHits,
+        totalHits: firmId ? filteredHits.length : totalHits,
         processingTimeMs: Date.now() - startTime,
         query,
       };
@@ -192,5 +193,42 @@ export class MeiliSearchProvider implements ISearchProvider {
       console.error('[MeiliSearch] Error en búsqueda:', (err as Error).message);
       return { hits: [], totalHits: 0, processingTimeMs: Date.now() - startTime, query };
     }
+  }
+
+  private async filterHitsByFirm(hits: SearchHit[], firmId: string): Promise<SearchHit[]> {
+    const idsByType = {
+      document: hits.filter((hit) => hit.entityType === 'document').map((hit) => hit.id),
+      convenio: hits.filter((hit) => hit.entityType === 'convenio').map((hit) => hit.id),
+      case: hits.filter((hit) => hit.entityType === 'case').map((hit) => hit.id),
+    };
+
+    const [documents, convenios, cases] = await Promise.all([
+      idsByType.document.length
+        ? prisma.document.findMany({
+            where: { id: { in: idsByType.document }, firmId, isDeleted: false },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      idsByType.convenio.length
+        ? prisma.convenio.findMany({
+            where: { id: { in: idsByType.convenio }, firmId },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      idsByType.case.length
+        ? prisma.case.findMany({
+            where: { id: { in: idsByType.case }, firmId },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const allowedIds = new Set([
+      ...documents.map((doc) => `document:${doc.id}`),
+      ...convenios.map((convenio) => `convenio:${convenio.id}`),
+      ...cases.map((case_) => `case:${case_.id}`),
+    ]);
+
+    return hits.filter((hit) => allowedIds.has(`${hit.entityType}:${hit.id}`));
   }
 }

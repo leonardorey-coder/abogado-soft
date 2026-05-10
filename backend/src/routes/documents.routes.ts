@@ -1172,6 +1172,7 @@ documentsRouter.post(
       const document = await prisma.document.create({
         data: {
           ...data,
+          firmId: req.user!.firmId!,
           ownerId: req.user!.id,
           groupId: defaultGroupId || undefined,
           size: BigInt(data.size),

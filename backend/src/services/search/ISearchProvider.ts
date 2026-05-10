@@ -57,6 +57,8 @@ export interface SearchOptions {
   limit?: number;
   /** Filtrar por tipos de entidad ('document' | 'convenio' | 'case') */
   types?: SearchEntityType[];
+  /** Limita los resultados al despacho autenticado. */
+  firmId?: string;
 }
 
 /** Interfaz que todo adaptador de búsqueda debe implementar */
