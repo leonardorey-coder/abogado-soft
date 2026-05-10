@@ -6,12 +6,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { requireFirm } from '../middleware/requireFirm.js';
 import { validateQuery } from '../middleware/validate.js';
 import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
 import type { SearchEntityType } from '../services/search/ISearchProvider.js';
 
 export const searchRouter = Router();
 searchRouter.use(authenticate);
+searchRouter.use(requireFirm);
 
 const VALID_TYPES: SearchEntityType[] = ['document', 'convenio', 'case'];
 
@@ -42,7 +44,7 @@ searchRouter.get(
         return;
       }
 
-      const results = await service.search(q, { limit, types });
+      const results = await service.search(q, { limit, types, firmId: req.user!.firmId! });
       res.json(results);
     } catch (err) {
       next(err);
