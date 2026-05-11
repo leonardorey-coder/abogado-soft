@@ -29,8 +29,6 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.slice(7);
-    } else if (req.query.token && typeof req.query.token === 'string') {
-      token = req.query.token;
     }
 
     if (!token) {
@@ -98,8 +96,6 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
 
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.slice(7);
-    } else if (req.query.token && typeof req.query.token === 'string') {
-      token = req.query.token;
     }
 
     if (token) {
