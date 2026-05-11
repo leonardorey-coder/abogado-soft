@@ -18,6 +18,7 @@ import * as Diff from 'diff';
 import * as XLSX from 'xlsx';
 import { getStorageProvider, docKey, versionKey, pdfKey, downloadDocumentBuffer } from '../lib/storage/index.js';
 import { hasRecentDocumentViewedLog } from '../lib/activityViewLog.js';
+import { escapeHtmlText } from '../lib/escapeHtml.js';
 
 let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
 async function getPdfParse() {
@@ -40,7 +41,10 @@ async function extractHtmlFromBuffer(buf: Buffer, ext: string): Promise<string> 
 
   if (normalExt === '.txt' || normalExt === '.rtf') {
     const raw = buf.toString('utf-8');
-    return raw.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+    return raw
+      .split(/\n\n+/)
+      .map((p) => `<p>${escapeHtmlText(p).replace(/\n/g, '<br>')}</p>`)
+      .join('');
   }
   if (normalExt === '.docx' || normalExt === '.doc') {
     try {
@@ -74,7 +78,10 @@ async function extractHtmlFromBuffer(buf: Buffer, ext: string): Promise<string> 
       const pdfParse = await getPdfParse();
       const data = await pdfParse(buf);
       const raw = data.text || '';
-      return raw.split(/\n\n+/).map((p: string) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+      return raw
+        .split(/\n\n+/)
+        .map((p: string) => `<p>${escapeHtmlText(p).replace(/\n/g, '<br>')}</p>`)
+        .join('');
     } catch { return ''; }
   }
   return '';
@@ -1649,6 +1656,7 @@ documentsRouter.get(
   '/:id/diff',
   validateParams(uuidParam),
   validateQuery(z.object({ v1: z.string(), v2: z.string() })),
+  requirePermission('read'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const v1Num = parseInt(req.query.v1 as string, 10);

@@ -13,7 +13,12 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.js';
-import { validate, validateParams, uuidParam } from '../middleware/validate.js';
+import {
+  getEffectivePermission,
+  hasMinLevel,
+  requirePermission,
+} from '../middleware/checkPermission.js';
+import { validate, validateParams, uuidDocumentParam } from '../middleware/validate.js';
 import {
   getStorageProvider,
   docKey,
@@ -65,6 +70,16 @@ storageRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { documentId, mimeType } = req.body as z.infer<typeof uploadUrlSchema>;
+      const effective = await getEffectivePermission(req.user!.id, documentId);
+      if (!hasMinLevel(effective, 'write')) {
+        res.status(403).json({
+          error: 'No tienes permisos suficientes para esta acción',
+          required: 'write',
+          current: effective,
+        });
+        return;
+      }
+
       const storage = getStorageProvider();
 
       const doc = await prisma.document.findUniqueOrThrow({
@@ -86,7 +101,8 @@ storageRouter.post(
 // Recibe el archivo como base64 y lo sube al proveedor de almacenamiento.
 storageRouter.post(
   '/sync/:documentId',
-  validateParams(uuidParam),
+  validateParams(uuidDocumentParam),
+  requirePermission('write', 'documentId'),
   async (req: Request, res: Response, next: NextFunction) => {
     const docId = Array.isArray(req.params.documentId)
       ? req.params.documentId[0]
@@ -187,7 +203,8 @@ storageRouter.post(
 // Refresca lastSyncAt (confirma que el archivo existe en R2).
 storageRouter.get(
   '/sync/:documentId',
-  validateParams(uuidParam),
+  validateParams(uuidDocumentParam),
+  requirePermission('read', 'documentId'),
   async (req: Request, res: Response, next: NextFunction) => {
     const docId = Array.isArray(req.params.documentId)
       ? req.params.documentId[0]
@@ -220,7 +237,8 @@ storageRouter.get(
 // Lista versiones del documento con sus storageKeys.
 storageRouter.get(
   '/versions/:documentId',
-  validateParams(uuidParam),
+  validateParams(uuidDocumentParam),
+  requirePermission('read', 'documentId'),
   async (req: Request, res: Response, next: NextFunction) => {
     const docId = Array.isArray(req.params.documentId)
       ? req.params.documentId[0]

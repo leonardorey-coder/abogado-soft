@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import mammoth from 'mammoth';
+import { escapeHtmlText } from '../../lib/escapeHtml.js';
 
 let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
 async function getPdfParse() {
@@ -98,13 +99,17 @@ export async function extractHtmlFromBuffer(buffer: Buffer, ext: string): Promis
       const paragraphs = (data.text ?? '')
         .split('\n')
         .filter((l: string) => l.trim())
-        .map((l: string) => `<p>${l}</p>`)
+        .map((l: string) => `<p>${escapeHtmlText(l)}</p>`)
         .join('');
       return paragraphs;
     }
     if (e === 'txt' || e === 'rtf') {
       const text = buffer.toString('utf-8');
-      return text.split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('');
+      return text
+        .split('\n')
+        .filter((l) => l.trim())
+        .map((l) => `<p>${escapeHtmlText(l)}</p>`)
+        .join('');
     }
     return '';
   } catch (err) {

@@ -137,13 +137,17 @@ export function hasMinLevel(
 
 /**
  * Middleware factory: verifica que el usuario tenga al menos el nivel requerido
- * sobre el documento identificado por req.params.id.
+ * sobre el documento identificado por req.params[paramName] (por defecto `id`).
  *
  * Uso:
  *   router.get('/:id', requirePermission('read'), handler);
  *   router.patch('/:id', requirePermission('write'), handler);
+ *   router.post('/sync/:documentId', requirePermission('write', 'documentId'), handler);
  */
-export function requirePermission(minLevel: PermissionLevelName) {
+export function requirePermission(
+    minLevel: PermissionLevelName,
+    paramName: string = 'id',
+) {
     return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             if (!req.user) {
@@ -151,8 +155,9 @@ export function requirePermission(minLevel: PermissionLevelName) {
                 return;
             }
 
-            const documentId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-            if (!documentId) {
+            const raw = req.params[paramName as keyof typeof req.params];
+            const documentId = Array.isArray(raw) ? raw[0] : raw;
+            if (!documentId || typeof documentId !== 'string') {
                 res.status(400).json({ error: 'ID de documento requerido' });
                 return;
             }

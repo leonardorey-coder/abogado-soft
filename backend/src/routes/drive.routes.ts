@@ -8,7 +8,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.js';
-import { validate, validateParams, uuidParam } from '../middleware/validate.js';
+import { requirePermission } from '../middleware/checkPermission.js';
+import { validate, validateParams, uuidDocumentParam } from '../middleware/validate.js';
 import { google } from 'googleapis';
 import crypto from 'crypto';
 import {
@@ -333,7 +334,8 @@ driveRouter.post(
 
 driveRouter.post(
     '/sync/:documentId',
-    validateParams(uuidParam),
+    validateParams(uuidDocumentParam),
+    requirePermission('write', 'documentId'),
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
@@ -371,7 +373,8 @@ driveRouter.post(
 
 driveRouter.get(
     '/sync/:documentId',
-    validateParams(uuidParam),
+    validateParams(uuidDocumentParam),
+    requirePermission('read', 'documentId'),
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
@@ -419,7 +422,8 @@ driveRouter.get(
 
 driveRouter.get(
     '/revisions/:documentId',
-    validateParams(uuidParam),
+    validateParams(uuidDocumentParam),
+    requirePermission('read', 'documentId'),
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId } = req.params;
         try {
@@ -455,6 +459,7 @@ driveRouter.get(
 driveRouter.get(
     '/revisions/:documentId/:revisionId',
     validateParams(z.object({ documentId: z.string().uuid(), revisionId: z.string().min(1) })),
+    requirePermission('download', 'documentId'),
     async (req: Request, res: Response, next: NextFunction) => {
         const { documentId, revisionId } = req.params;
         try {
