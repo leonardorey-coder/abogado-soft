@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 import { getShareableDocumentFile } from "../lib/api";
+import { sanitizeDocHtml } from "../lib/sanitize";
 import { Skeleton } from "./ui";
 
 const PREVIEW_PAPER_WIDTH = 816;
@@ -173,7 +174,7 @@ export function CloudDocThumbnail({ doc }: CloudDocThumbnailProps) {
         <div
           className="pointer-events-none absolute left-0 top-0 origin-top-left bg-white p-4 text-[12px] text-slate-900 [&_table]:w-auto [&_table]:border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1"
           style={{ width: PREVIEW_PAPER_WIDTH, transform: `scale(${scale})` }}
-          dangerouslySetInnerHTML={{ __html: xlsxHtml }}
+          dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(xlsxHtml) }}
         />
       )}
 

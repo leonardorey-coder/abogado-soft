@@ -24,6 +24,7 @@ import { SaveStatusBadge } from './SaveStatusBadge';
 import { useDraftDoc } from '../lib/useDraftDoc';
 import { DraftBanner } from './DraftBanner';
 import { getViewerLabel } from '../lib/viewerIdentity';
+import { sanitizeDocHtml } from '../lib/sanitize';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -1003,13 +1004,26 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
         }
       })();
     } else {
-      import('../lib/auth').then(({ getAccessToken }) => {
-        getAccessToken().then((token) => {
+      (async () => {
+        try {
+          const { getAccessToken } = await import('../lib/auth');
+          const token = await getAccessToken();
+          const res = await fetch(getDocumentFileUrl(doc.id), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
           if (cancelled) return;
-          const url = getDocumentFileUrl(doc.id);
-          setIframeUrl(token ? `${url}?token=${token}` : url);
-        });
-      });
+          const typedBlob = blob.type
+            ? blob
+            : new Blob([blob], { type: doc.mimeType || 'application/octet-stream' });
+          createdUrl = URL.createObjectURL(typedBlob);
+          setIframeUrl(createdUrl);
+        } catch (err) {
+          console.error('Error cargando vista previa:', err);
+          if (!cancelled) setIframeUrl('');
+        }
+      })();
     }
 
     return () => {
@@ -1723,7 +1737,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
               `}</style>
               <div
                 className="diff-doc-container"
-                dangerouslySetInnerHTML={{ __html: diffHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(diffHtml) }}
               />
             </div>
           ) : (

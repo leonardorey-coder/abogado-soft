@@ -20,6 +20,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { searchApi, type SearchHit, type SearchEntityType } from "../lib/api";
+import { sanitizeHighlight } from "../lib/sanitize";
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -110,7 +111,7 @@ const HighlightedText: React.FC<{
 }> = ({ html, className }) => (
   <span
     className={className}
-    dangerouslySetInnerHTML={{ __html: html }}
+    dangerouslySetInnerHTML={{ __html: sanitizeHighlight(html) }}
   />
 );
 

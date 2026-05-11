@@ -21,6 +21,7 @@ import { canChangeDocumentFileStatus } from "../lib/documentPermissions";
 import { FileStatusIconToggle } from "./FileStatusIconToggle";
 import type { ApiDocumentAssignment } from "../lib/api";
 import { assignmentsApi, documentsApi, getShareableDocumentFile } from "../lib/api";
+import { sanitizeDocHtml } from "../lib/sanitize";
 import { startDocDrag, endDocDrag } from "../lib/docDrag";
 import { apiDocToFrontend, useDocuments } from "../lib/useDocuments";
 import { useAuth } from "../contexts/AuthContext";
@@ -551,7 +552,7 @@ function DocumentThumbnail({ doc }: { doc: Document }) {
           {docHtml ? (
             <div
               className="h-full w-full overflow-hidden p-5 text-[10px] leading-snug text-slate-900 [&_*]:max-w-full [&_p]:mb-1 [&_table]:w-full [&_td]:border [&_td]:border-slate-200 [&_td]:p-1"
-              dangerouslySetInnerHTML={{ __html: docHtml }}
+              dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(docHtml) }}
             />
           ) : (
             <div ref={docxRef} className="h-full w-full origin-top-left scale-[0.62] overflow-hidden p-5 text-slate-900" />
@@ -726,7 +727,7 @@ function LocalFileThumbnail({ file }: { file: LocalFileRecord }) {
         <div
           className="pointer-events-none absolute left-0 top-0 origin-top-left bg-white p-4 text-[12px] text-slate-900 [&_table]:w-auto [&_table]:border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1"
           style={{ width: PREVIEW_PAPER_WIDTH, transform: `scale(${scale})` }}
-          dangerouslySetInnerHTML={{ __html: xlsxHtml }}
+          dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(xlsxHtml) }}
         />
       )}
 

@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { documentsApi, downloadDocument, API_URL, type ApiDocument } from "../lib/api";
+import { sanitizeDocHtml, escapeHtmlText } from "../lib/sanitize";
 import { getDocumentRoute } from "../lib/routes";
 import { useNavigate } from "react-router-dom";
 
@@ -188,7 +189,7 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ doc }) => {
   body { pointer-events: none; }
 </style>
 </head>
-<body>${result.html}</body>
+<body>${sanitizeDocHtml(result.html)}</body>
 </html>`;
           setIframeSrcdoc(srcdoc);
         }
@@ -200,7 +201,7 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ doc }) => {
 
           // Build a styled spreadsheet-like table
           const colHeaders = result.columns.map((c: any) =>
-            `<th style="background:#217346;color:#fff;font-weight:700;padding:5px 10px;white-space:nowrap;border:1px solid #1a5e38;font-size:11px;">${c.name ?? ''}</th>`
+            `<th style="background:#217346;color:#fff;font-weight:700;padding:5px 10px;white-space:nowrap;border:1px solid #1a5e38;font-size:11px;">${escapeHtmlText(String(c.name ?? ""))}</th>`
           ).join('');
 
           const srcdoc = `<!DOCTYPE html>
@@ -222,14 +223,14 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ doc }) => {
 </head>
 <body>
 <div class="sheet-wrap">
-  <div class="sheet-title">📊 ${doc.name}</div>
+  <div class="sheet-title">📊 ${escapeHtmlText(doc.name)}</div>
   <table>
     <thead><tr><th class="row-num-col">#</th>${colHeaders}</tr></thead>
     <tbody>
       ${result.rows.map((row: any, ri: number) => {
         const cells = result.columns.map((col: any) => {
           const val = row.cells?.[col.id] ?? '';
-          return `<td style="padding:4px 9px;border:1px solid #d0d3d4;font-size:11px;white-space:nowrap;background:${ri % 2 === 0 ? '#fff' : '#f0f7f2'};">${String(val).replace(/</g,'&lt;')}</td>`;
+          return `<td style="padding:4px 9px;border:1px solid #d0d3d4;font-size:11px;white-space:nowrap;background:${ri % 2 === 0 ? '#fff' : '#f0f7f2'};">${escapeHtmlText(String(val))}</td>`;
         }).join('');
         return `<tr><td class="row-num-col">${ri + 1}</td>${cells}</tr>`;
       }).join('')}
@@ -317,7 +318,7 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ doc }) => {
           srcDoc={iframeSrcdoc}
           className="w-full h-full border-0"
           title="Vista previa del documento"
-          sandbox="allow-same-origin"
+          sandbox=""
           style={{ minHeight: 0 }}
         />
       </div>

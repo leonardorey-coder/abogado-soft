@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Document, DocumentShare, ShareMethod } from "../types";
 import { getShareableDocumentFile, documentsApi, ApiDocumentShare, documentPdfsApi, getDocumentPdfFileUrl } from '../lib/api';
+import { sanitizeDocHtml } from '../lib/sanitize';
 import { Mail, MessageCircle, Link2, Share2, Clock, User, FileDown } from "lucide-react";
 
 interface ShareModalProps {
@@ -188,7 +189,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, onClose, onSha
           'font-family:Georgia,serif', 'font-size:12pt',
           'line-height:1.5', 'padding:48px', 'box-sizing:border-box',
         ].join(';');
-        container.innerHTML = html;
+        container.innerHTML = sanitizeDocHtml(html);
         window.document.body.appendChild(container);
 
         const images = Array.from(container.querySelectorAll('img'));
