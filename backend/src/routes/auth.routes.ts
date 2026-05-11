@@ -23,7 +23,6 @@ const registerSchema = z.object({
   name: z.string().min(2).max(255),
   officeName: z.string().min(2).max(255).optional(),
   phone: z.string().max(50).optional(),
-  role: z.enum(['admin', 'asistente']).default('admin'),
 });
 
 const loginSchema = z.object({
@@ -125,6 +124,7 @@ authRouter.post(
       }
 
       const consentAt = new Date();
+      const role = firm ? 'admin' : 'asistente';
       const user = await prisma.user.create({
         data: {
           email: data.email,
@@ -132,7 +132,7 @@ authRouter.post(
           passwordHash,
           officeName: data.officeName?.trim() || null,
           phone: data.phone,
-          role: 'admin',
+          role,
           firmId: firm?.id ?? null,
           termsAcceptedAt: consentAt,
           privacyAcceptedAt: consentAt,
