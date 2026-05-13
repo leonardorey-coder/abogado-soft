@@ -1,6 +1,6 @@
 // ============================================================================
 // Permission Middleware — Verifica permisos granulares sobre documentos
-// Resuelve el permiso efectivo: dueño > admin global > individual > grupo > membresía
+// Resuelve el permiso efectivo: despacho > dueño > admin > individual > grupo > membresía
 // ============================================================================
 
 import { Request, Response, NextFunction } from 'express';
@@ -30,13 +30,14 @@ declare global {
  * Calcula el nivel de permiso efectivo que un usuario tiene sobre un documento.
  *
  * Prioridad:
- *   1. Dueño del documento → admin
- *   2. Admin global (role === 'admin') → admin
- *   3. Permiso individual (document_permissions con userId)
- *   4. Permiso heredado de grupo (document_permissions con groupId
+ *   1. Mismo despacho que el documento
+ *   2. Dueño del documento → admin
+ *   3. Admin del despacho (role === 'admin') → admin
+ *   4. Permiso individual (document_permissions con userId)
+ *   5. Permiso heredado de grupo (document_permissions con groupId
  *      donde el usuario sea miembro del grupo)
- *   5. Membresía al grupo (si el documento pertenece al grupo del usuario) → read
- *   6. Sin permiso → none
+ *   6. Membresía al grupo (si el documento pertenece al grupo del usuario) → read
+ *   7. Sin permiso → none
  *
  * Si hay múltiples permisos (individual + grupo), toma el mayor.
  * Los permisos expirados (expiresAt < ahora) se ignoran.
@@ -45,22 +46,22 @@ export async function getEffectivePermission(
     userId: string,
     documentId: string,
 ): Promise<PermissionLevelName> {
-    // 1. Obtener documento con su groupId
+    // 1. Obtener documento con su despacho y groupId
     const doc = await prisma.document.findUnique({
         where: { id: documentId },
-        select: { ownerId: true, groupId: true },
+        select: { firmId: true, ownerId: true, groupId: true },
     });
 
     if (!doc) return 'none';
-    if (doc.ownerId === userId) return 'admin';
 
-    // 2. Verificar si es admin global
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true },
+        select: { role: true, firmId: true },
     });
 
-    if (user?.role === 'admin') return 'admin';
+    if (!user?.firmId || doc.firmId !== user.firmId) return 'none';
+    if (doc.ownerId === userId) return 'admin';
+    if (user.role === 'admin') return 'admin';
 
     // 3. Obtener los grupos del usuario
     const userGroups = await prisma.groupMember.findMany({
