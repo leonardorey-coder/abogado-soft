@@ -1070,6 +1070,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id/versions/:versionId/file',
   validateParams(z.object({ id: z.string().uuid(), versionId: z.string().uuid() })),
+  requirePermission('download'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -1456,6 +1457,7 @@ documentsRouter.delete(
 documentsRouter.post(
   '/:id/restore',
   validateParams(uuidParam),
+  requirePermission('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const document = await prisma.document.update({
