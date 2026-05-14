@@ -20,6 +20,34 @@ interface DownloadableDoc {
   localPath?: string | null;
 }
 
+function configuredLocalRoots(): string[] {
+  const envRoots = [
+    process.env.LEGACY_UPLOADS_PATH,
+    process.env.LOCAL_STORAGE_PATH,
+  ].flatMap((value) => value?.split(path.delimiter).filter(Boolean) ?? []);
+
+  return [
+    ...envRoots,
+    path.join(process.cwd(), 'uploads'),
+    path.join(process.cwd(), 'local-storage'),
+  ].map((root) => path.resolve(root));
+}
+
+function isWithinRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+export function resolveSafeLocalPath(localPath: string | null | undefined): string | null {
+  if (!localPath) return null;
+
+  const absPath = path.isAbsolute(localPath)
+    ? path.resolve(localPath)
+    : path.resolve(process.cwd(), localPath);
+
+  return configuredLocalRoots().some((root) => isWithinRoot(root, absPath)) ? absPath : null;
+}
+
 /**
  * Descarga el archivo de un documento/versión/PDF como Buffer.
  *
@@ -58,15 +86,16 @@ export async function downloadDocumentBuffer(doc: DownloadableDoc): Promise<Buff
 
   // 3. Disco local — archivos pre-cloud (pre-Google Drive)
   if (doc.localPath) {
-    const absPath = path.isAbsolute(doc.localPath)
-      ? doc.localPath
-      : path.resolve(process.cwd(), doc.localPath);
+    const absPath = resolveSafeLocalPath(doc.localPath);
 
-    if (fs.existsSync(absPath)) {
+    if (!absPath) {
+      console.warn(`[downloadHelper] Ruta local fuera de directorios permitidos: ${doc.localPath}`);
+    } else if (fs.existsSync(absPath)) {
       return fs.readFileSync(absPath);
+    } else {
+      console.warn(`[downloadHelper] Archivo local no encontrado en: ${absPath}`);
     }
 
-    console.warn(`[downloadHelper] Archivo local no encontrado en: ${absPath}`);
   }
 
   throw new Error('Archivo no disponible en ningún almacenamiento configurado (R2, Drive ni disco)');

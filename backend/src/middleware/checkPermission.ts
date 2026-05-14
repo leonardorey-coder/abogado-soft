@@ -31,7 +31,7 @@ declare global {
  *
  * Prioridad:
  *   1. Dueño del documento → admin
- *   2. Admin global (role === 'admin') → admin
+ *   2. Admin del mismo despacho (role === 'admin') → admin
  *   3. Permiso individual (document_permissions con userId)
  *   4. Permiso heredado de grupo (document_permissions con groupId
  *      donde el usuario sea miembro del grupo)
@@ -48,19 +48,21 @@ export async function getEffectivePermission(
     // 1. Obtener documento con su groupId
     const doc = await prisma.document.findUnique({
         where: { id: documentId },
-        select: { ownerId: true, groupId: true },
+        select: { ownerId: true, groupId: true, firmId: true },
     });
 
     if (!doc) return 'none';
-    if (doc.ownerId === userId) return 'admin';
 
-    // 2. Verificar si es admin global
+    // 2. Verificar el usuario y el límite de despacho
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true },
+        select: { role: true, firmId: true },
     });
 
-    if (user?.role === 'admin') return 'admin';
+    if (!user) return 'none';
+    if (doc.firmId && user.firmId !== doc.firmId) return 'none';
+    if (doc.ownerId === userId) return 'admin';
+    if (user.role === 'admin' && doc.firmId && user.firmId === doc.firmId) return 'admin';
 
     // 3. Obtener los grupos del usuario
     const userGroups = await prisma.groupMember.findMany({

@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import mammoth from 'mammoth';
 import { escapeHtmlText } from '../../lib/escapeHtml.js';
+import { resolveSafeLocalPath } from '../../lib/storage/downloadHelper.js';
 
 let pdfParseLoader: Promise<(data: Buffer) => Promise<any>> | null = null;
 async function getPdfParse() {
@@ -36,11 +37,8 @@ const MAX_TEXT_BYTES = 500 * 1024;
 export async function extractTextFromFile(localPath: string | null | undefined): Promise<string> {
   if (!localPath) return '';
 
-  // Resolver ruta relativa al cwd del proceso (carpeta backend/)
-  const resolvedPath = path.isAbsolute(localPath)
-    ? localPath
-    : path.resolve(process.cwd(), localPath);
-
+  const resolvedPath = resolveSafeLocalPath(localPath);
+  if (!resolvedPath) return '';
   if (!fs.existsSync(resolvedPath)) return '';
 
   const ext = path.extname(resolvedPath).toLowerCase();
