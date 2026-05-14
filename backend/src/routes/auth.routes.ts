@@ -41,7 +41,6 @@ const updateProfileSchema = z.object({
   department: z.string().max(255).optional().nullable(),
   position: z.string().max(255).optional().nullable(),
   avatarUrl: z.string().url().optional().nullable(),
-  role: z.enum(['admin', 'asistente']).optional(),
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

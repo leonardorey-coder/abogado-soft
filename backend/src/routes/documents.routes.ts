@@ -176,7 +176,6 @@ const createDocumentSchema = z.object({
   name: z.string().min(1).max(500),
   type: z.enum(['docx', 'doc', 'pdf', 'xlsx', 'xls', 'txt', 'rtf']),
   size: z.number().int().nonnegative().default(0),
-  localPath: z.string().optional(),
   cloudUrl: z.string().url().optional(),
   groupId: z.string().uuid().optional(),
   caseId: z.string().uuid().optional(),
@@ -1070,6 +1069,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id/versions/:versionId/file',
   validateParams(z.object({ id: z.string().uuid(), versionId: z.string().uuid() })),
+  requirePermission('download'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -1183,6 +1183,7 @@ documentsRouter.post(
           groupId: defaultGroupId || undefined,
           size: BigInt(data.size),
           expirationDate: data.expirationDate ? new Date(data.expirationDate) : undefined,
+          firmId: req.user!.firmId ?? undefined,
         },
       });
 
@@ -1489,7 +1490,6 @@ documentsRouter.post(
 // ─── POST /api/documents/:id/versions ───────────────────────────────────────
 const createVersionSchema = z.object({
   changeNote: z.string().optional(),
-  localPath: z.string().optional(),
   cloudUrl: z.string().url().optional(),
   size: z.number().int().nonnegative().default(0),
   checksum: z.string().optional(),
@@ -1521,7 +1521,6 @@ documentsRouter.post(
             createdBy: req.user!.id,
             size: BigInt(req.body.size),
             changeNote: req.body.changeNote,
-            localPath: req.body.localPath,
             cloudUrl: req.body.cloudUrl,
             checksum: req.body.checksum,
           },
