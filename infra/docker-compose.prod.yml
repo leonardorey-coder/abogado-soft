@@ -8,6 +8,12 @@
 
 name: abogadosoft
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 
   # ─── PostgreSQL ───────────────────────────────────────────────────────────────
@@ -25,6 +31,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - app_network
+    security_opt:
+      - no-new-privileges:true
+    cpus: "1.0"
+    mem_limit: 768m
+    pids_limit: 256
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d abogadosoft"]
       interval: 10s
@@ -49,11 +68,31 @@ services:
         condition: service_healthy
       meilisearch:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:4001:4001"
     networks:
       - app_network
     volumes:
       # Credencial Google Service Account (debe existir en el servidor):
       - ../backend/abogadosoft-service-account.json:/app/abogadosoft-service-account.json:ro
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "1.0"
+    mem_limit: 768m
+    pids_limit: 256
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 256M
     healthcheck:
       # oven/bun:alpine no incluye curl; wget sí. Usar 127.0.0.1 evita ::1/IPv6.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/api/health"]
@@ -80,8 +119,26 @@ services:
         condition: service_healthy
     networks:
       - app_network
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m,mode=0755
+      - /var/run:size=16m,mode=0755
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.5"
+    mem_limit: 128m
+    pids_limit: 128
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 32M
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -108,6 +165,19 @@ services:
     # Expuesto solo en localhost (healthcheck / debug). No queda abierto a la red.
     networks:
       - app_network
+    security_opt:
+      - no-new-privileges:true
+    cpus: "1.0"
+    mem_limit: 512m
+    pids_limit: 256
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
       interval: 10s
