@@ -39,7 +39,7 @@ done
 
 # ─── Variables de entrada ─────────────────────────────────────────────────────
 REPO_URL="${REPO_URL:?Falta REPO_URL. Ej: REPO_URL=https://github.com/org/repo.git bash deploy.sh}"
-APP_DIR="${APP_DIR:-/opt/abogadosoft}"
+APP_DIR="${APP_DIR:-/opt/sidoc}"
 BRANCH="${BRANCH:-main}"
 COMPOSE_FILE="$APP_DIR/infra/docker-compose.prod.yml"
 
@@ -188,7 +188,7 @@ dry_check_repo() {
     cmd "git fetch origin && git reset --hard origin/$BRANCH && git clean -fd"
   else
     info "$APP_DIR no existe — se clonará"
-    cmd "git clone --branch $BRANCH $REPO_URL $APP_DIR"
+    cmd "git clone --depth 1 --single-branch --branch $BRANCH $REPO_URL $APP_DIR"
   fi
 }
 
@@ -422,7 +422,7 @@ setup_repo() {
   else
     sudo mkdir -p "$APP_DIR"
     sudo chown "$USER:$USER" "$APP_DIR"
-    git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+    git clone --depth 1 --single-branch --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
     ok "Repo clonado → $(git -C "$APP_DIR" rev-parse --short HEAD)"
   fi
 }

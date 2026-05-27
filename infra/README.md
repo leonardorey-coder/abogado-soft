@@ -26,8 +26,8 @@ El script `deploy.sh --install` instala Docker, Bun y Node automáticamente.
 ### Paso 1 — Clonar el repo
 
 ```bash
-git clone <URL_DEL_REPO> /opt/abogadosoft
-cd /opt/abogadosoft
+git clone <URL_DEL_REPO> /opt/sidoc
+cd /opt/sidoc
 ```
 
 ---
@@ -106,10 +106,10 @@ Subir el archivo JSON de la Service Account al servidor:
 
 ```bash
 # Desde tu máquina local
-scp abogadosoft-service-account.json usuario@IP_SERVIDOR:/opt/abogadosoft/backend/
+scp abogadosoft-service-account.json usuario@IP_SERVIDOR:/opt/sidoc/backend/
 
 # Verificar que está en la ruta correcta
-ls /opt/abogadosoft/backend/abogadosoft-service-account.json
+ls /opt/sidoc/backend/abogadosoft-service-account.json
 ```
 
 Si no se usa Google Drive, dejar `GOOGLE_SERVICE_ACCOUNT_PATH` vacío en `.env.prod`.
@@ -250,7 +250,7 @@ curl http://IP_SERVIDOR:8000/health         # Supabase Kong vivo
 
 ```bash
 # En el servidor
-cd /opt/abogadosoft
+cd /opt/sidoc
 bash scripts/deploy.sh --update
 ```
 
@@ -305,7 +305,7 @@ docker exec abogadosoft_backend \
 O desde fuera del contenedor si Bun está instalado en el servidor:
 
 ```bash
-cd /opt/abogadosoft/backend
+cd /opt/sidoc/backend
 DATABASE_URL=$(grep DIRECT_URL ../.env.prod | cut -d= -f2- | tr -d '"') \
 MEILISEARCH_HOST=http://localhost:7700 \
 MEILISEARCH_KEY=$(grep MEILISEARCH_KEY ../.env.prod | cut -d= -f2- | tr -d '"') \
