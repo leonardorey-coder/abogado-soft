@@ -22,7 +22,7 @@ export const LegalPublicLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background-light dark:bg-background-dark font-display">
+    <div className="flex h-screen flex-col overflow-hidden bg-background-light dark:bg-background-dark font-display">
       <header className="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[800px] px-4 py-3 flex items-center justify-between gap-4">
           <Link
@@ -38,7 +38,9 @@ export const LegalPublicLayout: React.FC = () => {
           </Link>
         </div>
       </header>
-      <Outlet />
+      <main id="main-content" className="flex-1 overflow-y-auto">
+        <Outlet />
+      </main>
     </div>
   );
 };

@@ -20,7 +20,7 @@ import {
   Clock,
   Pin,
 } from "lucide-react";
-import { Button, Skeleton } from "./ui";
+import { Skeleton } from "./ui";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
 import { DocumentTypeFilter, type DocumentTypeCounts, type DocumentTypeFilterValue } from "./DocumentTypeFilter";
 import type { AppLayoutOutletContext } from "./AppLayout";
@@ -262,9 +262,6 @@ export const AgreementsList: React.FC = () => {
               Administra y visualiza los acuerdos legales de la universidad.
             </p>
           </div>
-          <Button icon={Plus} onClick={() => navigate("/convenio/nuevo")} className="shrink-0">
-            Nuevo Convenio
-          </Button>
         </div>
 
         {/* Filtros */}

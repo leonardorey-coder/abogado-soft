@@ -22,7 +22,6 @@ import { AssignModal } from "./AssignModal";
 import { CloudDocThumbnail } from "./CloudDocThumbnail";
 import {
   ActionMenu,
-  Button,
   Skeleton,
 } from "./ui";
 import {
@@ -528,9 +527,6 @@ export const DocumentsList: React.FC<DocumentsListProps> = ({
               Administra y visualiza todos los documentos del despacho.
             </p>
           </div>
-          <Button icon={Plus} onClick={() => openUploadModal()} className="shrink-0">
-            Nuevo Documento
-          </Button>
         </div>
 
         {/* Filtros */}
