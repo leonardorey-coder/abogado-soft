@@ -35,7 +35,6 @@ services:
       - no-new-privileges:true
     cpus: "1.0"
     mem_limit: 768m
-    pids_limit: 256
     logging: *default-logging
     deploy:
       resources:
@@ -82,7 +81,6 @@ services:
       - no-new-privileges:true
     cpus: "1.0"
     mem_limit: 768m
-    pids_limit: 256
     tmpfs:
       - /tmp:size=256m,mode=1777
     logging: *default-logging
@@ -128,7 +126,6 @@ services:
       - no-new-privileges:true
     cpus: "0.5"
     mem_limit: 128m
-    pids_limit: 128
     logging: *default-logging
     deploy:
       resources:
@@ -169,7 +166,6 @@ services:
       - no-new-privileges:true
     cpus: "1.0"
     mem_limit: 512m
-    pids_limit: 256
     logging: *default-logging
     deploy:
       resources:
