@@ -28,6 +28,7 @@ interface UserProfile {
   department?: string | null;
   position?: string | null;
   isActive: boolean;
+  isOnline?: boolean;
   lastLogin?: string | null;
   createdAt: string;
 }
@@ -112,10 +113,10 @@ export const UserProfilePage: React.FC = () => {
   const [uploadingTarget, setUploadingTarget] = useState<"avatar" | "cover" | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const canEditPhotos = true;
+  const canEditPhotos = isSelf;
 
   const updateUserMedia = useCallback(async (payload: { avatarUrl?: string | null; coverUrl?: string | null }) => {
-    if (!token || !id) return;
+    if (!token || !id || !canEditPhotos) return;
     const res = await fetch(`${API_URL}/users/${id}`, {
       method: "PATCH",
       headers: authHeader,
@@ -126,7 +127,7 @@ export const UserProfilePage: React.FC = () => {
       throw new Error(response.error ?? "No se pudo actualizar la imagen.");
     }
     setUser((prev) => (prev ? { ...prev, ...payload } : prev));
-  }, [authHeader, id, token]);
+  }, [authHeader, canEditPhotos, id, token]);
 
   const readImageFile = useCallback((file: File) => new Promise<string>((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -243,7 +244,7 @@ export const UserProfilePage: React.FC = () => {
     );
   }
 
-  if (error || !user) {
+  if (!user) {
     return (
       <main className="max-w-[960px] w-full mx-auto px-6 py-8 flex-1 flex flex-col items-center justify-center gap-4 text-center">
         <span className="material-symbols-outlined text-5xl text-red-400">person_off</span>
@@ -291,6 +292,15 @@ export const UserProfilePage: React.FC = () => {
     },
   ];
 
+  const connectionLabel = !user.isActive ? "Inactivo" : user.isOnline ? "Activo" : "Sin conexión";
+  const connectionClasses = !user.isActive
+    ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800"
+    : user.isOnline
+      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800"
+      : "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700";
+  const connectionDotClass = !user.isActive ? "bg-red-500" : user.isOnline ? "bg-green-500" : "bg-slate-400";
+  const profilePermissionValue = isSelf ? "Propietario" : isAdmin ? "Admin" : "Lectura";
+
   return (
     <main className="max-w-[960px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
 
@@ -302,6 +312,12 @@ export const UserProfilePage: React.FC = () => {
         <span>/</span>
         <span className="text-[#111318] dark:text-white">{user.name}</span>
       </nav>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {/* ── Hero card ─────────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-[#1a212f] rounded-2xl border border-[#dbdfe6] dark:border-[#2d3748] shadow-sm overflow-hidden">
@@ -369,17 +385,19 @@ export const UserProfilePage: React.FC = () => {
               <span className="material-symbols-outlined text-white animate-spin">progress_activity</span>
             </div>
           )}
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImageChange("cover", file);
-              e.currentTarget.value = "";
-            }}
-          />
+          {canEditPhotos && (
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleImageChange("cover", file);
+                e.currentTarget.value = "";
+              }}
+            />
+          )}
         </div>
 
         <div className="px-6 pb-6">
@@ -446,17 +464,19 @@ export const UserProfilePage: React.FC = () => {
                   </div>
                 )}
               </div>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImageChange("avatar", file);
-                  e.currentTarget.value = "";
-                }}
-              />
+              {canEditPhotos && (
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleImageChange("avatar", file);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              )}
               
               {/* Name & Meta (Mobile Centered) */}
               <div className="text-center md:text-left">
@@ -480,13 +500,9 @@ export const UserProfilePage: React.FC = () => {
                 Atrás
               </button>
               
-              <span className={`inline-flex items-center justify-center w-full md:w-auto gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold border ${
-                user.isActive
-                  ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800"
-                  : "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800"
-              }`}>
-                <span className={`size-1.5 rounded-full ${user.isActive ? "bg-green-500" : "bg-red-500"}`} />
-                {user.isActive ? "Activo" : "Inactivo"}
+              <span className={`inline-flex items-center justify-center w-full md:w-auto gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold border ${connectionClasses}`}>
+                <span className={`size-1.5 rounded-full ${connectionDotClass}`} />
+                {connectionLabel}
               </span>
             </div>
           </div>
@@ -501,7 +517,7 @@ export const UserProfilePage: React.FC = () => {
               { icon: "call", label: "Teléfono", value: user.phone || "—" },
               { icon: "login", label: "Último acceso", value: user.lastLogin ? formatTimeAgo(user.lastLogin) : "Nunca" },
               { icon: "calendar_today", label: "Miembro desde", value: formatDate(user.createdAt) },
-              { icon: isSelf ? "person" : "badge", label: isSelf ? "Tú" : (isAdmin ? "Editable" : "Solo lectura"), value: isSelf ? "Tu perfil" : (isAdmin ? "Admin" : "Miembro") },
+              { icon: "badge", label: "Permisos", value: profilePermissionValue },
             ].map(({ icon, label, value, highlight }) => (
               <div key={label} className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
