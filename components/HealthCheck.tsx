@@ -186,13 +186,6 @@ const CHECKS: { name: string, group: string, path: string, method?: string, expe
     { name: "Backups: Descargar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000/download", expectedStatus: [404] },
     { name: "Backups: Eliminar (Prueba)", group: "Backups", path: "/backups/00000000-0000-0000-0000-000000000000", method: "DELETE", expectedStatus: [404] },
 
-    // ─── Google Drive (drive.routes.ts) ──────────────────────────────────
-    { name: "Drive: Estado", group: "Google Drive", path: "/drive/status" },
-    { name: "Drive: Sync Doc (Prueba)", group: "Google Drive", path: "/drive/sync/00000000-0000-0000-0000-000000000000", method: "POST", expectedStatus: [404, 400, 500] },
-    { name: "Drive: Pull Doc (Prueba)", group: "Google Drive", path: "/drive/sync/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
-    { name: "Drive: Revisiones (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000", expectedStatus: [400, 404] },
-    { name: "Drive: Descargar Revisión (Prueba)", group: "Google Drive", path: "/drive/revisions/00000000-0000-0000-0000-000000000000/test", expectedStatus: [404] },
-    { name: "Drive: OAuth Auth (legacy)", group: "Google Drive", path: "/drive/auth", expectedStatus: [400, 401] },
 ];
 
 export const HealthCheck: React.FC = () => {

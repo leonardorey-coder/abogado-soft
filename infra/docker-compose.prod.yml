@@ -69,9 +69,6 @@ services:
       - "127.0.0.1:4001:4001"
     networks:
       - app_network
-    volumes:
-      # Credenciales opcionales (p. ej. Google Service Account):
-      - ../secrets:/app/secrets:ro
     init: true
     cap_drop:
       - ALL
@@ -96,6 +93,38 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+
+  # ─── Migraciones Prisma (tooling separado del backend runtime) ──────────────
+  migrate:
+    image: ghcr.io/leonardorey-coder/sidoc-migrator:${SIDOC_IMAGE_TAG:-latest}
+    profiles:
+      - tools
+    env_file:
+      - ../.env.prod
+    environment:
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_network
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.5"
+    mem_limit: 384m
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+        reservations:
+          memory: 128M
 
   # ─── Frontend (Nginx + Vite dist/) ───────────────────────────────────────────
   frontend:

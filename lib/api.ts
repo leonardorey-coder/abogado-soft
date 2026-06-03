@@ -250,7 +250,7 @@ export interface ApiDocument {
   mimeType: string | null;
   createdAt: string;
   updatedAt: string;
-  // Google Drive sync
+  // Legacy storage metadata
   syncStatus?: string;
   driveFileId?: string | null;
   lastSyncAt?: string | null;
@@ -1176,58 +1176,6 @@ export const documentPinsApi = {
       `/documents/${documentId}/pin`,
       { method: 'PUT', body: JSON.stringify({ pinned }) },
     ),
-};
-
-// ─── GOOGLE DRIVE ───────────────────────────────────────────────────────
-
-export const driveApi = {
-  /** Verifica si Google Drive está conectado y configurado */
-  getStatus: () =>
-    apiFetch<{ connected: boolean }>('/drive/status'),
-
-  /** Sincroniza un documento al Drive (subida o actualización) */
-  syncDocument: (documentId: string, changeNote?: string) =>
-    apiFetch<{
-      ok: boolean;
-      driveFileId: string;
-      driveRevisionId: string | null;
-      version: number;
-      lastSyncAt: string;
-    }>(`/drive/sync/${documentId}`, {
-      method: 'POST',
-      body: JSON.stringify({ changeNote }),
-    }),
-
-  /** Descarga versión de Drive y actualiza el archivo local */
-  pullDocument: (documentId: string) =>
-    apiFetch<{ ok: boolean; localPath: string; lastSyncAt: string }>(
-      `/drive/sync/${documentId}`,
-    ),
-
-  /** Lista revisiones de un documento en Drive */
-  getRevisions: (documentId: string) =>
-    apiFetch<{ revisions: any[]; versions: any[] }>(
-      `/drive/revisions/${documentId}`,
-    ),
-
-  /** Descarga una revisión específica de Drive */
-  downloadRevision: async (documentId: string, revisionId: string, fileName?: string) => {
-    const token = await getAccessToken();
-    const url = `${API_URL}/drive/revisions/${documentId}/${revisionId}`;
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new ApiError(res.status, 'Error al descargar revisión');
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = fileName ?? 'revision';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  },
 };
 
 // ─── BÚSQUEDA GLOBAL ─────────────────────────────────────────────────────────

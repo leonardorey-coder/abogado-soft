@@ -40,11 +40,9 @@ R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
 R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
 R2_BUCKET_NAME="${R2_BUCKET_NAME:-}"
 VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY:-}"
-GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS:-}"
-GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS:-}"
-GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS:-}"
 
 DOCKER_IMAGE_PRUNE="${DOCKER_IMAGE_PRUNE:-1}"
+DOCKER_MIGRATOR_PRUNE="${DOCKER_MIGRATOR_PRUNE:-1}"
 
 C_RESET='\033[0m'
 C_BOLD='\033[1m'
@@ -124,15 +122,8 @@ install_docker() {
 
 prepare_layout() {
   log "Preparando layout mínimo..."
-  sudo mkdir -p "$APP_DIR/infra" "$APP_DIR/scripts" "$APP_DIR/secrets"
+  sudo mkdir -p "$APP_DIR/infra" "$APP_DIR/scripts"
   sudo chown -R "$USER:$USER" "$APP_DIR"
-
-  local old_google="$APP_DIR/backend/abogadosoft-service-account.json"
-  local new_google="$APP_DIR/secrets/google-service-account.json"
-  if [ -f "$old_google" ] && [ ! -f "$new_google" ]; then
-    cp "$old_google" "$new_google"
-    ok "Credencial Google migrada a $new_google"
-  fi
 
   [ -f "$COMPOSE_FILE" ] || die "No existe $COMPOSE_FILE. Copia infra/docker-compose.prod.yml a esa ruta antes de desplegar."
   ok "Compose encontrado → $COMPOSE_FILE"
@@ -140,7 +131,7 @@ prepare_layout() {
 
 generate_env() {
   local env_file="$APP_DIR/.env.prod"
-  local server_ip postgres_pass jwt_secret jwt_refresh_secret meili_key storage_provider google_service_account_path
+  local server_ip postgres_pass jwt_secret jwt_refresh_secret meili_key storage_provider
   server_ip="$(hostname -I | awk '{print $1}')"
 
   log "Configurando .env.prod..."
@@ -160,14 +151,6 @@ generate_env() {
   storage_provider="r2"
 
   [ -z "$VITE_LIVEBLOCKS_PUBLIC_KEY" ] && VITE_LIVEBLOCKS_PUBLIC_KEY="$(env_get VITE_LIVEBLOCKS_PUBLIC_KEY "$env_file")"
-  [ -z "$GOOGLE_DRIVE_FOLDER_DOCUMENTS" ] && GOOGLE_DRIVE_FOLDER_DOCUMENTS="$(env_get GOOGLE_DRIVE_FOLDER_DOCUMENTS "$env_file")"
-  [ -z "$GOOGLE_DRIVE_FOLDER_CONTRACTS" ] && GOOGLE_DRIVE_FOLDER_CONTRACTS="$(env_get GOOGLE_DRIVE_FOLDER_CONTRACTS "$env_file")"
-  [ -z "$GOOGLE_DRIVE_FOLDER_BACKUPS"   ] && GOOGLE_DRIVE_FOLDER_BACKUPS="$(env_get GOOGLE_DRIVE_FOLDER_BACKUPS "$env_file")"
-
-  google_service_account_path=""
-  if [ -f "$APP_DIR/secrets/google-service-account.json" ]; then
-    google_service_account_path="/app/secrets/google-service-account.json"
-  fi
 
   cat > "$env_file" << EOF
 # ==============================================================================
@@ -196,12 +179,6 @@ R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID}"
 R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY}"
 R2_BUCKET_NAME="${R2_BUCKET_NAME}"
 
-GOOGLE_SERVICE_ACCOUNT_PATH="${google_service_account_path}"
-GOOGLE_REDIRECT_URI="http://${server_ip}/api/drive/auth/callback"
-GOOGLE_DRIVE_FOLDER_DOCUMENTS="${GOOGLE_DRIVE_FOLDER_DOCUMENTS}"
-GOOGLE_DRIVE_FOLDER_CONTRACTS="${GOOGLE_DRIVE_FOLDER_CONTRACTS}"
-GOOGLE_DRIVE_FOLDER_BACKUPS="${GOOGLE_DRIVE_FOLDER_BACKUPS}"
-
 VITE_API_URL="/api"
 VITE_LIVEBLOCKS_PUBLIC_KEY="${VITE_LIVEBLOCKS_PUBLIC_KEY}"
 
@@ -229,7 +206,8 @@ load_env() {
 
 pull_images() {
   log "Descargando imágenes SIDOC ($SIDOC_IMAGE_TAG)..."
-  compose pull
+  compose pull db meilisearch backend frontend
+  compose --profile tools pull migrate
   ok "Imágenes descargadas"
 }
 
@@ -248,11 +226,11 @@ start_deps() {
 }
 
 run_migrations() {
-  log "Ejecutando migraciones Prisma desde la imagen backend..."
+  log "Ejecutando migraciones Prisma desde la imagen migrator..."
   local mig_log
   mig_log="$(mktemp)"
   set +e
-  compose run --rm backend bunx prisma migrate deploy >"$mig_log" 2>&1
+  compose --profile tools run --rm migrate >"$mig_log" 2>&1
   local mig_ec=$?
   set -euo pipefail
   if [ "$mig_ec" -ne 0 ]; then
@@ -263,6 +241,14 @@ run_migrations() {
   cat "$mig_log"
   rm -f "$mig_log"
   ok "Migraciones aplicadas"
+}
+
+remove_migrator_image() {
+  if [ "$DOCKER_MIGRATOR_PRUNE" = "1" ]; then
+    log "Eliminando imagen migrator temporal..."
+    docker image rm "ghcr.io/leonardorey-coder/sidoc-migrator:${SIDOC_IMAGE_TAG}" >/dev/null 2>&1 || true
+    ok "Imagen migrator removida si no estaba en uso"
+  fi
 }
 
 start_stack() {
@@ -327,9 +313,11 @@ run_dry() {
 
   require_r2_creds
   log "[DRY] Comandos principales"
-  cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod pull"
+  cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod pull db meilisearch backend frontend"
+  cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod --profile tools pull migrate"
   cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod up -d db meilisearch"
-  cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod run --rm backend bunx prisma migrate deploy"
+  cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod --profile tools run --rm migrate"
+  cmd "docker image rm ghcr.io/leonardorey-coder/sidoc-migrator:$SIDOC_IMAGE_TAG  # omitir con DOCKER_MIGRATOR_PRUNE=0"
   cmd "docker compose -f $COMPOSE_FILE --env-file $APP_DIR/.env.prod up -d --remove-orphans"
   cmd "docker image prune -f  # omitir con DOCKER_IMAGE_PRUNE=0"
 }
@@ -348,6 +336,7 @@ load_env
 pull_images
 start_deps
 run_migrations
+remove_migrator_image
 start_stack
 docker_cleanup_after_deploy
 healthcheck

@@ -1,6 +1,6 @@
 // ============================================================================
 // DocumentEditor — Vista de detalle/edición de documento con SuperDoc
-// Almacenamiento: Google Drive API (sin WebSockets ni Liveblocks)
+// Almacenamiento: R2 vía API backend (sin WebSockets ni Liveblocks)
 // URL única: #/document/:id
 // ============================================================================
 

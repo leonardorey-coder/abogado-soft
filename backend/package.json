@@ -10,6 +10,7 @@
     "dev": "bun --watch src/server.ts",
     "build": "bunx prisma generate && bun build src/server.ts --outdir dist --target bun",
     "start": "bun dist/server.js",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:generate": "bunx prisma generate",
     "prisma:push": "bunx prisma db push",
     "prisma:pull": "bunx prisma db pull",
@@ -39,7 +40,6 @@
     "diff": "8.0.3",
     "express": "5.1.0",
     "fastify": "5.7.4",
-    "googleapis": "171.4.0",
     "helmet": "8.1.0",
     "html-to-docx": "1.8.0",
     "htmldiff-js": "1.0.5",
@@ -51,7 +51,6 @@
     "node-cron": "3.0.3",
     "pdf-parse": "2.4.5",
     "pg": "8.18.0",
-    "prisma": "7.4.0",
     "puppeteer": "24.40.0",
     "xlsx": "^0.18.5",
     "zod": "3.25.17"
@@ -70,6 +69,7 @@
     "@types/pdf-parse": "1.1.5",
     "@types/pg": "8.16.0",
     "dotenv": "^16.4.7",
+    "prisma": "7.4.0",
     "typescript": "5.8.2"
   }
 }

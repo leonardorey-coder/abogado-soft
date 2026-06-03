@@ -3,14 +3,16 @@
 Este flujo evita construir frontend/backend en el VPS. GitHub Actions publica:
 
 - `ghcr.io/leonardorey-coder/sidoc-backend:<sha>`
+- `ghcr.io/leonardorey-coder/sidoc-migrator:<sha>`
 - `ghcr.io/leonardorey-coder/sidoc-frontend:<sha>`
 - `ghcr.io/leonardorey-coder/sidoc-backend:latest`
+- `ghcr.io/leonardorey-coder/sidoc-migrator:latest`
 - `ghcr.io/leonardorey-coder/sidoc-frontend:latest`
 
 ## Primer setup del VPS
 
 ```bash
-sudo mkdir -p /opt/sidoc/infra /opt/sidoc/scripts /opt/sidoc/secrets
+sudo mkdir -p /opt/sidoc/infra /opt/sidoc/scripts
 sudo chown -R "$USER:$USER" /opt/sidoc
 ```
 
@@ -19,12 +21,6 @@ Copiar al VPS:
 ```text
 /opt/sidoc/infra/docker-compose.prod.yml
 /opt/sidoc/scripts/deploy.sh
-```
-
-Si se usa Google Drive:
-
-```bash
-scp google-service-account.json usuario@IP:/opt/sidoc/secrets/google-service-account.json
 ```
 
 Login único a GHCR:
@@ -59,7 +55,7 @@ El script:
 1. Preserva/genera `/opt/sidoc/.env.prod`.
 2. Ejecuta `docker compose pull`.
 3. Levanta `db` y `meilisearch`.
-4. Corre `prisma migrate deploy` desde la imagen backend.
+4. Corre `prisma migrate deploy` desde la imagen migrator.
 5. Ejecuta `docker compose up -d --remove-orphans`.
 6. Limpia imágenes huérfanas con `docker image prune -f`.
 
@@ -71,3 +67,5 @@ El VPS ya no necesita:
 - `dist`
 - build cache de Docker
 - Bun para desplegar
+
+La imagen backend runtime no incluye el CLI de Prisma; las migraciones usan una imagen separada para mantener tooling de build fuera del contenedor API.

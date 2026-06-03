@@ -14,6 +14,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_OWNER: leonardorey-coder
   BACKEND_IMAGE: sidoc-backend
+  MIGRATOR_IMAGE: sidoc-migrator
   FRONTEND_IMAGE: sidoc-frontend
   VITE_API_URL: /api
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -44,10 +45,22 @@ jobs:
         with:
           context: ./backend
           file: ./backend/Dockerfile
+          target: runner
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_short }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BACKEND_IMAGE }}:latest
+
+      - name: Build and push migrator
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          target: migrator
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.MIGRATOR_IMAGE }}:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.MIGRATOR_IMAGE }}:latest
 
       - name: Build and push frontend
         uses: docker/build-push-action@v6

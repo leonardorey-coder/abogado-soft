@@ -120,8 +120,7 @@ async function computeDiffSummaryFromBuffers(oldBuf: Buffer | null, newBuf: Buff
 
 // ─── Multer: memoryStorage (archivos en RAM, sin disco) ─────────────────────
 // para uploads intermedios del editor (archivos <= 50 MB).
-// Para archivos más grandes el cliente usa POST /api/drive/upload-url
-// y sube directamente a Drive (flujo resumable).
+// Para archivos grandes se usa storage.routes con R2.
 
 // ─── BigInt → Number serialization helper ────────────────────────────────────
 function serializeBigInt(obj: any): any {
@@ -919,7 +918,7 @@ documentsRouter.get(
 );
 
 // ─── POST /api/documents/upload ──────────────────────────────────────────────
-// Recibe el archivo en memoryStorage, lo sube directamente a Google Drive.
+// Recibe el archivo en memoryStorage y lo sube al proveedor activo (R2 en producción).
 // No escribe ningún byte en el disco del servidor.
 documentsRouter.post(
   '/upload',
@@ -1435,17 +1434,13 @@ documentsRouter.delete(
 
       // Borrar desde storage (best-effort, sin bloquear la eliminación en BD)
       const storage = getStorageProvider();
-      const { deleteFile } = await import('../lib/googleDrive.js');
       for (const v of versionsToDelete) {
         if (v.storageKey) storage.delete(v.storageKey).catch(() => {});
-        if (v.cloudUrl) deleteFile(v.cloudUrl).catch(() => {});
       }
       for (const p of pdfsToDelete) {
         if ((p as any).storageKey) storage.delete((p as any).storageKey).catch(() => {});
-        if ((p as any).driveFileId) deleteFile((p as any).driveFileId).catch(() => {});
       }
       if (doc.storageKey) storage.delete(doc.storageKey).catch(() => {});
-      if (doc.driveFileId) deleteFile(doc.driveFileId).catch(() => {});
 
       // Eliminar versiones, comentarios, permisos, actividad y el documento
       await prisma.$transaction([
@@ -2903,13 +2898,9 @@ documentsRouter.delete(
         return;
       }
 
-      // Borrar de R2 y Drive (mejor esfuerzo)
+      // Borrar de R2 (mejor esfuerzo)
       if (pdfRecord.storageKey) {
         getStorageProvider().delete(pdfRecord.storageKey).catch(() => {});
-      }
-      if (pdfRecord.driveFileId) {
-        const { deleteFile } = await import('../lib/googleDrive.js');
-        deleteFile(pdfRecord.driveFileId).catch(() => {});
       }
 
       await (prisma as any).documentPdf.delete({ where: { id: pdfId } });

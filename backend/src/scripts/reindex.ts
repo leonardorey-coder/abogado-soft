@@ -4,8 +4,8 @@
 // Uso:  cd backend && bun src/scripts/reindex.ts
 //
 // - Lee todos los documentos, convenios y expedientes históricos de Prisma
-// - Para documentos: descarga el buffer desde Google Drive (driveFileId) si existe,
-//   con fallback a localPath en disco (archivos pre-migración)
+// - Para documentos: descarga el buffer desde R2 (storageKey) si existe,
+//   con fallback a localPath en disco (archivos pre-cloud)
 // - Extrae texto de archivos (.docx, .pdf, .txt)
 // - Los indexa en Meilisearch en batches de 100
 // - Los errores por archivo individual (PDF corrupto, etc.) se loguean y continúan
@@ -41,7 +41,7 @@ if (!process.env.SEARCH_ENGINE) process.env.SEARCH_ENGINE = 'meilisearch';
 
 import prisma from '../lib/prisma.js';
 import { getSearchService } from '../services/search/SearchServiceFactory.js';
-import { downloadFile, verifyCredentials } from '../lib/googleDrive.js';
+import { downloadDocumentBufferSafe } from '../lib/storage/downloadHelper.js';
 import mammoth from 'mammoth';
 import type { SearchableDocument } from '../services/search/ISearchProvider.js';
 
@@ -65,20 +65,19 @@ function formatMs(ms: number): string {
 
 /**
  * Extrae texto plano desde un documento.
- * Prioridad: Drive (driveFileId) > disco (localPath) > vacío.
+ * Prioridad: R2 (storageKey) > disco (localPath) > vacío.
  */
 async function extractTextForDoc(doc: {
-  driveFileId: string | null;
+  storageKey: string | null;
   localPath: string | null;
   type: string;
   name: string;
 }): Promise<string> {
   const ext = doc.type.toLowerCase();
 
-  // 1. Intentar desde Drive
-  if (doc.driveFileId) {
+  const buffer = await downloadDocumentBufferSafe(doc);
+  if (buffer) {
     try {
-      const buffer = await downloadFile(doc.driveFileId);
       let text = '';
       if (ext === 'docx' || ext === 'doc') {
         const result = await mammoth.extractRawText({ buffer });
@@ -92,31 +91,7 @@ async function extractTextForDoc(doc: {
       }
       return text.trim();
     } catch (err) {
-      console.warn(`    ⚠️  Drive error para "${doc.name}": ${(err as Error).message}`);
-    }
-  }
-
-  // 2. Fallback: leer desde disco (archivos pre-migración)
-  if (doc.localPath) {
-    try {
-      const absPath = path.resolve(doc.localPath);
-      if (fs.existsSync(absPath)) {
-        const buffer = fs.readFileSync(absPath);
-        let text = '';
-        if (ext === 'docx' || ext === 'doc') {
-          const result = await mammoth.extractRawText({ buffer });
-          text = result.value ?? '';
-        } else if (ext === 'pdf') {
-          const pdfParse = await getPdfParse();
-          const data = await pdfParse(buffer);
-          text = data.text ?? '';
-        } else if (ext === 'txt' || ext === 'rtf') {
-          text = buffer.toString('utf-8');
-        }
-        return text.trim();
-      }
-    } catch (err) {
-      console.warn(`    ⚠️  Disco error para "${doc.name}": ${(err as Error).message}`);
+      console.warn(`    ⚠️  Extracción falló para "${doc.name}": ${(err as Error).message}`);
     }
   }
 
@@ -130,15 +105,6 @@ async function reindex() {
   console.log(`    Host:  ${process.env.MEILISEARCH_HOST ?? 'http://localhost:7700'}`);
   console.log('═'.repeat(52));
 
-  // Verificar conexión a Drive
-  let driveAvailable = false;
-  try {
-    driveAvailable = await verifyCredentials();
-    console.log(`    Drive: ${driveAvailable ? '✅ conectado' : '⚠️  no disponible (solo disco)'}`);
-  } catch {
-    console.log('    Drive: ⚠️  no disponible (solo disco)');
-  }
-
   const svc = await getSearchService();
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -150,13 +116,13 @@ async function reindex() {
     where: { isDeleted: false },
     select: {
       id: true, name: true, type: true, description: true, tags: true,
-      fileStatus: true, localPath: true, driveFileId: true,
+      fileStatus: true, storageKey: true, localPath: true,
       createdAt: true, updatedAt: true,
     },
   });
 
   let docErrors = 0;
-  let docDrive = 0;
+  let docR2 = 0;
   let docDisk = 0;
   let docEmpty = 0;
 
@@ -167,7 +133,7 @@ async function reindex() {
     for (const doc of batch) {
       try {
         const textContent = await extractTextForDoc(doc);
-        if (doc.driveFileId && textContent) docDrive++;
+        if (doc.storageKey && textContent) docR2++;
         else if (doc.localPath && textContent) docDisk++;
         else docEmpty++;
 
@@ -188,7 +154,7 @@ async function reindex() {
     await svc.indexBulk(indexed);
     process.stdout.write(`    → ${Math.min(i + BATCH_SIZE, documents.length)}/${documents.length}\r`);
   }
-  console.log(`    ✅  ${documents.length} docs (Drive: ${docDrive}, Disco: ${docDisk}, Vacíos: ${docEmpty}, Errores: ${docErrors}) — ${formatMs(Date.now() - t0)}`);
+  console.log(`    ✅  ${documents.length} docs (R2: ${docR2}, Disco: ${docDisk}, Vacíos: ${docEmpty}, Errores: ${docErrors}) — ${formatMs(Date.now() - t0)}`);
 
   // ──────────────────────────────────────────────────────────────────────────
   // 2. Convenios
@@ -238,10 +204,6 @@ async function reindex() {
   console.log('\n' + '═'.repeat(52));
   console.log(`✨  Completado en ${formatMs(Date.now() - globalStart)}`);
   console.log(`    Total: ${documents.length + convenios.length + cases.length} registros indexados\n`);
-  if (!driveAvailable) {
-    console.log('    ℹ️  Nota: Drive no estaba disponible. Ejecuta de nuevo cuando esté conectado');
-    console.log('         para indexar el contenido de documentos que solo están en Drive.\n');
-  }
 
   await prisma.$disconnect();
   process.exit(0);

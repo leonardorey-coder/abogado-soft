@@ -100,23 +100,7 @@ Copiar los mismos valores de `JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY` y `POS
 
 ---
 
-### Paso 5 — Google Service Account (solo si se usa Google Drive)
-
-Subir el archivo JSON de la Service Account al servidor:
-
-```bash
-# Desde tu máquina local
-scp abogadosoft-service-account.json usuario@IP_SERVIDOR:/opt/sidoc/backend/
-
-# Verificar que está en la ruta correcta
-ls /opt/sidoc/backend/abogadosoft-service-account.json
-```
-
-Si no se usa Google Drive, dejar `GOOGLE_SERVICE_ACCOUNT_PATH` vacío en `.env.prod`.
-
----
-
-### Paso 5b — Cloudflare R2 (almacenamiento de documentos)
+### Paso 5 — Cloudflare R2 (almacenamiento de documentos)
 
 El backend sube y sirve archivos vía **S3-compatible API** de Cloudflare R2 (`backend/src/lib/storage/R2StorageProvider.ts`). No requiere contenedor extra: el contenedor `backend` usa las credenciales desde `.env.prod`.
 
@@ -370,4 +354,3 @@ openssl rand -base64 40
 # Payload service_role:
 # { "role": "service_role", "iss": "supabase", "iat": <now>, "exp": <now+10years> }
 ```
-

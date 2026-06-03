@@ -21,6 +21,14 @@ FROM deps AS build
 COPY . .
 RUN bun run build
 
+# ─── Migraciones Prisma ───────────────────────────────────────────────────────
+FROM deps AS migrator
+RUN addgroup -S app \
+  && adduser -S app -G app \
+  && chown -R app:app /app
+USER app
+CMD ["bun", "run", "prisma:deploy"]
+
 # ─── Dependencias de producción ───────────────────────────────────────────────
 FROM base AS prod-deps
 COPY package.json bun.lock* ./
@@ -46,8 +54,6 @@ COPY --from=prod-deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=app:app /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build --chown=app:app /app/dist ./dist
-COPY --chown=app:app prisma ./prisma
-COPY --chown=app:app prisma.config.ts ./prisma.config.ts
 
 EXPOSE 4001
 

@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import { getStorageProvider, backupKey } from './storage/index.js';
 import archiver from 'archiver';
-import { downloadFileStream } from './googleDrive.js';
 
 export const activeBackupsProgress = new Map<string, number>();
 
@@ -38,7 +37,6 @@ type BackupSourceFile = {
     id: string;
     name: string;
     storageKey: string | null;
-    driveFileId: string | null;
 };
 
 async function createZipFromSourceFiles(zipFilePath: string, files: BackupSourceFile[]): Promise<void> {
@@ -65,9 +63,8 @@ async function createZipFromSourceFiles(zipFilePath: string, files: BackupSource
                 usedNamesByFolder.set(folder, folderUsedNames);
                 const uniqueName = buildUniqueEntryName(baseName, folderUsedNames);
                 const entryName = `${folder}/${uniqueName}`;
-                const stream = file.storageKey
-                    ? await storage.downloadStream(file.storageKey)
-                    : await downloadFileStream(file.driveFileId as string);
+                if (!file.storageKey) continue;
+                const stream = await storage.downloadStream(file.storageKey);
                 archive.append(stream as any, { name: entryName });
             }
 
@@ -88,13 +85,12 @@ export async function generateSystemBackup(
         where: {
             isDeleted: false,
             ...(firmId ? { firmId } : {}),
-            OR: [{ storageKey: { not: null } }, { driveFileId: { not: null } }],
+            storageKey: { not: null },
         },
         select: {
             id: true,
             name: true,
             storageKey: true,
-            driveFileId: true,
         },
         orderBy: { createdAt: 'asc' },
     });

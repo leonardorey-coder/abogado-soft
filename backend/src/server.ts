@@ -1,5 +1,5 @@
 // Bun carga .env automáticamente desde el cwd. En dev, el backend corre desde /backend,
-// así que fusionamos el .env de la raíz del repo para completar (p. ej. GOOGLE_SERVICE_ACCOUNT_PATH).
+// así que fusionamos el .env de la raíz del repo para completar claves compartidas.
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -94,7 +94,7 @@ app.use('/api/groups', groupsRouter);
 app.use('/api/activity', activityRouter);
 app.use('/api/backups', backupsRouter);
 app.use('/api/notifications', notificationsRouter);
-app.use('/api/drive', driveRouter);     // Legacy — mantener durante período de transición
+app.use('/api/drive', driveRouter);     // Legacy deshabilitado — usar /api/storage (R2)
 app.use('/api/storage', storageRouter); // Nuevo — proveedor agnóstico (R2)
 app.use('/api/search', searchRouter);
 app.use('/api/calendar-notes', calendarNotesRouter);

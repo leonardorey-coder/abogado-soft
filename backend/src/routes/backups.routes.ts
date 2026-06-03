@@ -6,8 +6,6 @@ import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import fs from 'fs';
 import path from 'path';
-import archiver from 'archiver';
-import { uploadFileStream, downloadFileStream, deleteFile } from '../lib/googleDrive';
 import { getStorageProvider } from '../lib/storage/index.js';
 import {
   generateSystemBackup,
@@ -200,13 +198,10 @@ backupsRouter.get(
         return;
       }
 
-      // Si tiene archivo en Drive, lo streameamos directo
       if (backup.cloudUrl) {
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename="backup_${backup.name}.zip"`);
-        const stream = await downloadFileStream(backup.cloudUrl);
-        stream.pipe(res);
-        return;
+        return res.status(410).json({
+          error: 'Este respaldo legacy estaba almacenado en Google Drive y ya no está disponible en este despliegue.',
+        });
       }
 
       // Fallback para respaldos viejos en disco
@@ -258,15 +253,6 @@ backupsRouter.delete(
       const backup = await prisma.backup.findFirstOrThrow({
         where: { id: req.params.id as string, firmId }
       });
-
-      // Eliminar de Drive si existe
-      if (backup.cloudUrl) {
-        try {
-          await deleteFile(backup.cloudUrl);
-        } catch (e) {
-          console.error('No se pudo borrar el archivo de Drive', e);
-        }
-      }
 
       // Eliminar archivo local si es un respaldo viejo
       if (backup.filePath && fs.existsSync(backup.filePath)) {
