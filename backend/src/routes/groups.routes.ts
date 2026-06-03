@@ -189,6 +189,19 @@ groupsRouter.patch(
         },
       });
 
+      if (updated.firmId) {
+        await prisma.$transaction([
+          prisma.firm.update({
+            where: { id: updated.firmId },
+            data: { name: updated.name },
+          }),
+          prisma.user.updateMany({
+            where: { firmId: updated.firmId },
+            data: { officeName: updated.name },
+          }),
+        ]);
+      }
+
       await prisma.activityLog.create({
         data: {
           firmId: req.user!.firmId ?? null,
@@ -216,15 +229,43 @@ groupsRouter.post(
   validate(addMemberSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const member = await prisma.groupMember.create({
-        data: {
-          groupId: req.params.id as string,
-          userId: req.body.userId,
-          role: req.body.role,
-        },
-        include: {
-          user: { select: { id: true, name: true, email: true } },
-        },
+      const group = await prisma.group.findFirst({
+        where: { id: req.params.id as string, firmId: req.user!.firmId!, isActive: true },
+        select: { id: true, firmId: true, name: true },
+      });
+      if (!group) {
+        res.status(404).json({ error: 'Despacho no encontrado' });
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.body.userId },
+        select: { id: true, firmId: true },
+      });
+      if (!user) {
+        res.status(404).json({ error: 'Usuario no encontrado' });
+        return;
+      }
+      if (user.firmId && user.firmId !== group.firmId) {
+        res.status(403).json({ error: 'El usuario pertenece a otro despacho.' });
+        return;
+      }
+
+      const member = await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: req.body.userId },
+          data: { firmId: group.firmId, officeName: group.name },
+        });
+        return tx.groupMember.create({
+          data: {
+            groupId: group.id,
+            userId: req.body.userId,
+            role: req.body.role,
+          },
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        });
       });
 
       await prisma.activityLog.create({
@@ -341,6 +382,7 @@ groupsRouter.post(
     try {
       const group = await prisma.group.findFirst({
         where: { inviteCode: req.body.inviteCode, isActive: true },
+        include: { firm: { select: { name: true } } },
       });
 
       if (!group) {
@@ -352,7 +394,7 @@ groupsRouter.post(
       if (!req.user!.firmId) {
         await prisma.user.update({
           where: { id: req.user!.id },
-          data: { firmId: group.firmId },
+          data: { firmId: group.firmId, officeName: group.firm?.name || group.name },
         });
         req.user!.firmId = group.firmId;
       } else if (req.user!.firmId !== group.firmId) {
