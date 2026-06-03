@@ -95,7 +95,6 @@ export const UserProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { session, user: currentUser } = useAuth();
-  const isAdmin = (currentUser as any)?.role === "admin";
   const isSelf = currentUser?.id === id;
 
   const token = session?.accessToken ?? "";
@@ -299,7 +298,7 @@ export const UserProfilePage: React.FC = () => {
       ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800"
       : "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700";
   const connectionDotClass = !user.isActive ? "bg-red-500" : user.isOnline ? "bg-green-500" : "bg-slate-400";
-  const profilePermissionValue = isSelf ? "Propietario" : isAdmin ? "Admin" : "Lectura";
+  const teamAccessLevel = user.role === "admin" ? "Administrador" : "Miembro";
 
   return (
     <main className="max-w-[960px] w-full mx-auto px-6 py-8 flex-1 space-y-8">
@@ -517,7 +516,7 @@ export const UserProfilePage: React.FC = () => {
               { icon: "call", label: "Teléfono", value: user.phone || "—" },
               { icon: "login", label: "Último acceso", value: user.lastLogin ? formatTimeAgo(user.lastLogin) : "Nunca" },
               { icon: "calendar_today", label: "Miembro desde", value: formatDate(user.createdAt) },
-              { icon: "badge", label: "Permisos", value: profilePermissionValue },
+              { icon: "badge", label: "Nivel en despacho", value: teamAccessLevel },
             ].map(({ icon, label, value, highlight }) => (
               <div key={label} className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">

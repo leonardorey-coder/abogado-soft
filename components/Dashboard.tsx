@@ -237,7 +237,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }, [addToast]),
   });
   const { user } = useAuth();
-  const currentUserRole = user?.role ?? "asistente";
 
   // Keep refreshRef current so the undo toast callback can call it without stale closure
   React.useEffect(() => { refreshRef.current = onRefresh; }, [onRefresh]);
@@ -1171,7 +1170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               onShare: () => setShareDocument(doc),
                               onAssign: () => setAssignDocument(doc),
                               onPermissions: () => {
-                                if (currentUserRole === "admin" || adminUnlockedForSession) {
+                                if (doc.currentUserPermission === "admin" || adminUnlockedForSession) {
                                   setPermissionsDocument(doc);
                                 } else {
                                   setAdminAccessDocument(doc);

@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { documentsApi, type ApiDocument } from './api';
-import type { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel, DocumentShare, ShareMethod } from '../types';
+import type { Document, FileStatus, CollaborationStatus, SharingStatus, DocumentPermissionLevel, DocumentPermissionOrigin, DocumentShare, ShareMethod } from '../types';
 
 // ─── Transformador: ApiDocument → Document (tipo del frontend) ──────────
 
@@ -76,6 +76,7 @@ export function apiDocToFrontend(doc: ApiDocument): Document {
     expirationDateRaw: doc.expirationDate ?? undefined,
     documentPermissions: permissions,
     currentUserPermission: doc.effectivePermission as DocumentPermissionLevel | undefined,
+    currentUserPermissionOrigin: doc.effectivePermissionOrigin as DocumentPermissionOrigin | undefined,
     ownerId: doc.ownerId ?? undefined,
     lastEditor: doc.owner?.name ?? 'Juan Pérez', // Default mock if owner not found
     createdAt: doc.createdAt,

@@ -16,6 +16,14 @@ const LEVEL_HIERARCHY: Record<string, number> = {
 };
 
 export type PermissionLevelName = 'none' | 'download' | 'read' | 'write' | 'admin';
+export type PermissionOriginName = 'owner' | 'role_admin' | 'direct' | 'group' | 'membership' | 'none';
+
+export interface EffectivePermissionDetails {
+    permission: PermissionLevelName;
+    origin: PermissionOriginName;
+    sourceUserId?: string | null;
+    sourceGroupId?: string | null;
+}
 
 // Extiende Request para adjuntar el permiso efectivo
 declare global {
@@ -45,22 +53,38 @@ export async function getEffectivePermission(
     userId: string,
     documentId: string,
 ): Promise<PermissionLevelName> {
+    return (await getEffectivePermissionDetails(userId, documentId)).permission;
+}
+
+export async function getEffectivePermissionDetails(
+    userId: string,
+    documentId: string,
+): Promise<EffectivePermissionDetails> {
     // 1. Obtener documento con su groupId
     const doc = await prisma.document.findUnique({
         where: { id: documentId },
-        select: { ownerId: true, groupId: true },
+        select: { ownerId: true, groupId: true, firmId: true },
     });
 
-    if (!doc) return 'none';
-    if (doc.ownerId === userId) return 'admin';
+    if (!doc) return { permission: 'none', origin: 'none' };
 
     // 2. Verificar si es admin global
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true },
+        select: { role: true, firmId: true },
     });
 
-    if (user?.role === 'admin') return 'admin';
+    if (doc.firmId && (!user?.firmId || doc.firmId !== user.firmId)) {
+        return { permission: 'none', origin: 'none' };
+    }
+
+    if (doc.ownerId === userId) {
+        return { permission: 'admin', origin: 'owner', sourceUserId: userId };
+    }
+
+    if (user?.role === 'admin') {
+        return { permission: 'admin', origin: 'role_admin', sourceUserId: userId };
+    }
 
     // 3. Obtener los grupos del usuario
     const userGroups = await prisma.groupMember.findMany({
@@ -89,7 +113,7 @@ export async function getEffectivePermission(
                 ],
             },
         },
-        select: { permissionLevel: true },
+        select: { permissionLevel: true, userId: true, groupId: true },
     });
 
     // Si hay permisos explícitos, verificar si alguno es 'none' (denegación explícita)
@@ -99,30 +123,43 @@ export async function getEffectivePermission(
         if (hasExplicitDenial) {
             // Solo denegar si TODOS los permisos son 'none'
             const allDenied = permissions.every(p => p.permissionLevel === 'none');
-            if (allDenied) return 'none';
+            if (allDenied) return { permission: 'none', origin: 'direct', sourceUserId: userId };
         }
 
         // 5. Tomar el nivel más alto (excluyendo 'none')
         let maxLevel = 0;
+        let bestOrigin: PermissionOriginName = 'none';
+        let sourceUserId: string | null = null;
+        let sourceGroupId: string | null = null;
         for (const perm of permissions) {
             if (perm.permissionLevel === 'none') continue;
             const level = LEVEL_HIERARCHY[perm.permissionLevel] ?? 0;
-            if (level > maxLevel) maxLevel = level;
+            if (level > maxLevel) {
+                maxLevel = level;
+                bestOrigin = perm.userId ? 'direct' : 'group';
+                sourceUserId = perm.userId;
+                sourceGroupId = perm.groupId;
+            }
         }
 
         if (maxLevel > 0) {
             const entry = Object.entries(LEVEL_HIERARCHY).find(([, v]) => v === maxLevel);
-            return (entry?.[0] as PermissionLevelName) ?? 'none';
+            return {
+                permission: (entry?.[0] as PermissionLevelName) ?? 'none',
+                origin: bestOrigin,
+                sourceUserId,
+                sourceGroupId,
+            };
         }
     }
 
     // 6. Si no hay permisos explícitos pero el usuario es miembro del grupo del documento
     //    → otorgar permiso de lectura por defecto (acceso por membresía)
     if (doc.groupId && groupIds.includes(doc.groupId)) {
-        return 'read';
+        return { permission: 'read', origin: 'membership', sourceGroupId: doc.groupId };
     }
 
-    return 'none';
+    return { permission: 'none', origin: 'none' };
 }
 
 /**

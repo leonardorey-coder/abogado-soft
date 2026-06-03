@@ -26,6 +26,7 @@ export type SharingStatus = 'ENVIADO' | 'ASIGNADO';
 export type ShareMethod = 'email' | 'whatsapp' | 'link' | 'system' | 'other';
 
 export type DocumentPermissionLevel = 'none' | 'download' | 'read' | 'write' | 'admin';
+export type DocumentPermissionOrigin = 'owner' | 'role_admin' | 'direct' | 'group' | 'membership' | 'none';
 
 export interface DocumentPermissionEntry {
   userName: string;
@@ -62,6 +63,7 @@ export interface Document {
   expirationDateRaw?: string;
   documentPermissions?: DocumentPermissionEntry[];
   currentUserPermission?: DocumentPermissionLevel;
+  currentUserPermissionOrigin?: DocumentPermissionOrigin;
   lastEditor?: string;
   ownerId?: string;
   // Google Drive sync fields

@@ -45,7 +45,7 @@ export function buildDocumentActionMenuItems(
     permissionLevel,
   } = ctx;
 
-  const userPermission = permissionLevel ?? doc.currentUserPermission ?? 'read';
+  const userPermission = permissionLevel ?? doc.currentUserPermission ?? 'none';
   
   // Verificar permisos para cada acción
   const canDownload = hasPermission(userPermission, 'download');

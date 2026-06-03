@@ -256,6 +256,7 @@ export interface ApiDocument {
   lastSyncAt?: string | null;
   // Permiso efectivo del usuario actual sobre este documento
   effectivePermission?: 'none' | 'download' | 'read' | 'write' | 'admin';
+  effectivePermissionOrigin?: 'owner' | 'role_admin' | 'direct' | 'group' | 'membership' | 'none';
   owner?: { id: string; name: string; email: string; avatarUrl: string | null } | null;
   group?: { id: string; name: string } | null;
   case_?: {
@@ -652,7 +653,7 @@ export interface SetPermissionPayload {
 export const permissionsApi = {
   /** Lista todos los permisos de un documento + permiso efectivo del usuario actual */
   list: (documentId: string) =>
-    apiFetch<{ permissions: ApiDocumentPermission[]; effectivePermission: string }>(
+    apiFetch<{ permissions: ApiDocumentPermission[]; effectivePermission: string; effectivePermissionOrigin?: string }>(
       `/documents/${documentId}/permissions`,
     ),
 
@@ -679,7 +680,7 @@ export const permissionsApi = {
 
   /** Obtiene el permiso efectivo del usuario actual sobre un documento */
   getEffective: (documentId: string) =>
-    apiFetch<{ permission: string }>(`/documents/${documentId}/effective-permission`),
+    apiFetch<{ permission: string; origin?: string }>(`/documents/${documentId}/effective-permission`),
 };
 
 // ─── ACCESS PINS ────────────────────────────────────────────────────────────

@@ -7,8 +7,8 @@ import { z } from 'zod';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import prisma from '../lib/prisma.js';
-import { authenticate, authorize } from '../middleware/auth.js';
-import { requirePermission, getEffectivePermission } from '../middleware/checkPermission.js';
+import { authenticate } from '../middleware/auth.js';
+import { requirePermission, getEffectivePermission, getEffectivePermissionDetails } from '../middleware/checkPermission.js';
 import { requireFirm } from '../middleware/requireFirm.js';
 import { validate, validateParams, validateQuery, uuidParam, paginationQuery } from '../middleware/validate.js';
 import { getSearchServiceSync } from '../services/search/SearchServiceFactory.js';
@@ -702,28 +702,37 @@ documentsRouter.get(
       // Calcular permiso efectivo para cada documento y filtrar los que no tienen acceso
       const documentsWithPermissions = documents.map(doc => {
         let effectivePermission: string = 'none';
+        let effectivePermissionOrigin: string = 'none';
 
         // 1. Si es dueño → admin
         if (doc.ownerId === userId) {
           effectivePermission = 'admin';
+          effectivePermissionOrigin = 'owner';
         }
         // 2. Si es admin global → admin
         else if (isGlobalAdmin) {
           effectivePermission = 'admin';
+          effectivePermissionOrigin = 'role_admin';
         }
         // 3. Buscar el permiso más alto entre los permisos individuales y de grupo
         else if (doc.permissions.length > 0) {
           const levels = { none: 0, download: 1, read: 2, write: 3, admin: 4 };
           let maxLevel = 0;
+          let origin = 'none';
           for (const perm of doc.permissions) {
             const level = levels[perm.permissionLevel as keyof typeof levels] ?? 0;
-            if (level > maxLevel) maxLevel = level;
+            if (level > maxLevel) {
+              maxLevel = level;
+              origin = perm.userId ? 'direct' : 'group';
+            }
           }
           effectivePermission = Object.entries(levels).find(([, v]) => v === maxLevel)?.[0] ?? 'none';
+          effectivePermissionOrigin = maxLevel > 0 ? origin : 'none';
         }
         // 4. Si es miembro del grupo y no hay permisos explícitos, dar acceso de lectura por defecto
         else if (doc.groupId && userGroupIds.includes(doc.groupId)) {
           effectivePermission = 'read';
+          effectivePermissionOrigin = 'membership';
         }
 
         // Remover el campo permissions del response (solo era para cálculo interno)
@@ -732,6 +741,7 @@ documentsRouter.get(
         return {
           ...docWithoutInternalPerms,
           effectivePermission,
+          effectivePermissionOrigin,
         };
       });
 
@@ -1070,6 +1080,7 @@ documentsRouter.get(
 documentsRouter.get(
   '/:id/versions/:versionId/file',
   validateParams(z.object({ id: z.string().uuid(), versionId: z.string().uuid() })),
+  requirePermission('read'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const docId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -2008,10 +2019,13 @@ documentsRouter.get(
         orderBy: { createdAt: 'asc' },
       });
 
-      // También incluir el permiso efectivo del usuario que consulta
-      const effectivePermission = req.effectivePermission ?? 'none';
+      const effective = await getEffectivePermissionDetails(req.user!.id, paramId(req));
 
-      res.json({ permissions, effectivePermission });
+      res.json({
+        permissions,
+        effectivePermission: effective.permission,
+        effectivePermissionOrigin: effective.origin,
+      });
     } catch (error) {
       next(error);
     }
@@ -2025,8 +2039,8 @@ documentsRouter.get(
   validateParams(uuidParam),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const level = await getEffectivePermission(req.user!.id, paramId(req));
-      res.json({ permission: level });
+      const effective = await getEffectivePermissionDetails(req.user!.id, paramId(req));
+      res.json({ permission: effective.permission, origin: effective.origin });
     } catch (error) {
       next(error);
     }
@@ -2047,7 +2061,6 @@ const batchPermissionsSchema = z.object({
 documentsRouter.put(
   '/:id/permissions',
   validateParams(uuidParam),
-  authorize('admin'),
   requirePermission('admin'),
   validate(batchPermissionsSchema),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -2128,7 +2141,6 @@ const addPermissionSchema = z.object({
 documentsRouter.post(
   '/:id/permissions',
   validateParams(uuidParam),
-  authorize('admin'),
   requirePermission('admin'),
   validate(addPermissionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -2211,7 +2223,6 @@ documentsRouter.post(
 documentsRouter.delete(
   '/:id/permissions/:permId',
   validateParams(z.object({ id: z.string().uuid(), permId: z.string().uuid() })),
-  authorize('admin'),
   requirePermission('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -2255,7 +2266,7 @@ documentsRouter.delete(
 documentsRouter.post(
   '/:id/access-pin',
   validateParams(uuidParam),
-  authorize('admin'),
+  requirePermission('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const docId = paramId(req);
@@ -2909,4 +2920,3 @@ documentsRouter.delete(
     }
   },
 );
-

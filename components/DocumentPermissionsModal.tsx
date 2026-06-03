@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffe
 import { createPortal } from "react-dom";
 import { Document, DocumentPermissionLevel } from "../types";
 import { permissionsApi, usersApi, ApiUser, SetPermissionPayload } from "../lib/api";
-import { useAuth } from "../contexts/AuthContext";
 import { UserAvatar } from "./UserAvatar";
 
 const PERMISSION_LABELS: Record<DocumentPermissionLevel, string> = {
@@ -38,7 +37,10 @@ interface MemberRow {
   email: string;
   avatarUrl: string | null;
   level: DocumentPermissionLevel;
+  explicitLevel: DocumentPermissionLevel;
   isOwner: boolean;
+  isRoleAdmin: boolean;
+  accessOrigin: "owner" | "role_admin" | "direct" | "none";
 }
 
 interface DocumentPermissionsModalProps {
@@ -164,8 +166,7 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; visible: boolean; type: "success" | "error" } | null>(null);
-  const { user: authUser } = useAuth();
-  const canManage = authUser?.role === 'admin';
+  const [canManage, setCanManage] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
@@ -179,6 +180,7 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
     try {
       setLoading(true);
       setError(null);
+      setCanManage(false);
 
       const [usersRaw, permsRes] = await Promise.all([
         usersApi.list({ limit: 100 }),
@@ -187,10 +189,7 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
 
       const users: ApiUser[] = Array.isArray(usersRaw) ? usersRaw : (usersRaw as any).data ?? [];
       const existingPerms = permsRes.permissions ?? [];
-
-      // Solo el abogado (admin) puede gestionar permisos
-      // Se ignora effectivePermission para esta decisión
-      // ya que es una restricción de ROL, no de documento
+      setCanManage(permsRes.effectivePermission === "admin");
 
       // Crear mapa de permisos existentes por userId
       const permMap = new Map<string, DocumentPermissionLevel>();
@@ -209,8 +208,21 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
         name: u.name,
         email: u.email,
         avatarUrl: u.avatarUrl,
-        level: u.id === ownerId ? "admin" : (permMap.get(u.id) ?? "none"),
+        explicitLevel: permMap.get(u.id) ?? "none",
+        level: u.id === ownerId
+          ? "admin"
+          : u.role === "admin"
+            ? "admin"
+            : (permMap.get(u.id) ?? "none"),
         isOwner: u.id === ownerId,
+        isRoleAdmin: u.id !== ownerId && u.role === "admin",
+        accessOrigin: u.id === ownerId
+          ? "owner"
+          : u.role === "admin"
+            ? "role_admin"
+            : permMap.has(u.id)
+              ? "direct"
+              : "none",
       }));
 
       setMembers(rows);
@@ -233,7 +245,11 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
   }, [members, search]);
 
   const setMemberLevel = (id: string, level: DocumentPermissionLevel) => {
-    setMembers((prev) => prev.map((m) => (m.id === id && !m.isOwner ? { ...m, level } : m)));
+    setMembers((prev) => prev.map((m) => (
+      m.id === id && !m.isOwner && !m.isRoleAdmin
+        ? { ...m, level, explicitLevel: level, accessOrigin: level === "none" ? "none" : "direct" }
+        : m
+    )));
     setOpenDropdownId(null);
     setDirty(true);
   };
@@ -244,10 +260,10 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
 
       // Construir payload: solo usuarios que no son el dueño
       const permissions: SetPermissionPayload[] = members
-        .filter((m) => !m.isOwner && m.level !== "none")
+        .filter((m) => !m.isOwner && !m.isRoleAdmin && m.explicitLevel !== "none")
         .map((m) => ({
           userId: m.id,
-          permissionLevel: m.level,
+          permissionLevel: m.explicitLevel,
         }));
 
       await permissionsApi.save(document.id, permissions);
@@ -352,16 +368,30 @@ export const DocumentPermissionsModal: React.FC<DocumentPermissionsModalProps> =
                                 Propietario
                               </span>
                             )}
+                            {member.isRoleAdmin && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50">
+                                <span className="material-symbols-outlined text-[12px]">verified_user</span>
+                                Rol despacho
+                              </span>
+                            )}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {member.isOwner ? "Control total como propietario" : PERMISSION_DESCRIPTIONS[member.level]}
+                            {member.isOwner
+                              ? "Control total como propietario"
+                              : member.isRoleAdmin
+                                ? "Administrador por rol del despacho"
+                                : PERMISSION_DESCRIPTIONS[member.level]}
                           </p>
                         </div>
 
-                        {/* Selector de nivel — deshabilitado para el propietario */}
+                        {/* Selector de nivel — deshabilitado para permisos heredados */}
                         {member.isOwner ? (
                           <span className={getLevelBadgeClass("admin") + " cursor-default opacity-70"}>
                             Propietario
+                          </span>
+                        ) : member.isRoleAdmin ? (
+                          <span className={getLevelBadgeClass("admin") + " cursor-default opacity-70"}>
+                            Admin por rol
                           </span>
                         ) : canManage ? (
                           <PermissionDropdown

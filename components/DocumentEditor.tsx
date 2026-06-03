@@ -531,7 +531,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentFromTras
   const [iframeUrl, setIframeUrl] = useState<string>('');
 
   // Effective permission level
-  const [effectivePermission, setEffectivePermission] = useState<string>('admin');
+  const [effectivePermission, setEffectivePermission] = useState<string>('read');
   const canEdit = effectivePermission === 'write' || effectivePermission === 'admin';
   const canAdmin = effectivePermission === 'admin';
   const superdocRole = canEdit ? 'editor' : 'viewer';

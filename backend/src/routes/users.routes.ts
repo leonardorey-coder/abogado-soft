@@ -113,6 +113,7 @@ usersRouter.get(
             avatarUrl: true, officeName: true, department: true,
             position: true, phone: true, isActive: true,
             lastLogin: true, createdAt: true, updatedAt: true,
+            firm: { select: { name: true } },
             sessions: {
               where: {
                 isActive: true,
@@ -128,8 +129,9 @@ usersRouter.get(
       ]);
 
       res.json({
-        data: users.map(({ sessions, ...user }) => ({
+        data: users.map(({ sessions, firm, ...user }) => ({
           ...user,
+          officeName: user.officeName ?? firm?.name ?? null,
           isOnline: isRecentlyOnline({ ...user, sessions }),
         })),
         total,
@@ -158,6 +160,7 @@ usersRouter.get(
           avatarUrl: true, officeName: true, department: true,
           position: true, phone: true, isActive: true,
           lastLogin: true, createdAt: true, updatedAt: true,
+          firm: { select: { name: true } },
           settings: { select: { storagePath: true } },
           sessions: {
             where: {
@@ -170,9 +173,10 @@ usersRouter.get(
           },
         },
       });
-      const { settings, sessions, ...userData } = user;
+      const { settings, sessions, firm, ...userData } = user;
       res.json({
         ...userData,
+        officeName: userData.officeName ?? firm?.name ?? null,
         coverUrl: settings?.storagePath ?? null,
         isOnline: isRecentlyOnline({ ...userData, sessions }),
       });

@@ -47,7 +47,7 @@ export const DocumentXlsxEditor: React.FC = () => {
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
   const [newVersionNote, setNewVersionNote] = useState('');
 
-  const [effectivePermission, setEffectivePermission] = useState<string>('admin');
+  const [effectivePermission, setEffectivePermission] = useState<string>('read');
   const canEdit = effectivePermission === 'write' || effectivePermission === 'admin';
 
   // ─── Draft recovery ──────────────────────────────────────────────────────
