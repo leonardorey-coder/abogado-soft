@@ -8,8 +8,9 @@
 # Uso:
 #   SIDOC_IMAGE_TAG=latest \
 #   R2_ACCOUNT_ID=xxx R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=xxx R2_BUCKET_NAME=xxx \
-#   VITE_LIVEBLOCKS_PUBLIC_KEY=pk_prod_xxx \
 #   bash scripts/deploy.sh
+#
+# Nota: variables Vite del frontend se hornean en la imagen desde GitHub Actions.
 #
 # Dry-run:
 #   SIDOC_IMAGE_TAG=latest bash scripts/deploy.sh --dry

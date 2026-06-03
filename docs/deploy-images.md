@@ -41,9 +41,10 @@ R2_ACCOUNT_ID="..." \
 R2_ACCESS_KEY_ID="..." \
 R2_SECRET_ACCESS_KEY="..." \
 R2_BUCKET_NAME="sidoc" \
-VITE_LIVEBLOCKS_PUBLIC_KEY="..." \
 bash /opt/sidoc/scripts/deploy.sh
 ```
+
+El frontend se compila dentro de GitHub Actions. Si se necesita `VITE_LIVEBLOCKS_PUBLIC_KEY`, configurarlo como secret del repositorio con ese mismo nombre antes de publicar imágenes.
 
 Para deploy reproducible o rollback, usar el SHA corto publicado por GitHub Actions:
 
