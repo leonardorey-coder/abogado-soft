@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # Usar etiqueta cercana al Bun del lockfile/ci evita fallos por cambios menores en :1.
-FROM oven/bun:1.3-alpine AS base
+FROM oven/bun:1.3.13-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 

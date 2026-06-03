@@ -53,9 +53,7 @@ services:
   # ─── Backend Express/Bun ─────────────────────────────────────────────────────
   backend:
     container_name: abogadosoft_backend
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    image: ghcr.io/leonardorey-coder/sidoc-backend:${SIDOC_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - ../.env.prod
@@ -72,8 +70,8 @@ services:
     networks:
       - app_network
     volumes:
-      # Credencial Google Service Account (debe existir en el servidor):
-      - ../backend/abogadosoft-service-account.json:/app/abogadosoft-service-account.json:ro
+      # Credenciales opcionales (p. ej. Google Service Account):
+      - ../secrets:/app/secrets:ro
     init: true
     cap_drop:
       - ALL
@@ -102,16 +100,11 @@ services:
   # ─── Frontend (Nginx + Vite dist/) ───────────────────────────────────────────
   frontend:
     container_name: abogadosoft_frontend
-    image: nginx:1.27-alpine
+    image: ghcr.io/leonardorey-coder/sidoc-frontend:${SIDOC_IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ../dist:/usr/share/nginx/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # TLS (descomentar cuando haya cert):
-      # - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       backend:
         condition: service_healthy
