@@ -20,7 +20,9 @@ declare global {
 }
 
 const lastLoginUpdateMap = new Map<string, number>();
+const sessionActivityUpdateMap = new Map<string, number>();
 const LAST_LOGIN_THROTTLE_MS = 5 * 60 * 1000;
+const SESSION_ACTIVITY_THROTTLE_MS = 60 * 1000;
 
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -66,6 +68,19 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       prisma.user.update({
         where: { id: user.id },
         data: { lastLogin: new Date() },
+      }).catch(() => {});
+    }
+
+    const lastSessionUpdate = sessionActivityUpdateMap.get(user.id) ?? 0;
+    if (now - lastSessionUpdate > SESSION_ACTIVITY_THROTTLE_MS) {
+      sessionActivityUpdateMap.set(user.id, now);
+      prisma.userSession.updateMany({
+        where: {
+          userId: user.id,
+          isActive: true,
+          expiresAt: { gt: new Date() },
+        },
+        data: { lastActivity: new Date() },
       }).catch(() => {});
     }
 

@@ -25,6 +25,7 @@ interface TeamUser {
   position?: string | null;
   phone?: string | null;
   isActive: boolean;
+  isOnline?: boolean;
   lastLogin?: string | null;
   createdAt: string;
 }
@@ -527,9 +528,12 @@ export const TeamPage: React.FC = () => {
                   u.role === "admin"
                     ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-900/30 dark:text-indigo-300"
                     : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
-                const statusIconClass = u.isActive
-                  ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-900/30 dark:text-green-300"
-                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-900/30 dark:text-red-300";
+                const statusIconClass = !u.isActive
+                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-900/30 dark:text-red-300"
+                  : u.isOnline
+                    ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-900/30 dark:text-green-300"
+                    : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400";
+                const statusTitle = !u.isActive ? "Cuenta deshabilitada" : u.isOnline ? "Activo" : "Sin conexión";
 
                 return (
                   <article
@@ -550,9 +554,9 @@ export const TeamPage: React.FC = () => {
                       >
                         <UserAvatar name={u.name} avatarUrl={u.avatarUrl} fallbackSquare className="h-full w-full object-cover object-top" />
                       </button>
-                      <div className={`absolute right-2 top-2 z-10 rounded-md border p-1 ${statusIconClass}`} title={u.isActive ? "Activo" : "Inactivo"}>
+                      <div className={`absolute right-2 top-2 z-10 rounded-md border p-1 ${statusIconClass}`} title={statusTitle}>
                         <span className="material-symbols-outlined text-[16px]">
-                          {u.isActive ? "check_circle" : "cancel"}
+                          {!u.isActive ? "cancel" : u.isOnline ? "check_circle" : "radio_button_unchecked"}
                         </span>
                       </div>
                     </div>

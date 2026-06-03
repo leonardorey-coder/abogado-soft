@@ -36,8 +36,8 @@ const updateUserSchema = z.object({
   department: z.string().max(255).optional().nullable(),
   position: z.string().max(255).optional().nullable(),
   phone: z.string().max(50).optional().nullable(),
-  avatarUrl: z.string().max(1_000_000).optional().nullable(),
-  coverUrl: z.string().max(1_000_000).optional().nullable(),
+  avatarUrl: z.string().max(7_000_000).optional().nullable(),
+  coverUrl: z.string().max(7_000_000).optional().nullable(),
 });
 
 const changeRoleSchema = z.object({
@@ -54,6 +54,21 @@ const usersListQuery = paginationQuery.extend({
   role: z.string().optional(),
   isActive: z.string().optional(),
 });
+
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+
+function isRecentlyOnline(user: {
+  isActive: boolean;
+  sessions?: Array<{ isActive: boolean; lastActivity: Date; expiresAt: Date }>;
+}): boolean {
+  if (!user.isActive) return false;
+  const now = Date.now();
+  return (user.sessions ?? []).some((session) => (
+    session.isActive &&
+    session.expiresAt.getTime() > now &&
+    now - session.lastActivity.getTime() <= ONLINE_WINDOW_MS
+  ));
+}
 
 // ─── GET /api/users ──────────────────────────────────────────────────────────
 // Lista usuarios del despacho con filtros opcionales.
@@ -98,12 +113,29 @@ usersRouter.get(
             avatarUrl: true, officeName: true, department: true,
             position: true, phone: true, isActive: true,
             lastLogin: true, createdAt: true, updatedAt: true,
+            sessions: {
+              where: {
+                isActive: true,
+                expiresAt: { gt: new Date() },
+              },
+              select: { isActive: true, lastActivity: true, expiresAt: true },
+              orderBy: { lastActivity: 'desc' },
+              take: 1,
+            },
           },
         }),
         prisma.user.count({ where }),
       ]);
 
-      res.json({ data: users, total, page, limit });
+      res.json({
+        data: users.map(({ sessions, ...user }) => ({
+          ...user,
+          isOnline: isRecentlyOnline({ ...user, sessions }),
+        })),
+        total,
+        page,
+        limit,
+      });
     } catch (error) {
       next(error);
     }
@@ -127,12 +159,22 @@ usersRouter.get(
           position: true, phone: true, isActive: true,
           lastLogin: true, createdAt: true, updatedAt: true,
           settings: { select: { storagePath: true } },
+          sessions: {
+            where: {
+              isActive: true,
+              expiresAt: { gt: new Date() },
+            },
+            select: { isActive: true, lastActivity: true, expiresAt: true },
+            orderBy: { lastActivity: 'desc' },
+            take: 1,
+          },
         },
       });
-      const { settings, ...userData } = user;
+      const { settings, sessions, ...userData } = user;
       res.json({
         ...userData,
         coverUrl: settings?.storagePath ?? null,
+        isOnline: isRecentlyOnline({ ...userData, sessions }),
       });
     } catch (error) {
       next(error);
@@ -151,6 +193,11 @@ usersRouter.post(
     try {
       const { email, name, role, officeName, department, position, phone, password } = req.body;
       const firmId = req.user!.firmId!;
+      const firm = await prisma.firm.findUnique({
+        where: { id: firmId },
+        select: { name: true },
+      });
+      const resolvedOfficeName = officeName?.trim() || firm?.name || null;
 
       // Verificar que el email no esté en uso
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -168,7 +215,7 @@ usersRouter.post(
           name,
           role,
           passwordHash,
-          officeName,
+          officeName: resolvedOfficeName,
           department,
           position,
           phone,
@@ -178,7 +225,7 @@ usersRouter.post(
         select: {
           id: true, email: true, name: true, role: true,
           officeName: true, department: true, position: true,
-          isActive: true, createdAt: true,
+          isActive: true, lastLogin: true, createdAt: true,
         },
       });
 
@@ -216,6 +263,11 @@ usersRouter.patch(
       const isAdmin = req.user!.role === 'admin';
       const isSelf = req.user!.id === targetId;
       const firmId = req.user!.firmId!;
+
+      if (!isSelf && (req.body.avatarUrl !== undefined || req.body.coverUrl !== undefined)) {
+        res.status(403).json({ error: 'Solo el propietario del perfil puede cambiar sus imágenes.' });
+        return;
+      }
 
       if (!isSelf) {
         if (!isAdmin) {

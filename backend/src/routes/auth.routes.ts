@@ -67,7 +67,7 @@ async function issueTokens(userId: string, email: string, req: Request) {
 async function resolveSessionId(userId: string, refreshToken?: string): Promise<string | null> {
   if (refreshToken) {
     const session = await prisma.userSession.findFirst({
-      where: { userId, sessionToken: refreshToken, isActive: true },
+      where: { userId, sessionToken: refreshToken, expiresAt: { gt: new Date() } },
       select: { id: true },
     });
     if (session) return session.id;
@@ -456,7 +456,7 @@ authRouter.post(
       if (sessionId) {
         await prisma.userSession.update({
           where: { id: sessionId },
-          data: { lastActivity: new Date() },
+          data: { lastActivity: new Date(), isActive: false },
         });
       }
 

@@ -671,8 +671,9 @@ export const AppLayout: React.FC = () => {
   }, []);
 
   const computeConnectionState = useCallback(
-    (member: { isActive: boolean }, latestEvent?: ApiActivityLog): ConnectionState => {
+    (member: { isActive: boolean; isOnline?: boolean }, latestEvent?: ApiActivityLog): ConnectionState => {
       if (!member.isActive) return "disabled";
+      if (member.isOnline) return "active";
       if (!latestEvent) return "closed";
 
       const activity = (latestEvent.activity ?? "").toUpperCase();
@@ -721,7 +722,7 @@ export const AppLayout: React.FC = () => {
           name: u.name,
           avatarUrl: u.avatarUrl,
           state: computeConnectionState(
-            { isActive: u.isActive },
+            { isActive: u.isActive, isOnline: u.isOnline },
             latestConnectionEventByUser.get(u.id),
           ),
         }))

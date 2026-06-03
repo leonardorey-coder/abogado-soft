@@ -457,6 +457,7 @@ export interface ApiUser {
   department: string | null;
   position: string | null;
   isActive: boolean;
+  isOnline?: boolean;
   lastLogin: string | null;
   createdAt: string;
 }
