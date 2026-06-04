@@ -35,6 +35,22 @@ COPY package.json bun.lock* ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
 RUN bun install --frozen-lockfile --production --ignore-scripts \
+  && rm -rf \
+    node_modules/.bin/prisma \
+    node_modules/.bin/tsc \
+    node_modules/.bin/tsserver \
+    node_modules/prisma \
+    node_modules/typescript \
+    node_modules/effect \
+    node_modules/@electric-sql \
+    node_modules/@prisma/config \
+    node_modules/@prisma/dev \
+    node_modules/@prisma/engines \
+    node_modules/@prisma/engines-version \
+    node_modules/@prisma/fetch-engine \
+    node_modules/@prisma/get-platform \
+    node_modules/@prisma/query-plan-executor \
+    node_modules/@prisma/studio-core \
   && bun pm cache rm
 
 # ─── Runner ───────────────────────────────────────────────────────────────────
