@@ -17,8 +17,8 @@
 #
 # Requisitos previos:
 #   1. docker login ghcr.io -u <usuario> --password-stdin
-#   2. /opt/sidoc/infra/docker-compose.prod.yml existe
-#   3. /opt/sidoc/.env.prod se preserva o se genera en el primer deploy
+#   2. /home/sidoc/infra/docker-compose.prod.yml existe
+#   3. /home/sidoc/.env.prod se preserva o se genera en el primer deploy
 # ==============================================================================
 
 set -euo pipefail
@@ -31,7 +31,7 @@ for arg in "$@"; do
   esac
 done
 
-APP_DIR="${APP_DIR:-/opt/sidoc}"
+APP_DIR="${APP_DIR:-/home/sidoc}"
 COMPOSE_FILE="$APP_DIR/infra/docker-compose.prod.yml"
 SIDOC_IMAGE_TAG="${SIDOC_IMAGE_TAG:-latest}"
 
@@ -98,6 +98,8 @@ install_docker() {
     return
   fi
 
+  command -v sudo &>/dev/null || die "Docker no está instalado y este usuario no tiene sudo. Solicita al administrador instalar Docker y agregar '$USER' al grupo docker."
+
   log "Instalando Docker Engine..."
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
@@ -122,8 +124,7 @@ install_docker() {
 
 prepare_layout() {
   log "Preparando layout mínimo..."
-  sudo mkdir -p "$APP_DIR/infra" "$APP_DIR/scripts"
-  sudo chown -R "$USER:$USER" "$APP_DIR"
+  mkdir -p "$APP_DIR/infra" "$APP_DIR/scripts"
 
   [ -f "$COMPOSE_FILE" ] || die "No existe $COMPOSE_FILE. Copia infra/docker-compose.prod.yml a esa ruta antes de desplegar."
   ok "Compose encontrado → $COMPOSE_FILE"

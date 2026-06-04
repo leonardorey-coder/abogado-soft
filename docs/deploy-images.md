@@ -12,15 +12,14 @@ Este flujo evita construir frontend/backend en el VPS. GitHub Actions publica:
 ## Primer setup del VPS
 
 ```bash
-sudo mkdir -p /opt/sidoc/infra /opt/sidoc/scripts
-sudo chown -R "$USER:$USER" /opt/sidoc
+mkdir -p /home/sidoc/infra /home/sidoc/scripts
 ```
 
 Copiar al VPS:
 
 ```text
-/opt/sidoc/infra/docker-compose.prod.yml
-/opt/sidoc/scripts/deploy.sh
+/home/sidoc/infra/docker-compose.prod.yml
+/home/sidoc/scripts/deploy.sh
 ```
 
 Login único a GHCR:
@@ -37,7 +36,7 @@ R2_ACCOUNT_ID="..." \
 R2_ACCESS_KEY_ID="..." \
 R2_SECRET_ACCESS_KEY="..." \
 R2_BUCKET_NAME="sidoc" \
-bash /opt/sidoc/scripts/deploy.sh
+bash /home/sidoc/scripts/deploy.sh
 ```
 
 El frontend se compila dentro de GitHub Actions. Si se necesita `VITE_LIVEBLOCKS_PUBLIC_KEY`, configurarlo como secret del repositorio con ese mismo nombre antes de publicar imágenes.
@@ -45,14 +44,14 @@ El frontend se compila dentro de GitHub Actions. Si se necesita `VITE_LIVEBLOCKS
 Para deploy reproducible o rollback, usar el SHA corto publicado por GitHub Actions:
 
 ```bash
-SIDOC_IMAGE_TAG=fab47f9 bash /opt/sidoc/scripts/deploy.sh
+SIDOC_IMAGE_TAG=fab47f9 bash /home/sidoc/scripts/deploy.sh
 ```
 
 ## Flujo interno
 
 El script:
 
-1. Preserva/genera `/opt/sidoc/.env.prod`.
+1. Preserva/genera `/home/sidoc/.env.prod`.
 2. Ejecuta `docker compose pull`.
 3. Levanta `db` y `meilisearch`.
 4. Corre `prisma migrate deploy` desde la imagen migrator.

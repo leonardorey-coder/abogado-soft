@@ -18,16 +18,15 @@ infra/
 
 ### Paso 0 — Requisitos previos en el servidor
 
-Servidor Ubuntu 24 LTS limpio con acceso SSH y usuario con `sudo`.
-El script `deploy.sh --install` instala Docker, Bun y Node automáticamente.
+Servidor Ubuntu 24 LTS con Docker disponible para el usuario asignado.
 
 ---
 
 ### Paso 1 — Clonar el repo
 
 ```bash
-git clone <URL_DEL_REPO> /opt/sidoc
-cd /opt/sidoc
+git clone <URL_DEL_REPO> /home/sidoc
+cd /home/sidoc
 ```
 
 ---
@@ -234,7 +233,7 @@ curl http://IP_SERVIDOR:8000/health         # Supabase Kong vivo
 
 ```bash
 # En el servidor
-cd /opt/sidoc
+cd /home/sidoc
 bash scripts/deploy.sh --update
 ```
 
@@ -289,7 +288,7 @@ docker exec abogadosoft_backend \
 O desde fuera del contenedor si Bun está instalado en el servidor:
 
 ```bash
-cd /opt/sidoc/backend
+cd /home/sidoc/backend
 DATABASE_URL=$(grep DIRECT_URL ../.env.prod | cut -d= -f2- | tr -d '"') \
 MEILISEARCH_HOST=http://localhost:7700 \
 MEILISEARCH_KEY=$(grep MEILISEARCH_KEY ../.env.prod | cut -d= -f2- | tr -d '"') \
