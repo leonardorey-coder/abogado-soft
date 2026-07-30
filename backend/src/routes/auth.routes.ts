@@ -41,8 +41,7 @@ const updateProfileSchema = z.object({
   department: z.string().max(255).optional().nullable(),
   position: z.string().max(255).optional().nullable(),
   avatarUrl: z.string().url().optional().nullable(),
-  role: z.enum(['admin', 'asistente']).optional(),
-});
+}).strict();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -341,9 +340,17 @@ authRouter.patch(
   validate(updateProfileSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const data = req.body as z.infer<typeof updateProfileSchema>;
       const user = await prisma.user.update({
         where: { id: req.user!.id },
-        data: req.body,
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.phone !== undefined && { phone: data.phone }),
+          ...(data.officeName !== undefined && { officeName: data.officeName }),
+          ...(data.department !== undefined && { department: data.department }),
+          ...(data.position !== undefined && { position: data.position }),
+          ...(data.avatarUrl !== undefined && { avatarUrl: data.avatarUrl }),
+        },
         select: {
           id: true, email: true, name: true, role: true, avatarUrl: true,
           phone: true, officeName: true, department: true, position: true,
